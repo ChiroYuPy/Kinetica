@@ -1,5 +1,5 @@
 use kinetica::collisions::NaiveCollisionDetector;
-use kinetica::core::{RigidBody, Shape, World};
+use kinetica::core::{BodyType, RigidBody, Shape, World};
 use kinetica::forces::LinearGravity;
 use kinetica::math::Vec2;
 use macroquad::prelude::*;
@@ -7,14 +7,14 @@ use macroquad::prelude::*;
 #[macroquad::main("Kinetica Physics Engine")]
 async fn main() {
     let mut world = World::new();
-    world.add_force_generator(Box::new(LinearGravity { acceleration: Vec2::new(0.0, 2.0) }));
+    world.add_force_generator(Box::new(LinearGravity { acceleration: Vec2::new(0.0, 5.0) }));
     world.collision_detector = Some(Box::new(NaiveCollisionDetector::new()));
 
-    let radius = 15.0;
-    let spacing = radius * 2.0 + 5.0;
+    let radius = 10.0;
+    let spacing = radius * 2.0 + 2.0;
 
-    let cols = 25;
-    let rows = 20;
+    let cols = 15;
+    let rows = 10;
 
     let grid_width = (cols - 1) as f32 * spacing;
     let grid_height = (rows - 1) as f32 * spacing;
@@ -33,11 +33,39 @@ async fn main() {
                 position: Vec2::new(x, y),
                 velocity: Vec2::ZERO,
                 force: Vec2::ZERO,
+                body_type: BodyType::Dynamic,
                 mass: 1.0,
                 inv_mass: 1.0,
-                shape: Shape::circle(radius),
+                shape: Shape::Circle(radius),
             });
         }
+    }
+
+    let border_count_x = (screen_width / spacing).ceil() as usize;
+    let border_count_y = (screen_height / spacing).ceil() as usize;
+
+    for i in 0..border_count_x {
+        let x = i as f32 * spacing;
+        world.add_body(RigidBody::static_body(
+            Vec2::new(x, radius),
+            Shape::Circle(radius),
+        ));
+        world.add_body(RigidBody::static_body(
+            Vec2::new(x, screen_height - radius),
+            Shape::Circle(radius),
+        ));
+    }
+
+    for j in 1..border_count_y - 1 {
+        let y = j as f32 * spacing;
+        world.add_body(RigidBody::static_body(
+            Vec2::new(radius, y),
+            Shape::Circle(radius),
+        ));
+        world.add_body(RigidBody::static_body(
+            Vec2::new(screen_width - radius, y),
+            Shape::Circle(radius),
+        ));
     }
 
     loop {
@@ -46,7 +74,12 @@ async fn main() {
         world.step(0.016);
 
         for body in &world.bodies {
-            draw_circle(body.position.x, body.position.y, radius, WHITE);
+            let color = if body.is_static() {
+                DARKGRAY
+            } else {
+                WHITE
+            };
+            draw_circle(body.position.x, body.position.y, radius, color);
         }
 
         draw_text(&format!("Bodies: {}", world.len()), 10.0, 10.0, 20.0, WHITE);
