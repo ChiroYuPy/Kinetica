@@ -15,7 +15,5 @@ impl super::Integrator for SemiImplicitEuler {
             // x(t+dt) = x(t) + v(t+dt) * dt
             body.position += body.velocity * dt;
         }
-
-        self.reset_forces(bodies);
     }
 }
