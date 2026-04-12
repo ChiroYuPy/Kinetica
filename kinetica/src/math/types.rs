@@ -1,0 +1,1 @@
+pub type Vec2 = glam::Vec2;
