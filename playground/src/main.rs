@@ -1,84 +1,47 @@
-use kinetica::collisions::NaiveCollisionDetector;
-use kinetica::core::{RigidBody, Shape, World};
-use kinetica::forces::LinearGravity;
-use kinetica::math::Vec2;
 use macroquad::prelude::*;
+
+mod renderer;
+mod scenes;
+
+use renderer::render;
+use scenes::Scene;
 
 #[macroquad::main("Kinetica Physics Engine")]
 async fn main() {
-    let mut world = World::new();
-    world.add_force_generator(Box::new(LinearGravity { acceleration: Vec2::new(0.0, 5.0) }));
-    world.collision_detector = Some(Box::new(NaiveCollisionDetector::new()));
+    let mut current_scene: usize = 0;
+    let mut world = kinetica::core::World::new();
 
-    let radius = 10.0;
-    let spacing = radius * 2.0 + 2.0;
+    let scenes: Vec<Box<dyn Scene>> = vec![
+        Box::new(scenes::scenes::FallingBalls),
+        Box::new(scenes::scenes::BoxDrop),
+        Box::new(scenes::scenes::Pyramid),
+    ];
 
-    let cols = 15;
-    let rows = 10;
-
-    let grid_width = (cols - 1) as f32 * spacing;
-    let grid_height = (rows - 1) as f32 * spacing;
-
-    let screen_width = screen_width();
-    let screen_height = screen_height();
-    let offset_x = (screen_width - grid_width) / 2.0;
-    let offset_y = (screen_height - grid_height) / 2.0;
-
-    for i in 0..cols {
-        for j in 0..rows {
-            let x = offset_x + i as f32 * spacing;
-            let y = offset_y + j as f32 * spacing;
-
-            world.add_body(RigidBody::new(
-                Vec2::new(x, y),
-                1.0,
-                Shape::Circle(radius),
-            ));
-        }
-    }
-
-    let border_count_x = (screen_width / spacing).ceil() as usize;
-    let border_count_y = (screen_height / spacing).ceil() as usize;
-
-    for i in 0..border_count_x {
-        let x = i as f32 * spacing;
-        world.add_body(RigidBody::static_body(
-            Vec2::new(x, radius),
-            Shape::Circle(radius),
-        ));
-        world.add_body(RigidBody::static_body(
-            Vec2::new(x, screen_height - radius),
-            Shape::Circle(radius),
-        ));
-    }
-
-    for j in 1..border_count_y - 1 {
-        let y = j as f32 * spacing;
-        world.add_body(RigidBody::static_body(
-            Vec2::new(radius, y),
-            Shape::Circle(radius),
-        ));
-        world.add_body(RigidBody::static_body(
-            Vec2::new(screen_width - radius, y),
-            Shape::Circle(radius),
-        ));
-    }
+    scenes[0].setup(&mut world);
 
     loop {
         clear_background(Color::new(0.125, 0.125, 0.125, 1.0));
 
-        world.step(0.016);
-
-        for body in &world.bodies {
-            let color = if body.is_static() {
-                DARKGRAY
-            } else {
-                WHITE
-            };
-            draw_circle(body.state.position.x, body.state.position.y, radius, color);
+        // Check for numeric key input
+        if let Some(c) = get_char_pressed() {
+            match c {
+                '0' | '1' | '2' => {
+                    let new_scene = c.to_digit(10).unwrap() as usize;
+                    if new_scene < scenes.len() {
+                        current_scene = new_scene;
+                        world = kinetica::core::World::new();
+                        scenes[current_scene].setup(&mut world);
+                    }
+                }
+                _ => {}
+            }
         }
 
-        draw_text(&format!("Bodies: {}", world.len()), 10.0, 10.0, 20.0, WHITE);
+        world.step(0.016);
+        render(&world);
+
+        draw_text(&format!("Scene {}: {}", current_scene, scenes[current_scene].name()), 10.0, 10.0, 20.0, WHITE);
+        draw_text("Press 0, 1, 2 to switch scenes", 10.0, 40.0, 16.0, GRAY);
 
         next_frame().await
     }
