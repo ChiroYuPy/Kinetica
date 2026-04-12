@@ -1,0 +1,8 @@
+[package]
+name = "playground"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+macroquad = "0.4.14"
+kinetica = { path = "../kinetica" }
