@@ -1,5 +1,5 @@
+use crate::core::shape::Shape;
 use crate::math::Vec2;
-use crate::shape::Shape;
 
 pub struct RigidBody {
     pub position: Vec2,
