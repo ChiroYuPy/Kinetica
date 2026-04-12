@@ -11,3 +11,5 @@ pub trait Integrator: Send + Sync {
         }
     }
 }
+
+pub use euler::SemiImplicitEuler;

@@ -1,6 +1,6 @@
 use crate::core::RigidBody;
 
-struct SemiImplicitEuler;
+pub struct SemiImplicitEuler;
 
 impl super::Integrator for SemiImplicitEuler {
     fn integrate(&self, bodies: &mut [RigidBody], dt: f32) {

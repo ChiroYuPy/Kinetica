@@ -13,3 +13,5 @@ pub trait ForceGenerator: Send + Sync {
         }
     }
 }
+
+pub use linear_gravity::LinearGravity;
