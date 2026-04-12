@@ -1,5 +1,5 @@
 use crate::core::RigidBody;
-use crate::forces::{ForceGenerator, LinearGravity};
+use crate::forces::ForceGenerator;
 use crate::integration::{Integrator, SemiImplicitEuler};
 use crate::math::Vec2;
 
@@ -11,13 +11,11 @@ pub struct World {
 
 impl World {
     pub fn new() -> Self {
-        let bodies = Vec::new();
-        let integrator = Box::new(SemiImplicitEuler);
-        let force_generators: Vec<Box<dyn ForceGenerator>> = vec![
-            Box::new(LinearGravity { acceleration: Vec2::new(0.0, -9.81) })
-        ];
-
-        Self { bodies, integrator, force_generators }
+        Self {
+            bodies: Vec::new(),
+            integrator: Box::new(SemiImplicitEuler),
+            force_generators: Vec::new(),
+        }
     }
 
     pub fn add_force_generator(&mut self, generator: Box<dyn ForceGenerator>) {
