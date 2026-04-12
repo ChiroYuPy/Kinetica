@@ -13,6 +13,7 @@ pub struct World {
     pub collision_detector: Option<Box<dyn CollisionDetector>>,
     pub constraints: Vec<Box<dyn Constraint>>,
     pub solver: ImpulseSolver,
+    pub default_restitution: f32,
     contact_constraints: Vec<Box<dyn Constraint>>,
 }
 
@@ -25,6 +26,7 @@ impl World {
             collision_detector: None,
             constraints: Vec::new(),
             solver: ImpulseSolver::default(),
+            default_restitution: 0.5,
             contact_constraints: Vec::new(),
         }
     }
@@ -65,7 +67,7 @@ impl World {
         if let Some(ref detector) = self.collision_detector {
             let contacts = detector.detect(&self.bodies);
             for manifold in contacts {
-                self.contact_constraints.push(Box::new(ContactConstraint::new(manifold)));
+                self.contact_constraints.push(Box::new(ContactConstraint::with_restitution(manifold, self.default_restitution)));
             }
         }
 

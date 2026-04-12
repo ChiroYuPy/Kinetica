@@ -25,5 +25,5 @@ pub fn render(world: &World) {
         }
     }
 
-    draw_text(&format!("Bodies: {}", world.len()), 10.0, 70.0, 16.0, GRAY);
+    draw_text(&format!("Bodies: {}", world.len()), 10.0, 85.0, 16.0, GRAY);
 }
