@@ -8,15 +8,13 @@ pub enum BodyType {
 }
 
 pub struct RigidBody {
-    pub position: Vec2,
-    pub velocity: Vec2,
-    pub force: Vec2,
-
-    pub body_type: BodyType,
-    pub mass: f32,
-    pub inv_mass: f32,
-
-    pub shape: Shape,
+    position: Vec2,
+    velocity: Vec2,
+    force: Vec2,
+    body_type: BodyType,
+    mass: f32,
+    inv_mass: f32,
+    shape: Shape,
 }
 
 impl RigidBody {
@@ -47,6 +45,35 @@ impl RigidBody {
         }
     }
 
+    // Getters
+    pub fn position(&self) -> Vec2 {
+        self.position
+    }
+
+    pub fn velocity(&self) -> Vec2 {
+        self.velocity
+    }
+
+    pub fn force(&self) -> Vec2 {
+        self.force
+    }
+
+    pub fn body_type(&self) -> BodyType {
+        self.body_type
+    }
+
+    pub fn mass(&self) -> f32 {
+        self.mass
+    }
+
+    pub fn inv_mass(&self) -> f32 {
+        self.inv_mass
+    }
+
+    pub fn shape(&self) -> &Shape {
+        &self.shape
+    }
+
     pub fn is_static(&self) -> bool {
         self.body_type == BodyType::Static
     }
@@ -55,11 +82,38 @@ impl RigidBody {
         self.body_type == BodyType::Dynamic
     }
 
+    // Setters
+    pub fn set_position(&mut self, position: Vec2) {
+        self.position = position;
+    }
+
+    pub fn set_velocity(&mut self, velocity: Vec2) {
+        self.velocity = velocity;
+    }
+
+    pub fn set_force(&mut self, force: Vec2) {
+        self.force = force;
+    }
+
+    // Méthodes utilitaires
     pub fn apply_force(&mut self, force: Vec2) {
         self.force += force;
     }
 
     pub fn apply_impulse(&mut self, impulse: Vec2) {
         self.velocity += impulse * self.inv_mass;
+    }
+
+    // Accès interne pour les systèmes physiques
+    pub(crate) fn position_mut(&mut self) -> &mut Vec2 {
+        &mut self.position
+    }
+
+    pub(crate) fn velocity_mut(&mut self) -> &mut Vec2 {
+        &mut self.velocity
+    }
+
+    pub(crate) fn force_mut(&mut self) -> &mut Vec2 {
+        &mut self.force
     }
 }

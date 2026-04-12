@@ -1,5 +1,5 @@
 use kinetica::collisions::NaiveCollisionDetector;
-use kinetica::core::{BodyType, RigidBody, Shape, World};
+use kinetica::core::{RigidBody, Shape, World};
 use kinetica::forces::LinearGravity;
 use kinetica::math::Vec2;
 use macroquad::prelude::*;
@@ -29,15 +29,11 @@ async fn main() {
             let x = offset_x + i as f32 * spacing;
             let y = offset_y + j as f32 * spacing;
 
-            world.add_body(RigidBody {
-                position: Vec2::new(x, y),
-                velocity: Vec2::ZERO,
-                force: Vec2::ZERO,
-                body_type: BodyType::Dynamic,
-                mass: 1.0,
-                inv_mass: 1.0,
-                shape: Shape::Circle(radius),
-            });
+            world.add_body(RigidBody::new(
+                Vec2::new(x, y),
+                1.0,
+                Shape::Circle(radius),
+            ));
         }
     }
 
@@ -79,7 +75,7 @@ async fn main() {
             } else {
                 WHITE
             };
-            draw_circle(body.position.x, body.position.y, radius, color);
+            draw_circle(body.position().x, body.position().y, radius, color);
         }
 
         draw_text(&format!("Bodies: {}", world.len()), 10.0, 10.0, 20.0, WHITE);

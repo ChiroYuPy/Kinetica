@@ -3,7 +3,7 @@ use crate::core::RigidBody;
 use crate::math::Vec2;
 
 pub fn circle_vs_circle(a: &RigidBody, b: &RigidBody, radius_a: f32, radius_b: f32) -> Option<ContactManifold> {
-    let diff = b.position - a.position;
+    let diff = b.position() - a.position();
     let dist_sq = diff.length_squared();
     let radius_sum = radius_a + radius_b;
 
