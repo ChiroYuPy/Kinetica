@@ -1,5 +1,7 @@
 pub mod math;
-pub mod shape;
 pub mod core;
 pub mod integration;
 pub mod forces;
+pub mod collisions;
+pub mod constraints;
+pub mod solver;
