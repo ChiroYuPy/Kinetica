@@ -7,7 +7,7 @@ pub trait ForceGenerator: Send + Sync {
 
     fn apply_to_all(&self, bodies: &mut [RigidBody]) {
         for body in bodies.iter_mut() {
-            if body.inv_mass() > 0.0 {
+            if body.props.inv_mass > 0.0 {
                 self.apply(body);
             }
         }

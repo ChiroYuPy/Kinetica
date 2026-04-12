@@ -75,7 +75,7 @@ async fn main() {
             } else {
                 WHITE
             };
-            draw_circle(body.position().x, body.position().y, radius, color);
+            draw_circle(body.state.position.x, body.state.position.y, radius, color);
         }
 
         draw_text(&format!("Bodies: {}", world.len()), 10.0, 10.0, 20.0, WHITE);

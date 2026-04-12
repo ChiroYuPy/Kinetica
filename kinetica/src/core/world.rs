@@ -45,7 +45,7 @@ impl World {
 
     fn reset_forces(&mut self) {
         for body in self.bodies.iter_mut() {
-            body.set_force(Vec2::ZERO);
+            body.state.force = Vec2::ZERO;
         }
     }
 
