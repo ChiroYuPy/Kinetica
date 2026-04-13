@@ -15,53 +15,28 @@ struct Endpoint {
 
 pub struct SweepAndPrune {
     endpoints_x: Vec<Endpoint>,
-    is_sorted: bool,
 }
 
 impl SweepAndPrune {
     pub fn new() -> Self {
         Self {
             endpoints_x: Vec::new(),
-            is_sorted: false,
         }
     }
 
     fn update_endpoints(&mut self, aabbs: &[AABB]) {
-        if self.endpoints_x.len() != aabbs.len() * 2 {
-            self.endpoints_x.clear();
-            for (id, aabb) in aabbs.iter().enumerate() {
-                self.endpoints_x.push(Endpoint {
-                    value: aabb.min.x,
-                    is_min: true,
-                    body_id: id,
-                });
-                self.endpoints_x.push(Endpoint {
-                    value: aabb.max.x,
-                    is_min: false,
-                    body_id: id,
-                });
-            }
-            self.is_sorted = false;
-            return;
-        }
-
-        let mut i = 0;
+        self.endpoints_x.clear();
         for (id, aabb) in aabbs.iter().enumerate() {
-            self.endpoints_x[i].value = aabb.min.x;
-            self.endpoints_x[i].body_id = id;
-            self.endpoints_x[i + 1].value = aabb.max.x;
-            self.endpoints_x[i + 1].body_id = id;
-            i += 2;
-        }
-    }
-
-    fn insertion_sort(&mut self) {
-        for i in 1..self.endpoints_x.len() {
-            let mut j = i;
-            while j > 0 && self.endpoints_x[j - 1].value > self.endpoints_x[j].value {
-                self.endpoints_x.swap(j - 1, j);
-                j -= 1;
-            }
+            self.endpoints_x.push(Endpoint {
+                value: aabb.min.x,
+                is_min: true,
+                body_id: id,
+            });
+            self.endpoints_x.push(Endpoint {
+                value: aabb.max.x,
+                is_min: false,
+                body_id: id,
+            });
         }
     }
 
@@ -72,12 +47,22 @@ impl SweepAndPrune {
 
         self.update_endpoints(aabbs);
 
-        if self.is_sorted {
-            self.insertion_sort();
-        } else {
-            self.endpoints_x.sort_by(|a, b| a.value.partial_cmp(&b.value).unwrap());
-            self.is_sorted = true;
-        }
+        // Tri : min avant max quand les valeurs sont égales
+        self.endpoints_x.sort_by(|a, b| {
+            match a.value.partial_cmp(&b.value).unwrap() {
+                std::cmp::Ordering::Equal => {
+                    // Même valeur : les min doivent venir avant les max
+                    if a.is_min == b.is_min {
+                        std::cmp::Ordering::Equal
+                    } else if a.is_min {
+                        std::cmp::Ordering::Less
+                    } else {
+                        std::cmp::Ordering::Greater
+                    }
+                }
+                ord => ord
+            }
+        });
 
         let mut pairs = Vec::new();
         let mut active = Vec::new();
