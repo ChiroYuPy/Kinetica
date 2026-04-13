@@ -10,7 +10,7 @@ pub struct World {
     pub bodies: Vec<RigidBody>,
     pub integrator: Box<dyn Integrator>,
     pub force_generators: Vec<Box<dyn ForceGenerator>>,
-    pub collision_detector: Option<Box<dyn CollisionDetector>>,
+    pub collision_detector: Option<CollisionDetector>,
     pub constraints: Vec<Box<dyn Constraint>>,
     pub solver: ImpulseSolver,
     pub default_restitution: f32,
@@ -64,7 +64,7 @@ impl World {
 
         // 3. Detect collisions → contact constraints
         self.contact_constraints.clear();
-        if let Some(ref detector) = self.collision_detector {
+        if let Some(ref mut detector) = self.collision_detector {
             let contacts = detector.detect(&self.bodies);
             for manifold in contacts {
                 self.contact_constraints.push(Box::new(ContactConstraint::with_restitution(manifold, self.default_restitution)));
