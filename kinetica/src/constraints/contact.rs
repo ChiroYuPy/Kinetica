@@ -27,15 +27,13 @@ impl ContactConstraint {
         Self { manifold, restitution }
     }
 
-    fn bodies<'a>(&self, bodies: &'a mut [RigidBody]) -> (&'a mut RigidBody, &'a mut RigidBody) {
-        let (a, b) = (self.manifold.body_a, self.manifold.body_b);
+    unsafe fn bodies_unsafe<'a>(&self, bodies: &'a mut [RigidBody]) -> (&'a mut RigidBody, &'a mut RigidBody) {
+        let a = self.manifold.body_a;
+        let b = self.manifold.body_b;
         assert!(a != b && a < bodies.len() && b < bodies.len());
-        if a < b {
-            let (left, right) = bodies.split_at_mut(b);
-            (&mut left[a], &mut right[0])
-        } else {
-            let (left, right) = bodies.split_at_mut(a);
-            (&mut right[0], &mut left[b])
+        let ptr = bodies.as_mut_ptr();
+        unsafe {
+            (&mut *ptr.add(a), &mut *ptr.add(b))
         }
     }
 }
@@ -43,7 +41,7 @@ impl ContactConstraint {
 impl Constraint for ContactConstraint {
     fn solve_velocity(&mut self, bodies: &mut [RigidBody]) {
         let m = &self.manifold;
-        let (body_a, body_b) = self.bodies(bodies);
+        let (body_a, body_b) = unsafe { self.bodies_unsafe(bodies) };
 
         let inv_mass_a = body_a.props.inv_mass;
         let inv_mass_b = body_b.props.inv_mass;
@@ -69,7 +67,7 @@ impl Constraint for ContactConstraint {
 
     fn solve_position(&mut self, bodies: &mut [RigidBody]) {
         let m = &self.manifold;
-        let (body_a, body_b) = self.bodies(bodies);
+        let (body_a, body_b) = unsafe { self.bodies_unsafe(bodies) };
 
         let inv_mass_a = body_a.props.inv_mass;
         let inv_mass_b = body_b.props.inv_mass;
