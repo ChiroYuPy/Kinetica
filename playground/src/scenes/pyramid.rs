@@ -1,5 +1,5 @@
 use crate::scenes::Scene;
-use kinetica::collisions::NaiveCollisionDetector;
+use kinetica::collisions::CollisionDetector;
 use kinetica::core::{RigidBody, Shape, World};
 use kinetica::forces::LinearGravity;
 use kinetica::math::Vec2;
@@ -13,7 +13,7 @@ impl Scene for Pyramid {
 
     fn setup(&self, world: &mut World, width: f32, height: f32) {
         world.add_force_generator(Box::new(LinearGravity { acceleration: Vec2::new(0.0, 200.0) }));
-        world.collision_detector = Some(Box::new(NaiveCollisionDetector::new()));
+        world.collision_detector = Some(CollisionDetector::new());
 
         add_bounds(world, width, height);
 

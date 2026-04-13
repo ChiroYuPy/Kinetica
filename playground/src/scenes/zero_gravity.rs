@@ -1,5 +1,5 @@
 use crate::scenes::Scene;
-use kinetica::collisions::NaiveCollisionDetector;
+use kinetica::collisions::CollisionDetector;
 use kinetica::core::{RigidBody, Shape, World};
 use kinetica::math::Vec2;
 
@@ -11,7 +11,7 @@ impl Scene for ZeroGravity {
     }
 
     fn setup(&self, world: &mut World, width: f32, height: f32) {
-        world.collision_detector = Some(Box::new(NaiveCollisionDetector::new()));
+        world.collision_detector = Some(CollisionDetector::new());
 
         add_bounds(world, width, height);
 
