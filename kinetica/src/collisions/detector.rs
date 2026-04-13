@@ -1,33 +1,31 @@
-use crate::collisions::{BroadPhase, NaiveBroadPhase, NaiveNarrowPhase, narrow_phase::NarrowPhase};
+use crate::collisions::broad_phase::SweepAndPrune;
+use crate::collisions::narrow_phase::test_pairs;
 use crate::constraints::ContactManifold;
 use crate::core::RigidBody;
 
-pub trait CollisionDetector: Send + Sync {
-    fn detect(&self, bodies: &[RigidBody]) -> Vec<ContactManifold>;
+pub struct CollisionDetector {
+    broad: SweepAndPrune,
 }
 
-pub struct NaiveCollisionDetector {
-    broad: NaiveBroadPhase,
-    narrow: NaiveNarrowPhase,
-}
-
-impl NaiveCollisionDetector {
+impl CollisionDetector {
     pub fn new() -> Self {
         Self {
-            broad: NaiveBroadPhase,
-            narrow: NaiveNarrowPhase,
+            broad: SweepAndPrune::new(),
         }
     }
-}
 
-impl Default for NaiveCollisionDetector {
-    fn default() -> Self {
-        Self::new()
+    pub fn detect(&mut self, bodies: &[RigidBody]) -> Vec<ContactManifold> {
+        let aabbs: Vec<_> = bodies
+            .iter()
+            .map(|b| b.shape.compute_aabb(b.state.position))
+            .collect();
+
+        test_pairs(&self.broad.find_pairs(&aabbs), bodies)
     }
 }
 
-impl CollisionDetector for NaiveCollisionDetector {
-    fn detect(&self, bodies: &[RigidBody]) -> Vec<ContactManifold> {
-        self.narrow.test_pairs(&self.broad.find_pairs(bodies.len()), bodies)
+impl Default for CollisionDetector {
+    fn default() -> Self {
+        Self::new()
     }
 }

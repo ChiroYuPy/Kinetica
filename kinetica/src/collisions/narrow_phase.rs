@@ -3,19 +3,11 @@ use crate::collisions::contact::test_contact;
 use crate::constraints::ContactManifold;
 use crate::core::RigidBody;
 
-pub trait NarrowPhase: Send + Sync {
-    fn test_pairs(&self, pairs: &[PotentialPair], bodies: &[RigidBody]) -> Vec<ContactManifold>;
-}
-
-pub struct NaiveNarrowPhase;
-
-impl NarrowPhase for NaiveNarrowPhase {
-    fn test_pairs(&self, pairs: &[PotentialPair], bodies: &[RigidBody]) -> Vec<ContactManifold> {
-        pairs
-            .iter()
-            .filter_map(|pair| test_pair(pair, bodies))
-            .collect()
-    }
+pub fn test_pairs(pairs: &[PotentialPair], bodies: &[RigidBody]) -> Vec<ContactManifold> {
+    pairs
+        .iter()
+        .filter_map(|pair| test_pair(pair, bodies))
+        .collect()
 }
 
 fn test_pair(pair: &PotentialPair, bodies: &[RigidBody]) -> Option<ContactManifold> {
