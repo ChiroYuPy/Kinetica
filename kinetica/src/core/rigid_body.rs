@@ -6,33 +6,25 @@ use crate::math::Vec2;
 pub enum BodyType {
     Static,
     Dynamic,
-#[doc(hidden)]
-    Kinematic, // pour plus tard
 }
 
 #[derive(Clone, Debug)]
 pub struct RigidBody {
-    // État dynamique
     pub state: BodyState,
-    // Propriétés physiques
     pub props: BodyProps,
-    // Forme
     pub shape: Shape,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct BodyState {
-    // Position
     pub position: Vec2,
     pub velocity: Vec2,
     pub force: Vec2,
 
-    // Rotation
     pub angle: f32,
     pub angular_velocity: f32,
     pub torque: f32,
 
-    // Activité
     pub is_awake: bool,
     pub sleep_time: f32,
 }
