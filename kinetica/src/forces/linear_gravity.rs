@@ -1,5 +1,5 @@
-use crate::core::RigidBody;
 use crate::math::Vec2;
+use crate::RigidBody;
 
 pub struct LinearGravity {
     pub acceleration: Vec2,

@@ -1,7 +1,7 @@
 use crate::collisions::broad_phase::PotentialPair;
 use crate::collisions::contact::test_contact;
 use crate::constraints::ContactManifold;
-use crate::core::RigidBody;
+use crate::RigidBody;
 
 pub fn test_pairs(pairs: &[PotentialPair], bodies: &[RigidBody]) -> Vec<ContactManifold> {
     pairs

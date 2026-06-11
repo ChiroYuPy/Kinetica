@@ -1,5 +1,5 @@
-use kinetica::core::World;
 use macroquad::prelude::*;
+use kinetica::{Shape, World};
 
 pub fn render(world: &World) {
     for body in &world.bodies {
@@ -10,10 +10,10 @@ pub fn render(world: &World) {
         };
 
         match &body.shape {
-            kinetica::core::Shape::Circle(r) => {
+            Shape::Circle(r) => {
                 draw_circle(body.state.position.x, body.state.position.y, *r, color)
             }
-            kinetica::core::Shape::Rectangle(s) => {
+            Shape::Rectangle(s) => {
                 draw_rectangle(
                     body.state.position.x - s.x / 2.0,
                     body.state.position.y - s.y / 2.0,

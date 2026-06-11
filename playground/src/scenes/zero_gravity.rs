@@ -1,7 +1,7 @@
 use crate::scenes::Scene;
 use kinetica::collisions::CollisionDetector;
-use kinetica::core::{RigidBody, Shape, World};
 use kinetica::math::Vec2;
+use kinetica::{RigidBody, Shape, World};
 
 pub struct ZeroGravity;
 

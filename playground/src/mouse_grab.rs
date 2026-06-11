@@ -1,6 +1,6 @@
-use kinetica::core::World;
 use kinetica::math::Vec2;
 use macroquad::prelude::*;
+use kinetica::{Shape, World};
 
 pub struct MouseGrab {
     grabbed_body: Option<usize>,
@@ -26,10 +26,10 @@ impl MouseGrab {
                     }
 
                     let dist = match body.shape {
-                        kinetica::core::Shape::Circle(r) => {
+                        Shape::Circle(r) => {
                             (body.state.position - mouse_pos).length() - r
                         }
-                        kinetica::core::Shape::Rectangle(size) => {
+                        Shape::Rectangle(size) => {
                             let half = size / 2.0;
                             let min = body.state.position - half;
                             let max = body.state.position + half;

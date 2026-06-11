@@ -1,7 +1,5 @@
 mod linear_gravity;
 
-use crate::core::RigidBody;
-
 pub trait ForceGenerator: Send + Sync {
     fn apply(&self, body: &mut RigidBody);
 
@@ -15,3 +13,4 @@ pub trait ForceGenerator: Send + Sync {
 }
 
 pub use linear_gravity::LinearGravity;
+use crate::RigidBody;

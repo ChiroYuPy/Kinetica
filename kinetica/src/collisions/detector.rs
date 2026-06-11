@@ -1,7 +1,7 @@
 use crate::collisions::broad_phase::SweepAndPrune;
 use crate::collisions::narrow_phase::test_pairs;
 use crate::constraints::ContactManifold;
-use crate::core::RigidBody;
+use crate::RigidBody;
 
 pub struct CollisionDetector {
     broad: SweepAndPrune,

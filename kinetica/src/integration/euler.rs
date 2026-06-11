@@ -1,4 +1,4 @@
-use crate::core::RigidBody;
+use crate::RigidBody;
 
 pub struct SemiImplicitEuler;
 

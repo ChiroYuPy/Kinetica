@@ -1,6 +1,6 @@
 use crate::constraints::ContactManifold;
-use crate::core::RigidBody;
 use crate::math::Vec2;
+use crate::RigidBody;
 
 pub fn test(a: &RigidBody, b: &RigidBody, size_a: Vec2, size_b: Vec2) -> Option<ContactManifold> {
     let half_a = size_a / 2.0;

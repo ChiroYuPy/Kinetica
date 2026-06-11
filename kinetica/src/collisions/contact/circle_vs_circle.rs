@@ -1,6 +1,6 @@
 use crate::constraints::ContactManifold;
-use crate::core::RigidBody;
 use crate::math::Vec2;
+use crate::RigidBody;
 
 pub fn test(a: &RigidBody, b: &RigidBody, radius_a: f32, radius_b: f32) -> Option<ContactManifold> {
     let diff = b.state.position - a.state.position;

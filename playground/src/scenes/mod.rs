@@ -1,5 +1,3 @@
-use kinetica::core::World;
-
 pub mod bouncing_balls;
 pub mod ball_shower;
 pub mod mixed_shower;
@@ -15,6 +13,7 @@ pub trait Scene {
 
 pub use bouncing_balls::BouncingBalls;
 pub use ball_shower::BallShower;
+use kinetica::World;
 pub use mixed_shower::MixedShower;
 pub use pyramid::Pyramid;
 pub use stairs::Stairs;

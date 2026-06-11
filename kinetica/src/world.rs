@@ -1,9 +1,9 @@
 use crate::collisions::CollisionDetector;
 use crate::constraints::{ContactConstraint, Constraint};
-use crate::core::RigidBody;
 use crate::forces::ForceGenerator;
 use crate::integration::{Integrator, SemiImplicitEuler};
 use crate::math::Vec2;
+use crate::RigidBody;
 use crate::solver::ImpulseSolver;
 
 pub struct World {

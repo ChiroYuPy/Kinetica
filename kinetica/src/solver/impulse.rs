@@ -1,5 +1,5 @@
 use crate::constraints::Constraint;
-use crate::core::RigidBody;
+use crate::RigidBody;
 
 pub struct ImpulseSolver {
     pub iterations: usize,

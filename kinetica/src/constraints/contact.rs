@@ -1,6 +1,6 @@
 use crate::constraints::Constraint;
-use crate::core::RigidBody;
 use crate::math::Vec2;
+use crate::RigidBody;
 
 #[derive(Clone, Debug)]
 pub struct ContactManifold {

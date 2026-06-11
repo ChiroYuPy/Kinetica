@@ -3,7 +3,8 @@ mod circle_vs_rect;
 mod rect_vs_rect;
 
 use crate::constraints::ContactManifold;
-use crate::core::{RigidBody, Shape};
+use crate::rigid_body::Shape;
+use crate::RigidBody;
 
 pub fn test_contact(a: &RigidBody, b: &RigidBody) -> Option<ContactManifold> {
     match (&a.shape, &b.shape) {

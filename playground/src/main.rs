@@ -1,4 +1,5 @@
 use macroquad::prelude::*;
+use kinetica::World;
 
 mod mouse_grab;
 mod renderer;
@@ -16,7 +17,7 @@ async fn main() {
     request_new_screen_size(WINDOW_WIDTH, WINDOW_HEIGHT);
 
     let mut current_scene: usize = 0;
-    let mut world = kinetica::core::World::new();
+    let mut world = World::new();
     let mut mouse_grab = MouseGrab::new();
 
     let mut scenes: Vec<Box<dyn Scene>> = vec![
@@ -46,7 +47,7 @@ async fn main() {
                     let new_scene = c.to_digit(10).unwrap() as usize;
                     if new_scene < scenes.len() {
                         current_scene = new_scene;
-                        world = kinetica::core::World::new();
+                        world = World::new();
                         scenes[current_scene].setup(&mut world, WINDOW_WIDTH, WINDOW_HEIGHT);
                     }
                 }

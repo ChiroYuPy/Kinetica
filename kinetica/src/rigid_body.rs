@@ -1,6 +1,40 @@
-use crate::core::material::Material;
-use crate::core::shape::Shape;
-use crate::math::Vec2;
+use crate::math::{Vec2, AABB};
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Material {
+    pub friction: f32,
+    pub restitution: f32,
+}
+
+impl Material {
+    pub const fn new(friction: f32, restitution: f32) -> Self {
+        Self { friction, restitution }
+    }
+}
+
+impl Default for Material {
+    fn default() -> Self {
+        Self {
+            friction: 0.3,
+            restitution: 0.5,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Shape {
+    Circle(f32),
+    Rectangle(Vec2),
+}
+
+impl Shape {
+    pub fn compute_aabb(&self, position: Vec2) -> AABB {
+        match self {
+            Shape::Circle(radius) => AABB::new(position, Vec2::splat(*radius)),
+            Shape::Rectangle(extents) => AABB::new(position, *extents / 2.0),
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BodyType {
