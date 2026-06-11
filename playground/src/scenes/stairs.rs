@@ -41,7 +41,7 @@ impl Scene for Stairs {
             1.0,
             Shape::Circle(12.0),
         );
-        body.state.velocity = Vec2::new(-30.0, 0.0); // Small impulse to the left
+        body.motion.linear_velocity = Vec2::new(-30.0, 0.0); // Small impulse to the left
         world.add_body(body);
     }
 

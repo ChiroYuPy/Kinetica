@@ -26,7 +26,7 @@ impl Scene for BouncingBalls {
                 1.0,
                 Shape::Circle(12.0),
             );
-            body.state.velocity = Vec2::new(0.0, 200.0);
+            body.motion.linear_velocity = Vec2::new(0.0, 200.0);
             world.add_body(body);
         }
     }

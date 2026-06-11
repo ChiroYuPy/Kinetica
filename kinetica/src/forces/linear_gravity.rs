@@ -13,7 +13,7 @@ impl LinearGravity {
 
 impl super::ForceGenerator for LinearGravity {
     fn apply(&self, body: &mut RigidBody) {
-        let force = self.acceleration * body.props.mass;
-        body.state.force += force;
+        let force = self.acceleration * body.mass.mass;
+        body.motion.accumulated_force += force;
     }
 }

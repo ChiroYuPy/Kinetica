@@ -43,14 +43,14 @@ impl Scene for MixedShower {
                 // Circle
                 let radius = rand::gen_range(8.0, 20.0);
                 let mut b = RigidBody::new(Vec2::new(x, 50.0), radius * radius, Shape::Circle(radius));
-                b.state.velocity = velocity;
+                b.motion.linear_velocity = velocity;
                 b
             } else {
                 // Rectangle
                 let w = rand::gen_range(15.0, 40.0);
                 let h = rand::gen_range(15.0, 40.0);
                 let mut b = RigidBody::new(Vec2::new(x, 50.0), w * h / 100.0, Shape::Rectangle(Vec2::new(w, h)));
-                b.state.velocity = velocity;
+                b.motion.linear_velocity = velocity;
                 b
             };
 

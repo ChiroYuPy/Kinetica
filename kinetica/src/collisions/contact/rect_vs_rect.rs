@@ -6,10 +6,10 @@ pub fn test(a: &RigidBody, b: &RigidBody, size_a: Vec2, size_b: Vec2) -> Option<
     let half_a = size_a / 2.0;
     let half_b = size_b / 2.0;
 
-    let min_a = a.state.position - half_a;
-    let max_a = a.state.position + half_a;
-    let min_b = b.state.position - half_b;
-    let max_b = b.state.position + half_b;
+    let min_a = a.transform.position - half_a;
+    let max_a = a.transform.position + half_a;
+    let min_b = b.transform.position - half_b;
+    let max_b = b.transform.position + half_b;
 
     // Check for overlap on each axis
     if max_a.x < min_b.x || min_a.x > max_b.x {
@@ -25,14 +25,14 @@ pub fn test(a: &RigidBody, b: &RigidBody, size_a: Vec2, size_b: Vec2) -> Option<
 
     // Use the smallest overlap for the collision normal
     let (normal, penetration) = if overlap_x < overlap_y {
-        let normal = if a.state.position.x < b.state.position.x {
+        let normal = if a.transform.position.x < b.transform.position.x {
             Vec2::new(1.0, 0.0)
         } else {
             Vec2::new(-1.0, 0.0)
         };
         (normal, overlap_x)
     } else {
-        let normal = if a.state.position.y < b.state.position.y {
+        let normal = if a.transform.position.y < b.transform.position.y {
             Vec2::new(0.0, 1.0)
         } else {
             Vec2::new(0.0, -1.0)

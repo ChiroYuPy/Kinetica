@@ -25,7 +25,7 @@ impl Scene for ZeroGravity {
                 1.0,
                 Shape::Circle(10.0),
             );
-            body.state.velocity = Vec2::new(angle.cos() * speed, angle.sin() * speed);
+            body.motion.linear_velocity = Vec2::new(angle.cos() * speed, angle.sin() * speed);
             world.add_body(body);
         }
     }

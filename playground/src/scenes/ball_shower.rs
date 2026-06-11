@@ -42,7 +42,7 @@ impl Scene for BallShower {
                 1.0,
                 Shape::Circle(10.0),
             );
-            body.state.velocity = velocity;
+            body.motion.linear_velocity = velocity;
             world.add_body(body);
         }
     }

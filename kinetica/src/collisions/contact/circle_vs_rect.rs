@@ -4,16 +4,16 @@ use crate::RigidBody;
 
 pub fn test(circle: &RigidBody, rect: &RigidBody, radius: f32, rect_size: Vec2) -> Option<ContactManifold> {
     let half = rect_size / 2.0;
-    let min = rect.state.position - half;
-    let max = rect.state.position + half;
+    let min = rect.transform.position - half;
+    let max = rect.transform.position + half;
 
     // Find closest point on the rectangle to the circle center
     let closest = Vec2::new(
-        circle.state.position.x.clamp(min.x, max.x),
-        circle.state.position.y.clamp(min.y, max.y),
+        circle.transform.position.x.clamp(min.x, max.x),
+        circle.transform.position.y.clamp(min.y, max.y),
     );
 
-    let diff = circle.state.position - closest;
+    let diff = circle.transform.position - closest;
     let dist_sq = diff.length_squared();
 
     if dist_sq > radius * radius {
@@ -25,10 +25,10 @@ pub fn test(circle: &RigidBody, rect: &RigidBody, radius: f32, rect_size: Vec2) 
     // If center is inside the rectangle (deep penetration)
     if dist < 1e-6 {
         // Find which edge is closest
-        let to_left = circle.state.position.x - min.x;
-        let to_right = max.x - circle.state.position.x;
-        let to_top = circle.state.position.y - min.y;
-        let to_bottom = max.y - circle.state.position.y;
+        let to_left = circle.transform.position.x - min.x;
+        let to_right = max.x - circle.transform.position.x;
+        let to_top = circle.transform.position.y - min.y;
+        let to_bottom = max.y - circle.transform.position.y;
 
         let min_dist = to_left.min(to_right).min(to_top).min(to_bottom);
 

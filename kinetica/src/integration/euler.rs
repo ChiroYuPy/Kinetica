@@ -5,19 +5,19 @@ pub struct SemiImplicitEuler;
 impl super::Integrator for SemiImplicitEuler {
     fn integrate(&self, bodies: &mut [RigidBody], dt: f32) {
         for body in bodies.iter_mut() {
-            if body.props.inv_mass == 0.0 {
+            if body.mass.inverse_mass == 0.0 {
                 continue;
             }
 
-            let inv_mass = body.props.inv_mass;
-            let force = body.state.force;
-            let velocity = body.state.velocity;
+            let inv_mass = body.mass.inverse_mass;
+            let force = body.motion.accumulated_force;
+            let velocity = body.motion.linear_velocity;
 
             // v(t+dt) = v(t) + a(t) * dt
-            body.state.velocity += force * inv_mass * dt;
+            body.motion.linear_velocity += force * inv_mass * dt;
 
             // x(t+dt) = x(t) + v(t+dt) * dt
-            body.state.position += velocity * dt;
+            body.transform.position += velocity * dt;
         }
     }
 }

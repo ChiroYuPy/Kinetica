@@ -43,14 +43,14 @@ impl Constraint for ContactConstraint {
         let m = &self.manifold;
         let (body_a, body_b) = unsafe { self.bodies_unsafe(bodies) };
 
-        let inv_mass_a = body_a.props.inv_mass;
-        let inv_mass_b = body_b.props.inv_mass;
+        let inv_mass_a = body_a.mass.inverse_mass;
+        let inv_mass_b = body_b.mass.inverse_mass;
         let total_inv_mass = inv_mass_a + inv_mass_b;
         if total_inv_mass == 0.0 {
             return;
         }
 
-        let rel_velocity = body_b.state.velocity - body_a.state.velocity;
+        let rel_velocity = body_b.motion.linear_velocity - body_a.motion.linear_velocity;
         let vel_along_normal = rel_velocity.dot(m.normal);
 
         if vel_along_normal > 0.0 {
@@ -61,23 +61,23 @@ impl Constraint for ContactConstraint {
         let j = j / total_inv_mass;
 
         let impulse = m.normal * j;
-        body_a.state.velocity -= impulse * inv_mass_a;
-        body_b.state.velocity += impulse * inv_mass_b;
+        body_a.motion.linear_velocity -= impulse * inv_mass_a;
+        body_b.motion.linear_velocity += impulse * inv_mass_b;
     }
 
     fn solve_position(&mut self, bodies: &mut [RigidBody]) {
         let m = &self.manifold;
         let (body_a, body_b) = unsafe { self.bodies_unsafe(bodies) };
 
-        let inv_mass_a = body_a.props.inv_mass;
-        let inv_mass_b = body_b.props.inv_mass;
+        let inv_mass_a = body_a.mass.inverse_mass;
+        let inv_mass_b = body_b.mass.inverse_mass;
         let total_inv_mass = inv_mass_a + inv_mass_b;
         if total_inv_mass == 0.0 {
             return;
         }
 
         let correction = (m.penetration / total_inv_mass) * 0.8;
-        body_a.state.position -= m.normal * (correction * inv_mass_a);
-        body_b.state.position += m.normal * (correction * inv_mass_b);
+        body_a.motion.linear_velocity -= m.normal * (correction * inv_mass_a);
+        body_b.motion.linear_velocity += m.normal * (correction * inv_mass_b);
     }
 }

@@ -14,7 +14,7 @@ fn test_pair(pair: &PotentialPair, bodies: &[RigidBody]) -> Option<ContactManifo
     let body_a = &bodies[pair.a];
     let body_b = &bodies[pair.b];
 
-    if body_a.props.inv_mass == 0.0 && body_b.props.inv_mass == 0.0 {
+    if body_a.mass.inverse_mass == 0.0 && body_b.mass.inverse_mass == 0.0 {
         return None;
     }
 

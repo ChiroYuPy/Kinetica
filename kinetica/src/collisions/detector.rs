@@ -17,7 +17,7 @@ impl CollisionDetector {
     pub fn detect(&mut self, bodies: &[RigidBody]) -> Vec<ContactManifold> {
         let aabbs: Vec<_> = bodies
             .iter()
-            .map(|b| b.shape.compute_aabb(b.state.position))
+            .map(|b| b.shape.compute_aabb(b.transform.position))
             .collect();
 
         test_pairs(&self.broad.find_pairs(&aabbs), bodies)

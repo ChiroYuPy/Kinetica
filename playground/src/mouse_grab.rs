@@ -27,12 +27,12 @@ impl MouseGrab {
 
                     let dist = match body.shape {
                         Shape::Circle(r) => {
-                            (body.state.position - mouse_pos).length() - r
+                            (body.transform.position - mouse_pos).length() - r
                         }
                         Shape::Rectangle(size) => {
                             let half = size / 2.0;
-                            let min = body.state.position - half;
-                            let max = body.state.position + half;
+                            let min = body.transform.position - half;
+                            let max = body.transform.position + half;
                             let closest = Vec2::new(
                                 mouse_pos.x.clamp(min.x, max.x),
                                 mouse_pos.y.clamp(min.y, max.y),
@@ -51,8 +51,8 @@ impl MouseGrab {
             // Move grabbed body
             if let Some(idx) = self.grabbed_body {
                 if idx < world.bodies.len() {
-                    world.bodies[idx].state.position = Vec2::new(mouse_x, mouse_y);
-                    world.bodies[idx].state.velocity = Vec2::new(0.0, 0.0);
+                    world.bodies[idx].transform.position = Vec2::new(mouse_x, mouse_y);
+                    world.bodies[idx].motion.linear_velocity = Vec2::new(0.0, 0.0);
                 }
             }
         } else {
@@ -64,7 +64,7 @@ impl MouseGrab {
         if let Some(idx) = self.grabbed_body {
             if idx < world.bodies.len() {
                 let body = &world.bodies[idx];
-                draw_circle_lines(body.state.position.x, body.state.position.y, 5.0, 2.0, YELLOW);
+                draw_circle_lines(body.transform.position.x, body.transform.position.y, 5.0, 2.0, YELLOW);
             }
         }
     }

@@ -11,12 +11,12 @@ pub fn render(world: &World) {
 
         match &body.shape {
             Shape::Circle(r) => {
-                draw_circle(body.state.position.x, body.state.position.y, *r, color)
+                draw_circle(body.transform.position.x, body.transform.position.y, *r, color)
             }
             Shape::Rectangle(s) => {
                 draw_rectangle(
-                    body.state.position.x - s.x / 2.0,
-                    body.state.position.y - s.y / 2.0,
+                    body.transform.position.x - s.x / 2.0,
+                    body.transform.position.y - s.y / 2.0,
                     s.x,
                     s.y,
                     color,
