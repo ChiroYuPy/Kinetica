@@ -1,13 +1,13 @@
 use kinetica::prelude::*;
 
-use super::Scene;
+use super::{Build, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Tumbler",
     description: "A slowly rotating kinematic drum full of shapes: many simultaneous contacts.",
     camera_center: vec2(0.0, 0.0),
     view_height: 16.0,
-    build,
+    build: Build::Static(build),
 };
 
 const HALF_SIZE: f32 = 5.0;

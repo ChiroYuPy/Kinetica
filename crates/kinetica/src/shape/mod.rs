@@ -27,6 +27,20 @@ impl Shape {
         }
     }
 
+    /// Returns `true` if `point` (in world space) is inside the shape placed at `transform`.
+    #[must_use]
+    pub fn contains_point(&self, transform: &Transform, point: Vec2) -> bool {
+        let local = transform.inverse_transform_point(point);
+        match self {
+            Self::Circle(circle) => local.distance_squared(circle.center()) <= circle.radius() * circle.radius(),
+            Self::Polygon(polygon) => polygon
+                .vertices()
+                .iter()
+                .zip(polygon.normals())
+                .all(|(vertex, normal)| normal.dot(local - *vertex) <= 0.0),
+        }
+    }
+
     /// Computes the world-space bounding box of the shape placed at `transform`.
     #[must_use]
     pub fn compute_aabb(&self, transform: &Transform) -> Aabb {

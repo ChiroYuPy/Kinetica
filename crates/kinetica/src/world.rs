@@ -6,7 +6,8 @@ use crate::collider::{Collider, ColliderDesc, ColliderHandle};
 use crate::collision::broad_phase::BroadPhase;
 use crate::constants::DEFAULT_SUBSTEP_COUNT;
 use crate::contact::{CollisionEvent, Contact, ContactSet};
-use crate::math::{Vec2, vec2};
+use crate::joint::{Joint, JointDesc, JointHandle};
+use crate::math::{Aabb, Vec2, vec2};
 use crate::solver::{self, StepSettings};
 
 /// Earth gravity, pointing down the Y axis.
@@ -37,6 +38,7 @@ pub struct World {
     substep_count: u32,
     bodies: Arena<Body>,
     colliders: Arena<Collider>,
+    joints: Arena<Joint>,
     broad_phase: BroadPhase,
     contacts: ContactSet,
     collision_events: Vec<CollisionEvent>,
@@ -51,6 +53,7 @@ impl World {
             substep_count: DEFAULT_SUBSTEP_COUNT,
             bodies: Arena::default(),
             colliders: Arena::default(),
+            joints: Arena::default(),
             broad_phase: BroadPhase::default(),
             contacts: ContactSet::default(),
             collision_events: Vec::new(),
@@ -90,11 +93,14 @@ impl World {
         BodyHandle(self.bodies.insert(Body::new(desc)))
     }
 
-    /// Removes a body and all its colliders, returning the body if it existed.
+    /// Removes a body with all its colliders and joints, returning the body if it existed.
     pub fn remove_body(&mut self, handle: BodyHandle) -> Option<Body> {
         let body = self.bodies.remove(handle.0)?;
         for &collider in body.colliders() {
             self.destroy_collider(collider);
+        }
+        for &joint in body.joints() {
+            self.remove_joint(joint);
         }
         Some(body)
     }
@@ -179,6 +185,86 @@ impl World {
         self.colliders.len()
     }
 
+    /// Connects two bodies with a joint.
+    ///
+    /// Unless the joint allows it, the two bodies stop colliding with each other.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a body was removed, or if both bodies are the same.
+    pub fn add_joint(&mut self, desc: impl Into<JointDesc>) -> JointHandle {
+        let desc = desc.into();
+        let (body_a, body_b) = desc.bodies();
+        assert_ne!(body_a, body_b, "a joint needs two different bodies");
+        let (a, b) = self.bodies.get2_mut(body_a.0, body_b.0).expect("cannot add a joint to a removed body");
+        let joint = Joint::new(&desc, a, b);
+        let collide_connected = joint.collide_connected();
+        let handle = JointHandle(self.joints.insert(joint));
+        a.attach_joint(handle);
+        b.attach_joint(handle);
+        if !collide_connected {
+            self.contacts.remove_between(body_a, body_b);
+        }
+        handle
+    }
+
+    /// Removes a joint, returning it if it existed.
+    ///
+    /// The bodies it connected may collide again from the next step.
+    pub fn remove_joint(&mut self, handle: JointHandle) -> Option<Joint> {
+        let joint = self.joints.remove(handle.0)?;
+        for body in [joint.body_a(), joint.body_b()] {
+            if let Some(body) = self.bodies.get_mut(body.0) {
+                body.detach_joint(handle);
+            }
+        }
+        // Let the broad phase find the pair again.
+        if let Some(body) = self.bodies.get(joint.body_a().0) {
+            for collider in body.colliders() {
+                if let Some(collider) = self.colliders.get(collider.0) {
+                    self.broad_phase.touch_proxy(collider.proxy());
+                }
+            }
+        }
+        Some(joint)
+    }
+
+    /// Returns the joint, or `None` if it was removed.
+    #[must_use]
+    pub fn joint(&self, handle: JointHandle) -> Option<&Joint> {
+        self.joints.get(handle.0)
+    }
+
+    /// Returns the joint for modification, or `None` if it was removed.
+    pub fn joint_mut(&mut self, handle: JointHandle) -> Option<&mut Joint> {
+        self.joints.get_mut(handle.0)
+    }
+
+    /// Iterates over all joints, in a deterministic order.
+    pub fn joints(&self) -> impl Iterator<Item = (JointHandle, &Joint)> {
+        self.joints.iter().map(|(index, joint)| (JointHandle(index), joint))
+    }
+
+    /// Number of joints.
+    #[must_use]
+    pub fn joint_count(&self) -> usize {
+        self.joints.len()
+    }
+
+    /// Colliders containing the world point `point`.
+    pub fn colliders_at_point(&self, point: Vec2) -> impl Iterator<Item = ColliderHandle> {
+        let mut found = Vec::new();
+        self.broad_phase.query(&Aabb::new(point, point), |handle| {
+            let Some(collider) = self.colliders.get(handle.0) else { return };
+            let Some(body) = self.bodies.get(collider.body().0) else { return };
+            if collider.shape().contains_point(body.transform(), point) {
+                found.push(handle);
+            }
+        });
+        found.sort_unstable();
+        found.into_iter()
+    }
+
     /// Contacts between touching colliders, as of the last step.
     ///
     /// Shapes count as touching slightly before they overlap: points with a small positive
@@ -212,7 +298,7 @@ impl World {
         self.contacts.update(&self.colliders, &self.bodies, &self.broad_phase, &mut self.collision_events);
 
         let settings = StepSettings { gravity: self.gravity, dt, substep_count: self.substep_count };
-        solver::step(&mut self.bodies, &self.colliders, &mut self.contacts, &settings);
+        solver::step(&mut self.bodies, &self.colliders, &mut self.contacts, &mut self.joints, &settings);
         for body in self.bodies.values_mut() {
             body.clear_forces();
         }
@@ -220,7 +306,7 @@ impl World {
         // Find the pairs the motion brought together; they are collided at the next step.
         self.synchronize_colliders();
         let new_pairs = self.broad_phase.find_new_pairs();
-        self.contacts.add_pairs(&new_pairs, &self.colliders, &self.bodies);
+        self.contacts.add_pairs(&new_pairs, &self.colliders, &self.bodies, &self.joints);
     }
 
     /// Moves collider bounding boxes and broad phase proxies to their bodies' new placement.

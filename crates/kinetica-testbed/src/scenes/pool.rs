@@ -1,13 +1,13 @@
 use kinetica::prelude::*;
 
-use super::Scene;
+use super::{Build, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Pool break",
     description: "Top-down pool: no gravity, damping as cloth friction, bouncy balls and cushions.",
     camera_center: vec2(0.0, 0.6),
     view_height: 10.0,
-    build,
+    build: Build::Static(build),
 };
 
 const BALL_RADIUS: f32 = 0.18;

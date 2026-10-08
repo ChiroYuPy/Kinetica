@@ -1,13 +1,13 @@
 use kinetica::prelude::*;
 
-use super::{Scene, add_ground};
+use super::{Build, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Dominoes",
     description: "The first domino is tipped over; the others follow, up the steps.",
     camera_center: vec2(4.0, 3.0),
     view_height: 14.0,
-    build,
+    build: Build::Static(build),
 };
 
 const HALF_THICKNESS: f32 = 0.1;

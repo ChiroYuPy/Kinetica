@@ -1,0 +1,443 @@
+//! Physical behaviour of joints.
+
+use std::f32::consts::{FRAC_PI_2, PI};
+
+use kinetica::joint::{Motor, RevoluteJoint};
+use kinetica::prelude::*;
+
+const DT: f32 = 1.0 / 60.0;
+/// Number of steps in one simulated second.
+const SECOND: usize = 60;
+
+fn run(world: &mut World, steps: usize) {
+    for _ in 0..steps {
+        world.step(DT);
+    }
+}
+
+fn ball(world: &mut World, position: Vec2, radius: f32) -> BodyHandle {
+    let body = world.add_body(BodyDesc::dynamic().position(position));
+    world.add_collider(body, ColliderDesc::circle(radius));
+    body
+}
+
+fn revolute(world: &World, handle: JointHandle) -> &RevoluteJoint {
+    match world.joint(handle).unwrap().kind() {
+        JointKind::Revolute(joint) => joint,
+        other => panic!("expected a revolute joint, got {other:?}"),
+    }
+}
+
+#[test]
+fn pendulum_keeps_its_length_and_period() {
+    let mut world = World::new();
+    let pivot = world.add_body(BodyDesc::fixed());
+    let length = 2.0;
+    let bob = ball(&mut world, vec2(length, 0.0), 0.1);
+    world.add_joint(RevoluteJointDesc::at_world_point(&world, pivot, bob, Vec2::ZERO));
+
+    // Released horizontally; the period is the time between two crossings of the vertical
+    // in the same direction.
+    let mut crossings = Vec::new();
+    let mut previous_x = length;
+    for step in 0..10 * SECOND {
+        world.step(DT);
+        let position = world.body(bob).unwrap().position();
+        assert!((position.length() - length).abs() < 0.01, "rod stretched to {}", position.length());
+        if previous_x < 0.0 && position.x >= 0.0 {
+            crossings.push(step as f32 * DT);
+        }
+        previous_x = position.x;
+    }
+
+    // Large-amplitude (90°) period of a simple pendulum: 1.18034 × 2π√(L/g).
+    let body = world.body(bob).unwrap();
+    let pivot_inertia = body.inertia() + body.mass() * length * length;
+    let small_angle_period = 2.0 * PI * (pivot_inertia / (body.mass() * 9.81 * length)).sqrt();
+    let expected = 1.18034 * small_angle_period;
+    let measured = crossings[1] - crossings[0];
+    assert!((measured - expected).abs() < 0.03 * expected, "period {measured}, expected {expected}");
+}
+
+#[test]
+fn pendulum_does_not_gain_energy() {
+    let mut world = World::new();
+    let pivot = world.add_body(BodyDesc::fixed());
+    let bob = ball(&mut world, vec2(2.0, 0.0), 0.2);
+    world.add_joint(RevoluteJointDesc::at_world_point(&world, pivot, bob, Vec2::ZERO));
+
+    let mut highest = f32::NEG_INFINITY;
+    for _ in 0..20 * SECOND {
+        world.step(DT);
+        highest = highest.max(world.body(bob).unwrap().position().y);
+    }
+    assert!(highest < 0.01, "the bob rose above its release height: {highest}");
+}
+
+/// A horizontal chain of 1 m links hanging from a pivot at the origin.
+fn chain(world: &mut World, link_count: usize, damping: f32) -> Vec<BodyHandle> {
+    let ceiling = world.add_body(BodyDesc::fixed());
+    let mut previous = ceiling;
+    let mut links = Vec::new();
+    for i in 0..link_count {
+        let x = 0.5 + i as f32;
+        let link = world.add_body(BodyDesc::dynamic().position(vec2(x, 0.0)).linear_damping(damping));
+        world.add_collider(link, ColliderDesc::rectangle(0.5, 0.1));
+        world.add_joint(RevoluteJointDesc::at_world_point(world, previous, link, vec2(x - 0.5, 0.0)));
+        previous = link;
+        links.push(link);
+    }
+    links
+}
+
+/// Largest distance between the two anchors of any joint.
+fn largest_joint_gap(world: &World) -> f32 {
+    world
+        .joints()
+        .map(|(_, joint)| {
+            let (local_a, local_b) = joint.local_anchors();
+            let a = world.body(joint.body_a()).unwrap().world_point(local_a);
+            let b = world.body(joint.body_b()).unwrap().world_point(local_b);
+            a.distance(b)
+        })
+        .fold(0.0, f32::max)
+}
+
+#[test]
+fn swinging_chain_stays_connected() {
+    let mut world = World::new();
+    let links = chain(&mut world, 30, 0.0);
+
+    // Released at rest at height 0: kinetic plus potential energy starts at zero and can only
+    // be lost. An unstable solver would create energy.
+    let energy = |world: &World| -> f32 {
+        links
+            .iter()
+            .map(|&link| {
+                let body = world.body(link).unwrap();
+                0.5 * body.mass() * body.linear_velocity().length_squared()
+                    + 0.5 * body.inertia() * body.angular_velocity().powi(2)
+                    + body.mass() * 9.81 * body.center_of_mass().y
+            })
+            .sum()
+    };
+    let total_mass: f32 = links.iter().map(|&link| world.body(link).unwrap().mass()).sum();
+    // Scale of the energies involved: the whole chain dropping by half its length.
+    let energy_scale = total_mass * 9.81 * 15.0;
+
+    for _ in 0..15 * SECOND {
+        world.step(DT);
+        // Joints are soft: at the peak of the whip (about 30 m/s) they stretch by up to 4 cm
+        // with 4 substeps, 2.4 cm with 8.
+        assert!(largest_joint_gap(&world) < 0.05, "a joint opened by {}", largest_joint_gap(&world));
+        assert!(energy(&world) < 0.01 * energy_scale, "energy grew to {} J", energy(&world));
+    }
+}
+
+#[test]
+fn damped_chain_comes_to_rest_hanging_down() {
+    let mut world = World::new();
+    let links = chain(&mut world, 30, 1.0);
+
+    run(&mut world, 30 * SECOND);
+
+    let last = world.body(*links.last().unwrap()).unwrap();
+    assert!(last.position().x.abs() < 0.1, "the chain should hang straight down, last link at {:?}", last.position());
+    assert!((last.position().y + 29.5).abs() < 0.1, "last link at {:?}", last.position());
+    assert!(last.linear_velocity().length() < 0.01);
+}
+
+#[test]
+fn newtons_cradle_passes_momentum_to_the_last_ball() {
+    let mut world = World::new();
+    // A 5 cm gap makes the impacts sequential; touching balls would share the momentum.
+    let spacing = 1.05;
+    let balls: Vec<_> = (0..5)
+        .map(|i| {
+            let pivot_position = vec2((i as f32 - 2.0) * spacing, 9.0);
+            let pivot = world.add_body(BodyDesc::fixed().position(pivot_position));
+            let angle: f32 = if i == 0 { -1.0 } else { 0.0 };
+            let position = pivot_position + 4.0 * vec2(angle.sin(), -angle.cos());
+            let ball = world.add_body(BodyDesc::dynamic().position(position));
+            world.add_collider(ball, ColliderDesc::circle(0.5).restitution(1.0).friction(0.0));
+            world.add_joint(DistanceJointDesc::between_world_points(&world, pivot, ball, pivot_position, position));
+            ball
+        })
+        .collect();
+
+    // Swing until the last ball moves.
+    let speed = |world: &World, ball: BodyHandle| world.body(ball).unwrap().linear_velocity().length();
+    for _ in 0..2 * SECOND {
+        world.step(DT);
+        if speed(&world, balls[4]) > 1.0 {
+            break;
+        }
+    }
+
+    // Released from 1 rad on a 4 m string: v = √(2gL(1 − cos 1)).
+    let impact_speed = (2.0 * 9.81 * 4.0 * (1.0 - 1f32.cos())).sqrt();
+    assert!((speed(&world, balls[4]) - impact_speed).abs() < 0.05 * impact_speed);
+    for &ball in &balls[..4] {
+        assert!(speed(&world, ball) < 0.1, "ball kept {} m/s", speed(&world, ball));
+    }
+}
+
+#[test]
+fn revolute_limits_are_respected() {
+    let mut world = World::new();
+    let wall = world.add_body(BodyDesc::fixed());
+    let arm = world.add_body(BodyDesc::dynamic().position(vec2(1.0, 0.0)));
+    world.add_collider(arm, ColliderDesc::rectangle(1.0, 0.1));
+    let limit = 0.5;
+    let hinge =
+        world.add_joint(RevoluteJointDesc::at_world_point(&world, wall, arm, Vec2::ZERO).limits(-limit..=limit));
+
+    run(&mut world, 3 * SECOND);
+
+    let angle = world.body(arm).unwrap().angle();
+    assert!((angle + limit).abs() < 0.02, "the arm should rest on its lower limit, at {angle}");
+    assert_eq!(revolute(&world, hinge).limits(), Some(-limit..=limit));
+}
+
+#[test]
+fn revolute_motor_spins_a_wheel_at_its_speed() {
+    let mut world = World::new();
+    world.set_gravity(Vec2::ZERO);
+    let axle = world.add_body(BodyDesc::fixed());
+    let wheel = ball(&mut world, Vec2::ZERO, 0.5);
+    let speed = 3.0;
+    world.add_joint(RevoluteJointDesc::at_world_point(&world, axle, wheel, Vec2::ZERO).motor(speed, 100.0));
+
+    run(&mut world, SECOND);
+
+    assert!((world.body(wheel).unwrap().angular_velocity() - speed).abs() < 1e-3);
+}
+
+#[test]
+fn weak_motor_cannot_lift_a_heavy_arm() {
+    let mut world = World::new();
+    let wall = world.add_body(BodyDesc::fixed());
+    let arm = world.add_body(BodyDesc::dynamic().position(vec2(1.0, 0.0)));
+    world.add_collider(arm, ColliderDesc::rectangle(1.0, 0.1).density(10.0));
+    let hinge = world.add_joint(RevoluteJointDesc::at_world_point(&world, wall, arm, Vec2::ZERO).motor(1.0, 1.0));
+
+    run(&mut world, SECOND);
+    assert!(world.body(arm).unwrap().angle() < -0.5, "a weak motor should lose against gravity");
+
+    // A strong motor lifts it.
+    if let JointKind::Revolute(joint) = world.joint_mut(hinge).unwrap().kind_mut() {
+        joint.set_motor(Some(Motor { speed: 1.0, max_force: 1000.0 }));
+    }
+    let angle_before = world.body(arm).unwrap().angle();
+    run(&mut world, SECOND / 2);
+    assert!(world.body(arm).unwrap().angle() > angle_before + 0.3);
+}
+
+#[test]
+fn rigid_distance_joint_keeps_its_length() {
+    let mut world = World::new();
+    let anchor = world.add_body(BodyDesc::fixed());
+    let weight = ball(&mut world, vec2(1.5, 1.0), 0.2);
+    world.add_joint(DistanceJointDesc::between_world_points(&world, anchor, weight, Vec2::ZERO, vec2(1.5, 1.0)));
+    let length = vec2(1.5, 1.0).length();
+
+    for _ in 0..5 * SECOND {
+        world.step(DT);
+        let distance = world.body(weight).unwrap().position().length();
+        assert!((distance - length).abs() < 0.01, "length {distance}, expected {length}");
+    }
+}
+
+#[test]
+fn rope_goes_slack_but_never_stretches() {
+    let mut world = World::new();
+    let anchor = world.add_body(BodyDesc::fixed());
+    let weight = ball(&mut world, vec2(0.0, -1.0), 0.2);
+    let rope_length = 3.0;
+    world.add_joint(
+        DistanceJointDesc::between_world_points(&world, anchor, weight, Vec2::ZERO, vec2(0.0, -1.0))
+            .spring(0.0, 0.0)
+            .limits(0.0..=rope_length),
+    );
+
+    let mut farthest = 0.0_f32;
+    for _ in 0..3 * SECOND {
+        world.step(DT);
+        farthest = farthest.max(world.body(weight).unwrap().position().length());
+    }
+    assert!(farthest < rope_length + 0.02, "rope stretched to {farthest}");
+    assert!(farthest > rope_length - 0.05, "the weight should have fallen to the end of the rope");
+}
+
+#[test]
+fn spring_settles_where_force_balances_gravity() {
+    let mut world = World::new();
+    let anchor = world.add_body(BodyDesc::fixed());
+    let weight = ball(&mut world, vec2(0.0, -1.0), 0.2);
+    let hertz = 2.0;
+    world.add_joint(
+        DistanceJointDesc::between_world_points(&world, anchor, weight, Vec2::ZERO, vec2(0.0, -1.0))
+            .length(1.0)
+            .spring(hertz, 0.5),
+    );
+
+    run(&mut world, 10 * SECOND);
+
+    // A spring of frequency f on a mass m has stiffness k = m(2πf)²; it stretches by mg/k.
+    let omega = 2.0 * PI * hertz;
+    let expected_stretch = 9.81 / (omega * omega);
+    let length = world.body(weight).unwrap().position().length();
+    assert!(
+        (length - 1.0 - expected_stretch).abs() < 0.01,
+        "stretched by {}, expected {expected_stretch}",
+        length - 1.0
+    );
+}
+
+#[test]
+fn prismatic_joint_slides_along_its_axis_only() {
+    let mut world = World::new();
+    let rail = world.add_body(BodyDesc::fixed());
+    let slider = world.add_body(BodyDesc::dynamic());
+    world.add_collider(slider, ColliderDesc::rectangle(0.5, 0.25));
+    // A 45° rail going down to the right, limited to 2 m of travel.
+    let axis = vec2(1.0, -1.0).normalize();
+    world.add_joint(PrismaticJointDesc::at_world_point(&world, rail, slider, Vec2::ZERO, axis).limits(0.0..=2.0));
+
+    run(&mut world, 3 * SECOND);
+
+    let body = world.body(slider).unwrap();
+    let position = body.position();
+    assert!(position.perp_dot(axis).abs() < 0.01, "left the rail: {position:?}");
+    assert!((position.dot(axis) - 2.0).abs() < 0.02, "should rest at the end of travel: {position:?}");
+    assert!(body.angle().abs() < 0.01, "a prismatic joint forbids rotation");
+}
+
+#[test]
+fn prismatic_motor_lifts_an_elevator() {
+    let mut world = World::new();
+    let shaft = world.add_body(BodyDesc::fixed());
+    let cabin = world.add_body(BodyDesc::dynamic());
+    world.add_collider(cabin, ColliderDesc::rectangle(1.0, 0.2));
+    world.add_joint(PrismaticJointDesc::at_world_point(&world, shaft, cabin, Vec2::ZERO, Vec2::Y).motor(1.5, 1000.0));
+
+    run(&mut world, SECOND);
+
+    let velocity = world.body(cabin).unwrap().linear_velocity();
+    assert!((velocity.y - 1.5).abs() < 0.01 && velocity.x.abs() < 1e-3, "cabin moves at {velocity:?}");
+}
+
+#[test]
+fn weld_holds_a_cantilever() {
+    let mut world = World::new();
+    let wall = world.add_body(BodyDesc::fixed());
+    let beam = world.add_body(BodyDesc::dynamic().position(vec2(1.0, 0.0)));
+    world.add_collider(beam, ColliderDesc::rectangle(1.0, 0.1));
+    world.add_joint(WeldJointDesc::at_world_point(&world, wall, beam, Vec2::ZERO));
+
+    run(&mut world, 3 * SECOND);
+
+    let body = world.body(beam).unwrap();
+    assert!(body.angle().abs() < 0.01, "the beam sagged to {}", body.angle());
+    assert!(body.position().abs_diff_eq(vec2(1.0, 0.0), 0.01));
+}
+
+#[test]
+fn soft_weld_bends_under_load_and_springs_back() {
+    let mut world = World::new();
+    let wall = world.add_body(BodyDesc::fixed());
+    let beam = world.add_body(BodyDesc::dynamic().position(vec2(1.0, 0.0)));
+    world.add_collider(beam, ColliderDesc::rectangle(1.0, 0.1));
+    world.add_joint(WeldJointDesc::at_world_point(&world, wall, beam, Vec2::ZERO).angular_spring(2.0, 0.7));
+
+    run(&mut world, 5 * SECOND);
+    let sag = world.body(beam).unwrap().angle();
+    assert!(sag < -0.1, "a soft weld should bend under its own weight, angle {sag}");
+    assert!(world.body(beam).unwrap().angular_velocity().abs() < 0.01, "and settle");
+
+    world.set_gravity(Vec2::ZERO);
+    run(&mut world, 5 * SECOND);
+    assert!(world.body(beam).unwrap().angle().abs() < 0.01, "it should straighten without load");
+}
+
+#[test]
+fn mouse_joint_drags_a_body_to_its_target() {
+    let mut world = World::new();
+    let ground = world.add_body(BodyDesc::fixed());
+    let crate_body = world.add_body(BodyDesc::dynamic());
+    world.add_collider(crate_body, ColliderDesc::rectangle(0.5, 0.5));
+    let mouse = world.add_joint(MouseJointDesc::at_world_point(&world, ground, crate_body, Vec2::ZERO));
+
+    let target = vec2(3.0, 2.0);
+    if let JointKind::Mouse(joint) = world.joint_mut(mouse).unwrap().kind_mut() {
+        joint.set_target(target);
+    }
+    run(&mut world, 3 * SECOND);
+
+    // Gravity pulls the hanging crate slightly below the target, like a spring.
+    let position = world.body(crate_body).unwrap().position();
+    assert!(position.distance(target) < 0.05, "crate at {position:?}");
+}
+
+#[test]
+fn joined_bodies_do_not_collide_unless_asked() {
+    for collide_connected in [false, true] {
+        let mut world = World::new();
+        world.set_gravity(Vec2::ZERO);
+        let a = ball(&mut world, Vec2::ZERO, 1.0);
+        let b = ball(&mut world, vec2(1.0, 0.0), 1.0);
+        world.add_joint(
+            RevoluteJointDesc::at_world_point(&world, a, b, vec2(0.5, 0.0)).collide_connected(collide_connected),
+        );
+        run(&mut world, 2);
+        assert_eq!(world.contacts().count(), usize::from(collide_connected), "collide_connected = {collide_connected}");
+    }
+}
+
+#[test]
+fn removing_a_joint_restores_collisions() {
+    let mut world = World::new();
+    world.set_gravity(Vec2::ZERO);
+    let a = ball(&mut world, Vec2::ZERO, 1.0);
+    let b = ball(&mut world, vec2(1.0, 0.0), 1.0);
+    let joint = world.add_joint(RevoluteJointDesc::at_world_point(&world, a, b, vec2(0.5, 0.0)));
+    run(&mut world, 2);
+    assert_eq!(world.contacts().count(), 0);
+
+    world.remove_joint(joint);
+    run(&mut world, 2);
+    assert_eq!(world.contacts().count(), 1);
+}
+
+#[test]
+fn removing_a_body_removes_its_joints() {
+    let mut world = World::new();
+    let ground = world.add_body(BodyDesc::fixed());
+    let first = ball(&mut world, vec2(1.0, 0.0), 0.2);
+    let second = ball(&mut world, vec2(2.0, 0.0), 0.2);
+    let to_ground = world.add_joint(RevoluteJointDesc::at_world_point(&world, ground, first, Vec2::ZERO));
+    let between = world.add_joint(RevoluteJointDesc::at_world_point(&world, first, second, vec2(1.5, 0.0)));
+
+    world.remove_body(first);
+
+    assert!(world.joint(to_ground).is_none() && world.joint(between).is_none());
+    assert_eq!(world.body(ground).unwrap().joints(), []);
+    assert_eq!(world.body(second).unwrap().joints(), []);
+    run(&mut world, 2);
+}
+
+#[test]
+fn point_query_finds_the_shapes_under_a_point() {
+    let mut world = World::new();
+    let circle = ball(&mut world, Vec2::ZERO, 1.0);
+    let block = world.add_body(BodyDesc::dynamic().position(vec2(3.0, 0.0)).angle(FRAC_PI_2 / 2.0));
+    let block_collider = world.add_collider(block, ColliderDesc::rectangle(1.0, 1.0));
+
+    let bodies_at = |point: Vec2| -> Vec<BodyHandle> {
+        world.colliders_at_point(point).map(|collider| world.collider(collider).unwrap().body()).collect()
+    };
+    assert_eq!(bodies_at(vec2(0.5, 0.5)), [circle]);
+    assert_eq!(bodies_at(vec2(3.0, 1.3)), [block], "inside the rotated square's top corner");
+    assert!(bodies_at(vec2(4.0, 1.0)).is_empty(), "outside the rotated square");
+    assert!(world.colliders_at_point(vec2(3.0, 0.0)).any(|collider| collider == block_collider));
+}

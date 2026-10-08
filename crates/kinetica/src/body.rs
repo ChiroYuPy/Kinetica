@@ -2,6 +2,7 @@
 
 use crate::arena::{Arena, Index};
 use crate::collider::{Collider, ColliderHandle};
+use crate::joint::JointHandle;
 use crate::math::{Rot, Transform, Vec2};
 
 /// Handle to a [`Body`] stored in a [`World`](crate::World).
@@ -180,6 +181,7 @@ pub struct Body {
     gravity_scale: f32,
     fixed_rotation: bool,
     colliders: Vec<ColliderHandle>,
+    joints: Vec<JointHandle>,
 }
 
 impl Body {
@@ -206,6 +208,7 @@ impl Body {
             gravity_scale: desc.gravity_scale,
             fixed_rotation: desc.fixed_rotation,
             colliders: Vec::new(),
+            joints: Vec::new(),
         };
         body.update_mass(&Arena::default());
         body
@@ -295,6 +298,36 @@ impl Body {
         &self.colliders
     }
 
+    /// Joints connected to this body.
+    #[must_use]
+    pub fn joints(&self) -> &[JointHandle] {
+        &self.joints
+    }
+
+    /// Converts a point from the body's local frame to world space.
+    #[must_use]
+    pub fn world_point(&self, local_point: Vec2) -> Vec2 {
+        self.transform.transform_point(local_point)
+    }
+
+    /// Converts a world point to the body's local frame.
+    #[must_use]
+    pub fn local_point(&self, world_point: Vec2) -> Vec2 {
+        self.transform.inverse_transform_point(world_point)
+    }
+
+    /// Converts a direction from the body's local frame to world space.
+    #[must_use]
+    pub fn world_vector(&self, local_vector: Vec2) -> Vec2 {
+        self.transform.rotation.rotate(local_vector)
+    }
+
+    /// Converts a world direction to the body's local frame.
+    #[must_use]
+    pub fn local_vector(&self, world_vector: Vec2) -> Vec2 {
+        self.transform.rotation.inverse_rotate(world_vector)
+    }
+
     /// Teleports the body origin to `position`, keeping its orientation.
     pub fn set_position(&mut self, position: Vec2) {
         self.set_transform(Transform::new(position, self.transform.rotation));
@@ -382,6 +415,14 @@ impl Body {
         self.colliders.retain(|&attached| attached != handle);
     }
 
+    pub(crate) fn attach_joint(&mut self, handle: JointHandle) {
+        self.joints.push(handle);
+    }
+
+    pub(crate) fn detach_joint(&mut self, handle: JointHandle) {
+        self.joints.retain(|&attached| attached != handle);
+    }
+
     /// Recomputes mass, inertia and center of mass from the attached colliders.
     pub(crate) fn update_mass(&mut self, colliders: &Arena<Collider>) {
         self.mass = 0.0;
@@ -437,6 +478,11 @@ impl Body {
     pub(crate) fn apply_solver_impulse(&mut self, impulse: Vec2, anchor: Vec2) {
         self.linear_velocity += self.inverse_mass * impulse;
         self.angular_velocity += self.inverse_inertia * anchor.perp_dot(impulse);
+    }
+
+    /// Changes the angular velocity as if an angular impulse were applied.
+    pub(crate) fn apply_solver_angular_impulse(&mut self, impulse: f32) {
+        self.angular_velocity += self.inverse_inertia * impulse;
     }
 
     /// Records the placement at the start of a step, see [`Self::delta_position`].

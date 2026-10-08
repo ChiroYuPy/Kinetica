@@ -3,6 +3,7 @@
 //! Implement [`DebugDraw`] for your renderer, then call [`World::debug_draw`] every frame.
 
 use crate::body::BodyType;
+use crate::joint::JointKind;
 use crate::math::{Rot, Transform, Vec2};
 use crate::shape::{MAX_POLYGON_VERTICES, Shape};
 use crate::world::World;
@@ -58,11 +59,13 @@ pub struct DebugDrawOptions {
     pub centers_of_mass: bool,
     /// Contact points and normals.
     pub contacts: bool,
+    /// Joint anchors and links.
+    pub joints: bool,
 }
 
 impl Default for DebugDrawOptions {
     fn default() -> Self {
-        Self { shapes: true, aabbs: false, centers_of_mass: false, contacts: false }
+        Self { shapes: true, aabbs: false, centers_of_mass: false, contacts: false, joints: true }
     }
 }
 
@@ -74,6 +77,8 @@ const CENTER_OF_MASS_COLOR: Color = Color::rgb(0.95, 0.95, 0.95);
 const PENETRATING_POINT_COLOR: Color = Color::rgb(0.95, 0.25, 0.25);
 const SPECULATIVE_POINT_COLOR: Color = Color::rgb(0.95, 0.85, 0.25);
 const CONTACT_NORMAL_COLOR: Color = Color::rgb(0.35, 0.85, 0.45);
+const JOINT_COLOR: Color = Color::rgb(0.4, 0.85, 0.85);
+const MOUSE_JOINT_COLOR: Color = Color::rgb(0.95, 0.95, 0.4);
 /// Length of the drawn contact normals, in meters.
 const CONTACT_NORMAL_LENGTH: f32 = 0.3;
 
@@ -108,6 +113,10 @@ impl World {
             }
         }
 
+        if options.joints {
+            self.draw_joints(drawer);
+        }
+
         if options.contacts {
             for contact in self.contacts() {
                 let normal = contact.manifold().normal();
@@ -117,6 +126,33 @@ impl World {
                     let color =
                         if point.separation() < 0.0 { PENETRATING_POINT_COLOR } else { SPECULATIVE_POINT_COLOR };
                     drawer.draw_point(position, color);
+                }
+            }
+        }
+    }
+}
+
+impl World {
+    fn draw_joints(&self, drawer: &mut impl DebugDraw) {
+        for (_, joint) in self.joints() {
+            let (Some(a), Some(b)) = (self.body(joint.body_a()), self.body(joint.body_b())) else { continue };
+            let (local_anchor_a, local_anchor_b) = joint.local_anchors();
+            let anchor_b = b.world_point(local_anchor_b);
+            match joint.kind() {
+                JointKind::Mouse(mouse) => {
+                    drawer.draw_segment(mouse.target(), anchor_b, MOUSE_JOINT_COLOR);
+                    drawer.draw_point(mouse.target(), MOUSE_JOINT_COLOR);
+                }
+                JointKind::Distance(_) => {
+                    drawer.draw_segment(a.world_point(local_anchor_a), anchor_b, JOINT_COLOR);
+                }
+                _ => {
+                    // Each body's center linked to its anchor, like a skeleton.
+                    let anchor_a = a.world_point(local_anchor_a);
+                    drawer.draw_segment(a.center_of_mass(), anchor_a, JOINT_COLOR);
+                    drawer.draw_segment(anchor_a, anchor_b, JOINT_COLOR);
+                    drawer.draw_segment(b.center_of_mass(), anchor_b, JOINT_COLOR);
+                    drawer.draw_point(anchor_b, JOINT_COLOR);
                 }
             }
         }

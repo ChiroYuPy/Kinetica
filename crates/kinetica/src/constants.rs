@@ -26,5 +26,9 @@ pub(crate) const MAX_CONTACT_PUSH_SPEED: f32 = 3.0;
 /// Impacts slower than this, in m/s, do not bounce. Prevents resting bodies from jittering.
 pub(crate) const RESTITUTION_THRESHOLD: f32 = 1.0;
 
+/// Joints are twice as stiff as contacts, and damped less.
+pub(crate) const JOINT_HERTZ_RATIO: f32 = 2.0;
+pub(crate) const JOINT_DAMPING_RATIO: f32 = 2.0;
+
 /// Default number of substeps per step.
 pub(crate) const DEFAULT_SUBSTEP_COUNT: u32 = 4;

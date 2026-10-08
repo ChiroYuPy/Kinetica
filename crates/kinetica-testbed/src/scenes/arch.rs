@@ -2,14 +2,14 @@ use std::f32::consts::PI;
 
 use kinetica::prelude::*;
 
-use super::{Scene, add_ground};
+use super::{Build, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Arch",
     description: "A semicircular stone arch held only by friction and contact forces.",
     camera_center: vec2(0.0, 4.0),
     view_height: 12.0,
-    build,
+    build: Build::Static(build),
 };
 
 const INNER_RADIUS: f32 = 3.5;

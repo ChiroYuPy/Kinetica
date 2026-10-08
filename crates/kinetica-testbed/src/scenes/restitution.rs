@@ -1,13 +1,13 @@
 use kinetica::prelude::*;
 
-use super::{Scene, add_ground};
+use super::{Build, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Restitution",
     description: "Balls with restitution from 0 (left) to 1 (right), dropped from the same height.",
     camera_center: vec2(0.0, 5.0),
     view_height: 14.0,
-    build,
+    build: Build::Static(build),
 };
 
 fn build(world: &mut World) {

@@ -2,7 +2,7 @@ use std::f32::consts::TAU;
 
 use kinetica::prelude::*;
 
-use super::Scene;
+use super::{Build, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Contacts",
@@ -10,7 +10,7 @@ pub const SCENE: Scene = Scene {
                   green: normal.",
     camera_center: vec2(0.0, 0.0),
     view_height: 16.0,
-    build,
+    build: Build::Static(build),
 };
 
 fn build(world: &mut World) {

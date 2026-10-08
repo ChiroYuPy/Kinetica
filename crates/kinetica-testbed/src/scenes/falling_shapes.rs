@@ -1,13 +1,13 @@
 use kinetica::prelude::*;
 
-use super::Scene;
+use super::{Build, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Falling shapes",
     description: "Every kind of shape falls and piles up on the ground.",
     camera_center: vec2(0.0, 5.0),
     view_height: 16.0,
-    build,
+    build: Build::Static(build),
 };
 
 fn build(world: &mut World) {

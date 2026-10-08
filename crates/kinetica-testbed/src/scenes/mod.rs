@@ -2,22 +2,33 @@
 
 mod arch;
 mod body_types;
+mod bridge;
+mod cantilever;
+mod car;
 mod contacts;
 mod dominoes;
 mod falling_shapes;
 mod friction;
+mod machines;
+mod newtons_cradle;
+mod pendulum_wave;
+mod pendulums;
 mod pool;
 mod pyramid;
+mod ragdolls;
 mod restitution;
 mod seesaw;
+mod springs;
 mod stacks;
 mod tumbler;
+mod wrecking_ball;
 
 use kinetica::math::Vec2;
 use kinetica::prelude::*;
 
-/// Every scene, in the order of the number keys.
+/// Every scene, in the order of the number keys and of the scene list.
 pub const SCENES: &[Scene] = &[
+    // Contacts.
     falling_shapes::SCENE,
     pyramid::SCENE,
     stacks::SCENE,
@@ -28,6 +39,18 @@ pub const SCENES: &[Scene] = &[
     seesaw::SCENE,
     tumbler::SCENE,
     pool::SCENE,
+    // Joints.
+    pendulums::SCENE,
+    pendulum_wave::SCENE,
+    newtons_cradle::SCENE,
+    wrecking_ball::SCENE,
+    bridge::SCENE,
+    ragdolls::SCENE,
+    car::SCENE,
+    springs::SCENE,
+    machines::SCENE,
+    cantilever::SCENE,
+    // Engine basics.
     body_types::SCENE,
     contacts::SCENE,
 ];
@@ -40,7 +63,31 @@ pub struct Scene {
     /// Initial vertical extent of the view, in meters.
     pub view_height: f32,
     /// Fills an empty world with the scene content.
-    pub build: fn(&mut World),
+    pub build: Build,
+}
+
+/// How a scene fills its world.
+pub enum Build {
+    /// The scene only needs its initial content.
+    Static(fn(&mut World)),
+    /// The scene also runs code before every step, for example to read the keyboard.
+    Animated(fn(&mut World) -> Box<dyn SceneUpdate>),
+}
+
+/// Code run by an animated scene before every step; `time` is the simulated time in seconds.
+pub trait SceneUpdate {
+    fn update(&mut self, world: &mut World, time: f32);
+
+    /// A point the camera should follow, if any.
+    fn camera_target(&self, _world: &World) -> Option<Vec2> {
+        None
+    }
+}
+
+impl<F: FnMut(&mut World, f32)> SceneUpdate for F {
+    fn update(&mut self, world: &mut World, time: f32) {
+        self(world, time);
+    }
 }
 
 /// Adds a wide fixed ground whose top surface is at `y = 0`.
@@ -50,9 +97,16 @@ fn add_ground(world: &mut World, half_width: f32) {
 }
 
 impl Scene {
-    pub fn build_world(&self) -> World {
+    /// Builds a fresh world for the scene, with its per-step update if it has one.
+    pub fn build_world(&self) -> (World, Option<Box<dyn SceneUpdate>>) {
         let mut world = World::new();
-        (self.build)(&mut world);
-        world
+        let update = match self.build {
+            Build::Static(build) => {
+                build(&mut world);
+                None
+            }
+            Build::Animated(build) => Some(build(&mut world)),
+        };
+        (world, update)
     }
 }

@@ -1,13 +1,13 @@
 use kinetica::prelude::*;
 
-use super::{Scene, add_ground};
+use super::{Build, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Seesaw",
     description: "A heavy box drops on a plank resting on a fulcrum and launches a light ball.",
     camera_center: vec2(0.0, 5.0),
     view_height: 16.0,
-    build,
+    build: Build::Static(build),
 };
 
 fn build(world: &mut World) {

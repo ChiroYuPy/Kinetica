@@ -7,6 +7,7 @@ use crate::body::{Body, BodyHandle, BodyType};
 use crate::collider::{Collider, ColliderHandle};
 use crate::collision::broad_phase::{BroadPhase, CandidatePair};
 use crate::collision::{Manifold, collide};
+use crate::joint::Joint;
 
 /// Two colliders in contact, and the bodies they belong to.
 ///
@@ -109,14 +110,20 @@ pub(crate) struct ContactSet {
 impl ContactSet {
     /// Creates contacts for new candidate pairs. Their geometry is computed by the next
     /// [`update`](Self::update).
-    pub(crate) fn add_pairs(&mut self, pairs: &[CandidatePair], colliders: &Arena<Collider>, bodies: &Arena<Body>) {
+    pub(crate) fn add_pairs(
+        &mut self,
+        pairs: &[CandidatePair],
+        colliders: &Arena<Collider>,
+        bodies: &Arena<Body>,
+        joints: &Arena<Joint>,
+    ) {
         for &(collider_a, collider_b) in pairs {
             if self.contacts.contains_key(&(collider_a, collider_b)) {
                 continue;
             }
             let (Some(a), Some(b)) = (colliders.get(collider_a.0), colliders.get(collider_b.0)) else { continue };
             let pair = ContactPair { collider_a, collider_b, body_a: a.body(), body_b: b.body() };
-            if should_collide(&pair, bodies) {
+            if should_collide(&pair, bodies, joints) {
                 self.contacts.insert((collider_a, collider_b), Contact { pair, manifold: Manifold::default() });
             }
         }
@@ -158,6 +165,11 @@ impl ContactSet {
         });
     }
 
+    /// Forgets every contact between the two bodies, without reporting events.
+    pub(crate) fn remove_between(&mut self, body: BodyHandle, other: BodyHandle) {
+        self.contacts.retain(|_, contact| !(contact.pair.involves_body(body) && contact.pair.involves_body(other)));
+    }
+
     /// Forgets every contact involving `collider`, without reporting events.
     pub(crate) fn remove_collider(&mut self, collider: ColliderHandle) {
         self.contacts.retain(|_, contact| !contact.pair.involves_collider(collider));
@@ -172,11 +184,21 @@ impl ContactSet {
     }
 }
 
-/// Contacts only matter when at least one dynamic body can react to them.
-fn should_collide(pair: &ContactPair, bodies: &Arena<Body>) -> bool {
+/// Contacts only matter when at least one dynamic body can react to them, and joints may opt
+/// their bodies out of colliding.
+fn should_collide(pair: &ContactPair, bodies: &Arena<Body>, joints: &Arena<Joint>) -> bool {
     if pair.body_a == pair.body_b {
         return false;
     }
-    let is_dynamic = |body: BodyHandle| bodies.get(body.0).is_some_and(|body| body.body_type() == BodyType::Dynamic);
-    is_dynamic(pair.body_a) || is_dynamic(pair.body_b)
+    let (Some(body_a), Some(body_b)) = (bodies.get(pair.body_a.0), bodies.get(pair.body_b.0)) else { return false };
+    if body_a.body_type() != BodyType::Dynamic && body_b.body_type() != BodyType::Dynamic {
+        return false;
+    }
+    // Check the body with fewer joints.
+    let (body, handle, other) = if body_a.joints().len() <= body_b.joints().len() {
+        (body_a, pair.body_a, pair.body_b)
+    } else {
+        (body_b, pair.body_b, pair.body_a)
+    };
+    !body.joints().iter().any(|joint| joints.get(joint.0).is_some_and(|joint| joint.prevents_collision(handle, other)))
 }

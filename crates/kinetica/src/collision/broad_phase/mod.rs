@@ -43,6 +43,16 @@ impl BroadPhase {
         }
     }
 
+    /// Calls `visit` for every collider whose fat box overlaps `aabb`.
+    pub(crate) fn query(&self, aabb: &Aabb, mut visit: impl FnMut(ColliderHandle)) {
+        self.tree.query(aabb, |_, collider| visit(collider));
+    }
+
+    /// Makes the next search for pairs look at this proxy again, even if it did not move.
+    pub(crate) fn touch_proxy(&mut self, proxy: ProxyId) {
+        self.moved.push(proxy);
+    }
+
     pub(crate) fn fat_aabb(&self, proxy: ProxyId) -> Aabb {
         self.tree.aabb(proxy)
     }

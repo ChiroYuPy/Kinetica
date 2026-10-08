@@ -1,13 +1,13 @@
 use kinetica::prelude::*;
 
-use super::{Scene, add_ground};
+use super::{Build, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Stacks",
     description: "Columns of boxes of various sizes and mass ratios, and a ball hitting them.",
     camera_center: vec2(0.0, 6.0),
     view_height: 16.0,
-    build,
+    build: Build::Static(build),
 };
 
 fn build(world: &mut World) {

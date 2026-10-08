@@ -1,13 +1,13 @@
 use kinetica::prelude::*;
 
-use super::{Scene, add_ground};
+use super::{Build, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Pyramid",
     description: "A 20-box base pyramid: 210 boxes that must stay standing.",
     camera_center: vec2(0.0, 10.0),
     view_height: 24.0,
-    build,
+    build: Build::Static(build),
 };
 
 const BASE: usize = 20;

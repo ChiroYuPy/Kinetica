@@ -19,6 +19,10 @@ impl WorldCamera {
         Self { center, view_height, pan_anchor: None }
     }
 
+    pub fn set_center(&mut self, center: Vec2) {
+        self.center = center;
+    }
+
     pub fn pixels_per_meter(&self) -> f32 {
         screen_height() / self.view_height
     }

@@ -7,8 +7,9 @@ use crate::collision::Manifold;
 use crate::constants::{MAX_CONTACT_PUSH_SPEED, RESTITUTION_THRESHOLD};
 use crate::contact::{Contact, ContactPair};
 use crate::math::{Vec2, vec2};
+use crate::solver::Softness;
 
-use super::softness::Softness;
+use super::SolverContext;
 
 /// Everything the solver needs about one contact, prepared once per step.
 #[derive(Debug, Clone)]
@@ -47,8 +48,7 @@ impl ContactConstraint {
         contact: &Contact,
         colliders: &Arena<Collider>,
         bodies: &Arena<Body>,
-        softness: Softness,
-        fixed_softness: Softness,
+        context: &SolverContext,
     ) -> Option<Self> {
         let pair = *contact.pair();
         let (collider_a, collider_b) = (colliders.get(pair.collider_a.0)?, colliders.get(pair.collider_b.0)?);
@@ -66,7 +66,11 @@ impl ContactConstraint {
             friction: (collider_a.friction() * collider_b.friction()).sqrt(),
             restitution: collider_a.restitution().max(collider_b.restitution()),
             // Contacts against an immovable body can be stiffer without becoming unstable.
-            softness: if mass_a == 0.0 || mass_b == 0.0 { fixed_softness } else { softness },
+            softness: if mass_a == 0.0 || mass_b == 0.0 {
+                context.fixed_contact_softness
+            } else {
+                context.contact_softness
+            },
             points: Default::default(),
             point_count: manifold.points().len(),
         };

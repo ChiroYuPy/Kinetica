@@ -1,13 +1,13 @@
 use kinetica::prelude::*;
 
-use super::Scene;
+use super::{Build, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Friction",
     description: "Friction 0.8, 0.4, 0.2, 0.05, 0 on a ramp of friction 1 (combined: sqrt of the product).",
     camera_center: vec2(0.0, 6.0),
     view_height: 18.0,
-    build,
+    build: Build::Static(build),
 };
 
 const FRICTIONS: [f32; 5] = [0.8, 0.4, 0.2, 0.05, 0.0];
