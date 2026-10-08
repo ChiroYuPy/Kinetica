@@ -4,7 +4,7 @@
 //! removed value never silently refers to whatever is stored in that slot afterwards.
 
 /// Position of a value in an [`Arena`], valid only for the generation it was created with.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct Index {
     slot: u32,
     generation: u32,
@@ -35,19 +35,25 @@ impl<T> Default for Arena<T> {
 
 impl<T> Arena<T> {
     pub(crate) fn insert(&mut self, value: T) -> Index {
+        self.insert_with(|_| value)
+    }
+
+    /// Inserts a value built from its own index, for values that need to know where they live.
+    pub(crate) fn insert_with(&mut self, make_value: impl FnOnce(Index) -> T) -> Index {
         self.len += 1;
         if let Some(slot) = self.first_free {
-            let entry = &mut self.entries[slot as usize];
-            let Entry::Free { generation, next_free } = *entry else {
+            let Entry::Free { generation, next_free } = self.entries[slot as usize] else {
                 unreachable!("the free list only links free entries");
             };
+            let index = Index { slot, generation };
             self.first_free = next_free;
-            *entry = Entry::Occupied { generation, value };
-            Index { slot, generation }
+            self.entries[slot as usize] = Entry::Occupied { generation, value: make_value(index) };
+            index
         } else {
             let slot = u32::try_from(self.entries.len()).expect("arena holds more than u32::MAX values");
-            self.entries.push(Entry::Occupied { generation: 0, value });
-            Index { slot, generation: 0 }
+            let index = Index { slot, generation: 0 };
+            self.entries.push(Entry::Occupied { generation: 0, value: make_value(index) });
+            index
         }
     }
 

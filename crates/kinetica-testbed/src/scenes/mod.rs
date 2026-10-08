@@ -1,13 +1,14 @@
 //! Demonstration scenes. Add a scene by writing a module and listing it in [`SCENES`].
 
 mod body_types;
+mod contacts;
 mod falling_shapes;
 
 use kinetica::World;
 use kinetica::math::Vec2;
 
 /// Every scene, in the order of the number keys.
-pub const SCENES: &[Scene] = &[falling_shapes::SCENE, body_types::SCENE];
+pub const SCENES: &[Scene] = &[falling_shapes::SCENE, body_types::SCENE, contacts::SCENE];
 
 pub struct Scene {
     pub name: &'static str,

@@ -9,7 +9,10 @@
 - **API**: the `World` owns bodies and colliders; users hold copyable handles
   (`BodyHandle`, `ColliderHandle`) backed by a generational arena. Objects are created from
   `*Desc` builders.
-- **Events** (to come): queued during `step`, read afterwards. No callbacks.
+- **Events**: queued during `step`, read afterwards with `World::collision_events`. No
+  callbacks. Removing a collider or body does not report `Stopped` for its contacts.
+- **Contacts**: only created when at least one body is dynamic, never between colliders of the
+  same body. Points are reported slightly before shapes touch (speculative distance).
 - **Determinism**: same inputs on the same build give bit-identical results, and
   `World: Clone` allows save/restore. Cross-platform determinism is a later goal.
 - **Visibility**: only the intended API is `pub`; internals are `pub(crate)`.
@@ -21,8 +24,9 @@
 - [x] **0. Foundations**: workspace, math (`Rot`, `Transform`, `Aabb`), shapes (circle,
       convex polygon) with mass properties, bodies, colliders, integration, debug draw,
       macroquad testbed.
-- [ ] **1. Collision detection**: broad phase (dynamic AABB tree), narrow phase
-      (circle/polygon contact manifolds), contact begin/end events.
+- [x] **1. Collision detection**: broad phase (dynamic AABB tree with fat boxes), narrow
+      phase (circle/polygon manifolds via SAT and clipping), deterministic contact set,
+      `Started`/`Stopped` events, contact debug drawing.
 - [ ] **2. Contact solver**: soft-step solver with substepping, warm starting, friction and
       restitution. Goal: stable stacks and pyramids.
 - [ ] **3. Queries**: ray casts, shape casts, point and AABB queries. Mouse dragging in the

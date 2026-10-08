@@ -1,4 +1,6 @@
 //! Interactive testbed for the Kinetica physics engine.
+//!
+//! Usage: `kinetica-testbed [scene number]`, scenes being numbered from 1.
 
 mod app;
 mod camera;
@@ -22,7 +24,8 @@ fn window_conf() -> Conf {
 
 #[macroquad::main(window_conf)]
 async fn main() {
-    let mut app = App::new();
+    let scene_number = std::env::args().nth(1).and_then(|arg| arg.parse::<usize>().ok()).unwrap_or(1);
+    let mut app = App::new(scene_number.saturating_sub(1));
     loop {
         app.update();
         app.draw();

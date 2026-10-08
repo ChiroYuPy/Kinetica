@@ -27,6 +27,9 @@
 mod arena;
 mod body;
 mod collider;
+pub mod collision;
+mod constants;
+mod contact;
 mod debug_draw;
 pub mod math;
 pub mod shape;
@@ -34,6 +37,7 @@ mod world;
 
 pub use body::{Body, BodyDesc, BodyHandle, BodyType};
 pub use collider::{Collider, ColliderDesc, ColliderHandle};
+pub use contact::{CollisionEvent, Contact, ContactPair};
 pub use debug_draw::{Color, DebugDraw, DebugDrawOptions};
 pub use math::{Vec2, vec2};
 pub use world::{DEFAULT_GRAVITY, World};
@@ -41,5 +45,5 @@ pub use world::{DEFAULT_GRAVITY, World};
 /// The types needed by most programs, to import with `use kinetica::prelude::*;`.
 pub mod prelude {
     pub use crate::math::{Rot, Transform, Vec2, vec2};
-    pub use crate::{BodyDesc, BodyHandle, BodyType, ColliderDesc, ColliderHandle, World};
+    pub use crate::{BodyDesc, BodyHandle, BodyType, ColliderDesc, ColliderHandle, CollisionEvent, World};
 }

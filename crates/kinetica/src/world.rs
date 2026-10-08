@@ -3,6 +3,8 @@
 use crate::arena::Arena;
 use crate::body::{Body, BodyDesc, BodyHandle};
 use crate::collider::{Collider, ColliderDesc, ColliderHandle};
+use crate::collision::broad_phase::BroadPhase;
+use crate::contact::{CollisionEvent, Contact, ContactSet};
 use crate::math::{Vec2, vec2};
 
 /// Earth gravity, pointing down the Y axis.
@@ -32,13 +34,23 @@ pub struct World {
     gravity: Vec2,
     bodies: Arena<Body>,
     colliders: Arena<Collider>,
+    broad_phase: BroadPhase,
+    contacts: ContactSet,
+    collision_events: Vec<CollisionEvent>,
 }
 
 impl World {
     /// Creates an empty world with [`DEFAULT_GRAVITY`].
     #[must_use]
     pub fn new() -> Self {
-        Self { gravity: DEFAULT_GRAVITY, bodies: Arena::default(), colliders: Arena::default() }
+        Self {
+            gravity: DEFAULT_GRAVITY,
+            bodies: Arena::default(),
+            colliders: Arena::default(),
+            broad_phase: BroadPhase::default(),
+            contacts: ContactSet::default(),
+            collision_events: Vec::new(),
+        }
     }
 
     /// Gravity acceleration applied to dynamic bodies, in m/s².
@@ -60,8 +72,8 @@ impl World {
     /// Removes a body and all its colliders, returning the body if it existed.
     pub fn remove_body(&mut self, handle: BodyHandle) -> Option<Body> {
         let body = self.bodies.remove(handle.0)?;
-        for collider in body.colliders() {
-            self.colliders.remove(collider.0);
+        for &collider in body.colliders() {
+            self.destroy_collider(collider);
         }
         Some(body)
     }
@@ -95,7 +107,12 @@ impl World {
     /// Panics if the body was removed.
     pub fn add_collider(&mut self, body: BodyHandle, desc: ColliderDesc) -> ColliderHandle {
         let owner = self.bodies.get_mut(body.0).expect("cannot add a collider to a removed body");
-        let handle = ColliderHandle(self.colliders.insert(Collider::new(body, desc, owner.transform())));
+        let aabb = desc.shape.compute_aabb(owner.transform());
+        let broad_phase = &mut self.broad_phase;
+        let handle = ColliderHandle(self.colliders.insert_with(|index| {
+            let proxy = broad_phase.create_proxy(aabb, ColliderHandle(index));
+            Collider::new(body, desc, aabb, proxy)
+        }));
         owner.attach_collider(handle);
         owner.update_mass(&self.colliders);
         handle
@@ -103,11 +120,19 @@ impl World {
 
     /// Removes a collider and updates the mass of its body, returning the collider if it existed.
     pub fn remove_collider(&mut self, handle: ColliderHandle) -> Option<Collider> {
-        let collider = self.colliders.remove(handle.0)?;
+        let collider = self.destroy_collider(handle)?;
         if let Some(owner) = self.bodies.get_mut(collider.body().0) {
             owner.detach_collider(handle);
             owner.update_mass(&self.colliders);
         }
+        Some(collider)
+    }
+
+    /// Removes a collider from storage, the broad phase and the contacts, but not from its body.
+    fn destroy_collider(&mut self, handle: ColliderHandle) -> Option<Collider> {
+        let collider = self.colliders.remove(handle.0)?;
+        self.broad_phase.destroy_proxy(collider.proxy());
+        self.contacts.remove_collider(handle);
         Some(collider)
     }
 
@@ -133,6 +158,25 @@ impl World {
         self.colliders.len()
     }
 
+    /// Contacts between touching colliders, as of the last step.
+    ///
+    /// Shapes count as touching slightly before they overlap: points with a small positive
+    /// [`separation`](crate::collision::ManifoldPoint::separation) are included.
+    pub fn contacts(&self) -> impl Iterator<Item = &Contact> {
+        self.contacts.touching()
+    }
+
+    /// Contacts involving one of the colliders of `body`, as of the last step.
+    pub fn body_contacts(&self, body: BodyHandle) -> impl Iterator<Item = &Contact> {
+        self.contacts().filter(move |contact| contact.pair().involves_body(body))
+    }
+
+    /// Contacts that started or stopped during the last step, in a deterministic order.
+    #[must_use]
+    pub fn collision_events(&self) -> &[CollisionEvent] {
+        &self.collision_events
+    }
+
     /// Advances the simulation by `dt` seconds.
     ///
     /// Use a fixed `dt` (typically `1.0 / 60.0`) for stable and reproducible results. A
@@ -141,6 +185,10 @@ impl World {
         if !(dt.is_finite() && dt > 0.0) {
             return;
         }
+        self.collision_events.clear();
+
+        // Contact geometry for the current positions.
+        self.contacts.update(&self.colliders, &self.bodies, &self.broad_phase, &mut self.collision_events);
 
         let gravity = self.gravity;
         for body in self.bodies.values_mut() {
@@ -149,13 +197,19 @@ impl World {
         for body in self.bodies.values_mut() {
             body.integrate_position(dt);
         }
-        self.update_collider_aabbs();
+
+        // Find the pairs the motion brought together; they are collided at the next step.
+        self.synchronize_colliders();
+        let new_pairs = self.broad_phase.find_new_pairs();
+        self.contacts.add_pairs(&new_pairs, &self.colliders, &self.bodies);
     }
 
-    fn update_collider_aabbs(&mut self) {
+    /// Moves collider bounding boxes and broad phase proxies to their bodies' new placement.
+    fn synchronize_colliders(&mut self) {
         for collider in self.colliders.values_mut() {
             if let Some(body) = self.bodies.get(collider.body().0) {
                 collider.update_aabb(body.transform());
+                self.broad_phase.update_proxy(collider.proxy(), collider.aabb());
             }
         }
     }

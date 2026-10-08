@@ -2,6 +2,7 @@ use std::f32::consts::TAU;
 use std::fmt;
 
 use super::MassProperties;
+use crate::constants::LINEAR_SLOP;
 use crate::math::{Aabb, Transform, Vec2, vec2};
 
 /// Maximum number of vertices of a [`Polygon`].
@@ -11,7 +12,7 @@ use crate::math::{Aabb, Transform, Vec2, vec2};
 pub const MAX_POLYGON_VERTICES: usize = 8;
 
 /// Input points closer than this distance are merged into a single vertex.
-const WELD_DISTANCE: f32 = 0.0025;
+const WELD_DISTANCE: f32 = 0.5 * LINEAR_SLOP;
 
 /// A solid convex polygon with counter-clockwise vertices.
 #[derive(Debug, Clone, PartialEq)]

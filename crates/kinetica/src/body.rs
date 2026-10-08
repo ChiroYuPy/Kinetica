@@ -7,7 +7,7 @@ use crate::math::{Rot, Transform, Vec2};
 /// Handle to a [`Body`] stored in a [`World`](crate::World).
 ///
 /// A handle stays valid until its body is removed; afterwards, lookups with it return `None`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BodyHandle(pub(crate) Index);
 
 /// How a body reacts to forces and contacts.

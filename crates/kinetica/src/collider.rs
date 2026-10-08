@@ -2,13 +2,14 @@
 
 use crate::arena::Index;
 use crate::body::BodyHandle;
+use crate::collision::broad_phase::ProxyId;
 use crate::math::{Aabb, Transform, Vec2};
 use crate::shape::{Circle, MassProperties, Polygon, PolygonError, Shape};
 
 /// Handle to a [`Collider`] stored in a [`World`](crate::World).
 ///
 /// A handle stays valid until its collider (or the body owning it) is removed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ColliderHandle(pub(crate) Index);
 
 /// Description of a collider to attach to a body, built with chained setters.
@@ -107,11 +108,11 @@ pub struct Collider {
     friction: f32,
     restitution: f32,
     aabb: Aabb,
+    proxy: ProxyId,
 }
 
 impl Collider {
-    pub(crate) fn new(body: BodyHandle, desc: ColliderDesc, body_transform: &Transform) -> Self {
-        let aabb = desc.shape.compute_aabb(body_transform);
+    pub(crate) fn new(body: BodyHandle, desc: ColliderDesc, aabb: Aabb, proxy: ProxyId) -> Self {
         Self {
             body,
             shape: desc.shape,
@@ -119,6 +120,7 @@ impl Collider {
             friction: desc.friction,
             restitution: desc.restitution,
             aabb,
+            proxy,
         }
     }
 
@@ -170,6 +172,10 @@ impl Collider {
 
     pub(crate) fn mass_properties(&self) -> MassProperties {
         self.shape.mass_properties(self.density)
+    }
+
+    pub(crate) fn proxy(&self) -> ProxyId {
+        self.proxy
     }
 
     pub(crate) fn update_aabb(&mut self, body_transform: &Transform) {

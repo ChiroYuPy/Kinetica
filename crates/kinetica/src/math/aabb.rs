@@ -37,6 +37,19 @@ impl Aabb {
         0.5 * (self.max - self.min)
     }
 
+    /// Perimeter of the box, used as its cost when building bounding volume hierarchies.
+    #[must_use]
+    pub fn perimeter(&self) -> f32 {
+        let size = self.max - self.min;
+        2.0 * (size.x + size.y)
+    }
+
+    /// Returns the box grown by `margin` on every side.
+    #[must_use]
+    pub fn expanded(&self, margin: f32) -> Self {
+        Self::new(self.min - margin, self.max + margin)
+    }
+
     /// Smallest box containing both boxes.
     #[must_use]
     pub fn union(&self, other: &Self) -> Self {
@@ -47,6 +60,12 @@ impl Aabb {
     #[must_use]
     pub fn overlaps(&self, other: &Self) -> bool {
         self.min.cmple(other.max).all() && other.min.cmple(self.max).all()
+    }
+
+    /// Returns `true` if `other` lies entirely inside this box.
+    #[must_use]
+    pub fn contains(&self, other: &Self) -> bool {
+        self.min.cmple(other.min).all() && other.max.cmple(self.max).all()
     }
 
     /// Returns `true` if the point is inside the box or on its boundary.

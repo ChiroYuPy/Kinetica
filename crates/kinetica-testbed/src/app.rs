@@ -39,15 +39,17 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> Self {
-        let first = &SCENES[0];
+    /// Starts on the scene at `scene_index`, or on the first scene if the index is out of range.
+    pub fn new(scene_index: usize) -> Self {
+        let scene_index = if scene_index < SCENES.len() { scene_index } else { 0 };
+        let scene = &SCENES[scene_index];
         Self {
-            scene_index: 0,
-            world: first.build_world(),
-            camera: WorldCamera::new(first.camera_center, first.view_height),
+            scene_index,
+            world: scene.build_world(),
+            camera: WorldCamera::new(scene.camera_center, scene.view_height),
             paused: false,
             accumulator: 0.0,
-            draw_options: DebugDrawOptions::default(),
+            draw_options: DebugDrawOptions { contacts: true, ..DebugDrawOptions::default() },
             last_step_ms: 0.0,
         }
     }
@@ -111,6 +113,9 @@ impl App {
         if is_key_pressed(KeyCode::C) {
             self.draw_options.centers_of_mass = !self.draw_options.centers_of_mass;
         }
+        if is_key_pressed(KeyCode::K) {
+            self.draw_options.contacts = !self.draw_options.contacts;
+        }
     }
 
     /// Runs as many fixed steps as the elapsed frame time allows.
@@ -136,16 +141,18 @@ impl App {
             (scene.description.to_owned(), HUD_HINT),
             (
                 format!(
-                    "bodies: {}   colliders: {}   step: {:.3} ms   fps: {}",
+                    "bodies: {}   colliders: {}   contacts: {}   events: {}   step: {:.3} ms   fps: {}",
                     self.world.body_count(),
                     self.world.collider_count(),
+                    self.world.contacts().count(),
+                    self.world.collision_events().len(),
                     self.last_step_ms,
                     get_fps()
                 ),
                 HUD_TEXT,
             ),
             (
-                "Space pause   S step   R reset   Left/Right or 1-9 scene   A aabbs   C centers   \
+                "Space pause   S step   R reset   Left/Right or 1-9 scene   A aabbs   C centers   K contacts   \
                  wheel zoom   right drag pan"
                     .to_owned(),
                 HUD_HINT,

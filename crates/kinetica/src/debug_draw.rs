@@ -48,6 +48,7 @@ pub trait DebugDraw {
 
 /// Selects what [`World::debug_draw`] shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools, reason = "independent on/off switches")]
 pub struct DebugDrawOptions {
     /// Collider shapes, colored by body type.
     pub shapes: bool,
@@ -55,11 +56,13 @@ pub struct DebugDrawOptions {
     pub aabbs: bool,
     /// Body centers of mass.
     pub centers_of_mass: bool,
+    /// Contact points and normals.
+    pub contacts: bool,
 }
 
 impl Default for DebugDrawOptions {
     fn default() -> Self {
-        Self { shapes: true, aabbs: false, centers_of_mass: false }
+        Self { shapes: true, aabbs: false, centers_of_mass: false, contacts: false }
     }
 }
 
@@ -68,6 +71,11 @@ const KINEMATIC_COLOR: Color = Color::rgb(0.45, 0.6, 0.95);
 const DYNAMIC_COLOR: Color = Color::rgb(0.95, 0.65, 0.3);
 const AABB_COLOR: Color = Color::rgb(0.9, 0.3, 0.9);
 const CENTER_OF_MASS_COLOR: Color = Color::rgb(0.95, 0.95, 0.95);
+const PENETRATING_POINT_COLOR: Color = Color::rgb(0.95, 0.25, 0.25);
+const SPECULATIVE_POINT_COLOR: Color = Color::rgb(0.95, 0.85, 0.25);
+const CONTACT_NORMAL_COLOR: Color = Color::rgb(0.35, 0.85, 0.45);
+/// Length of the drawn contact normals, in meters.
+const CONTACT_NORMAL_LENGTH: f32 = 0.3;
 
 impl World {
     /// Draws the world with the given renderer.
@@ -97,6 +105,19 @@ impl World {
         if options.centers_of_mass {
             for (_, body) in self.bodies() {
                 drawer.draw_point(body.center_of_mass(), CENTER_OF_MASS_COLOR);
+            }
+        }
+
+        if options.contacts {
+            for contact in self.contacts() {
+                let normal = contact.manifold().normal();
+                for point in contact.manifold().points() {
+                    let position = point.position();
+                    drawer.draw_segment(position, position + CONTACT_NORMAL_LENGTH * normal, CONTACT_NORMAL_COLOR);
+                    let color =
+                        if point.separation() < 0.0 { PENETRATING_POINT_COLOR } else { SPECULATIVE_POINT_COLOR };
+                    drawer.draw_point(position, color);
+                }
             }
         }
     }
