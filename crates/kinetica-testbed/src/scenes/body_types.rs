@@ -1,9 +1,10 @@
 use kinetica::prelude::*;
 
-use super::{Build, Scene};
+use super::{Build, Category, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Body types",
+    category: Category::Basics,
     description: "Gray: fixed. Blue: kinematic (scripted motion). Orange: dynamic (simulated). Press C to see centers of mass.",
     camera_center: vec2(0.0, 3.0),
     view_height: 14.0,

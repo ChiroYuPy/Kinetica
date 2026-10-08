@@ -1,9 +1,10 @@
 use kinetica::prelude::*;
 
-use super::{Build, Scene, add_ground};
+use super::{Build, Category, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Wrecking ball",
+    category: Category::Joints,
     description: "A heavy ball on a chain of revolute joints swings into a tower of boxes.",
     camera_center: vec2(0.0, 6.0),
     view_height: 16.0,

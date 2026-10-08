@@ -1,9 +1,10 @@
 use kinetica::prelude::*;
 
-use super::{Build, Scene, add_ground};
+use super::{Build, Category, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Bridge",
+    category: Category::Joints,
     description: "Forty planks hinged together between two pillars, loaded with boxes and balls.",
     camera_center: vec2(0.0, 3.0),
     view_height: 14.0,

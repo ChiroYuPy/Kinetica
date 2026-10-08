@@ -2,10 +2,11 @@ use std::f32::consts::PI;
 
 use kinetica::prelude::*;
 
-use super::{Build, Scene, add_ground};
+use super::{Build, Category, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Arch",
+    category: Category::Contacts,
     description: "A semicircular stone arch held only by friction and contact forces.",
     camera_center: vec2(0.0, 4.0),
     view_height: 12.0,

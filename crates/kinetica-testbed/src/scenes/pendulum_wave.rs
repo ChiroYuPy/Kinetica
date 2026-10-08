@@ -2,10 +2,11 @@ use std::f32::consts::TAU;
 
 use kinetica::prelude::*;
 
-use super::{Build, Scene};
+use super::{Build, Category, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Pendulum wave",
+    category: Category::Joints,
     description: "Fifteen pendulums whose periods fit 25, 26… 39 swings in 60 s: they drift in and out of sync.",
     camera_center: vec2(0.0, 5.0),
     view_height: 9.0,

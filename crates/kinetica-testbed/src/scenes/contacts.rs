@@ -2,10 +2,11 @@ use std::f32::consts::TAU;
 
 use kinetica::prelude::*;
 
-use super::{Build, Scene};
+use super::{Build, Category, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Contacts",
+    category: Category::Basics,
     description: "Kinematic sweepers cross floating shapes. Red: overlapping point, yellow: about to touch, \
                   green: normal.",
     camera_center: vec2(0.0, 0.0),

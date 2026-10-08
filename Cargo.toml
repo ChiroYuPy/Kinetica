@@ -14,6 +14,7 @@ kinetica = { path = "crates/kinetica" }
 # Kept on the same version as macroquad so both crates share the exact same `Vec2` type.
 glam = "0.27"
 macroquad = "0.4.16"
+egui-macroquad = { version = "0.17.3", default-features = false }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

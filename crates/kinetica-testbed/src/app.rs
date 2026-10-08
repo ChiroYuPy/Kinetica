@@ -1,12 +1,14 @@
-//! Testbed state: the current scene, simulation clock, input and HUD.
+//! Testbed state: the current scene, simulation clock, input and drawing.
 
+use egui_macroquad::egui;
 use kinetica::prelude::*;
 use kinetica::{DebugDrawOptions, MouseJointDesc};
 use macroquad::prelude::*;
 
 use crate::camera::WorldCamera;
 use crate::render::MacroquadDraw;
-use crate::scenes::{SCENES, Scene, SceneUpdate};
+use crate::scenes::{SCENES, SceneUpdate};
+use crate::ui::{self, PanelState, Stats, UiAction};
 
 /// The simulation always advances by this fixed amount, whatever the frame rate.
 const TIME_STEP: f32 = 1.0 / 60.0;
@@ -16,22 +18,6 @@ const MAX_STEPS_PER_FRAME: f32 = 4.0;
 const GRAB_FORCE_PER_KILOGRAM: f32 = 1000.0;
 
 const BACKGROUND: Color = Color::new(0.09, 0.1, 0.12, 1.0);
-const HUD_TEXT: Color = Color::new(0.85, 0.87, 0.9, 1.0);
-const HUD_HINT: Color = Color::new(0.55, 0.58, 0.62, 1.0);
-const HUD_HIGHLIGHT: Color = Color::new(0.95, 0.75, 0.35, 1.0);
-const HUD_FONT_SIZE: f32 = 22.0;
-const HUD_LINE_HEIGHT: f32 = 22.0;
-const NUMBER_KEYS: [KeyCode; 9] = [
-    KeyCode::Key1,
-    KeyCode::Key2,
-    KeyCode::Key3,
-    KeyCode::Key4,
-    KeyCode::Key5,
-    KeyCode::Key6,
-    KeyCode::Key7,
-    KeyCode::Key8,
-    KeyCode::Key9,
-];
 
 /// A body held with the mouse.
 struct Grab {
@@ -47,7 +33,8 @@ pub struct App {
     grab: Option<Grab>,
     camera: WorldCamera,
     paused: bool,
-    show_scene_list: bool,
+    /// Whether egui uses the mouse this frame; the scene ignores it then.
+    pointer_over_ui: bool,
     /// Simulated time owed to the world, waiting for whole steps.
     accumulator: f32,
     /// Simulated time since the scene started.
@@ -69,9 +56,9 @@ impl App {
             scene_update,
             mouse_anchor,
             grab: None,
-            camera: WorldCamera::new(scene.camera_center, scene.view_height),
+            camera: WorldCamera::new(scene.camera_center, scene.view_height, ui::PANEL_WIDTH),
             paused: false,
-            show_scene_list: false,
+            pointer_over_ui: false,
             accumulator: 0.0,
             time: 0.0,
             draw_options: DebugDrawOptions { contacts: true, ..DebugDrawOptions::default() },
@@ -80,11 +67,12 @@ impl App {
     }
 
     pub fn update(&mut self) {
-        self.handle_keys();
-        if !self.show_scene_list || !self.handle_scene_list_click() {
-            self.handle_grab();
+        if let Some(action) = self.run_ui() {
+            self.apply(action);
         }
-        self.camera.handle_input();
+        self.handle_keys();
+        self.handle_grab();
+        self.camera.handle_input(!self.pointer_over_ui);
         if !self.paused {
             self.advance(get_frame_time());
         }
@@ -98,14 +86,45 @@ impl App {
         self.world.debug_draw(&mut drawer, &self.draw_options);
 
         set_default_camera();
-        self.draw_hud();
-        if self.show_scene_list {
-            self.draw_scene_list();
-        }
+        egui_macroquad::draw();
     }
 
-    fn scene(&self) -> &'static Scene {
-        &SCENES[self.scene_index]
+    /// Builds the side panel for this frame and returns what the user clicked.
+    fn run_ui(&mut self) -> Option<UiAction> {
+        let mut action = None;
+        let stats = Stats {
+            bodies: self.world.body_count(),
+            joints: self.world.joint_count(),
+            contacts: self.world.contacts().count(),
+            step_ms: self.last_step_ms,
+            fps: get_fps(),
+        };
+        let mut state = PanelState {
+            scene_index: self.scene_index,
+            paused: self.paused,
+            time: self.time,
+            stats,
+            draw_options: &mut self.draw_options,
+        };
+        let mut pointer_over_ui = false;
+        egui_macroquad::ui(|ctx: &egui::Context| {
+            action = ui::side_panel(ctx, &mut state);
+            pointer_over_ui = ctx.wants_pointer_input() || ctx.is_pointer_over_area();
+        });
+        self.pointer_over_ui = pointer_over_ui;
+        action
+    }
+
+    fn apply(&mut self, action: UiAction) {
+        match action {
+            UiAction::LoadScene(index) => self.load_scene(index),
+            UiAction::TogglePause => self.paused = !self.paused,
+            UiAction::Step => {
+                self.paused = true;
+                self.step();
+            }
+            UiAction::Reset => self.load_scene(self.scene_index),
+        }
     }
 
     fn load_scene(&mut self, index: usize) {
@@ -114,42 +133,16 @@ impl App {
         self.draw_options = keep_options;
     }
 
+    /// A few shortcuts for what is used constantly; everything else is in the panel.
     fn handle_keys(&mut self) {
         if is_key_pressed(KeyCode::Space) {
-            self.paused = !self.paused;
+            self.apply(UiAction::TogglePause);
         }
         if is_key_pressed(KeyCode::S) {
-            self.paused = true;
-            self.step();
+            self.apply(UiAction::Step);
         }
         if is_key_pressed(KeyCode::R) {
-            self.load_scene(self.scene_index);
-        }
-        if is_key_pressed(KeyCode::Right) {
-            self.load_scene((self.scene_index + 1) % SCENES.len());
-        }
-        if is_key_pressed(KeyCode::Left) {
-            self.load_scene((self.scene_index + SCENES.len() - 1) % SCENES.len());
-        }
-        if let Some(index) = NUMBER_KEYS.iter().position(|&key| is_key_pressed(key))
-            && index < SCENES.len()
-        {
-            self.load_scene(index);
-        }
-        if is_key_pressed(KeyCode::Tab) {
-            self.show_scene_list = !self.show_scene_list;
-        }
-        if is_key_pressed(KeyCode::A) {
-            self.draw_options.aabbs = !self.draw_options.aabbs;
-        }
-        if is_key_pressed(KeyCode::C) {
-            self.draw_options.centers_of_mass = !self.draw_options.centers_of_mass;
-        }
-        if is_key_pressed(KeyCode::K) {
-            self.draw_options.contacts = !self.draw_options.contacts;
-        }
-        if is_key_pressed(KeyCode::J) {
-            self.draw_options.joints = !self.draw_options.joints;
+            self.apply(UiAction::Reset);
         }
     }
 
@@ -157,7 +150,7 @@ impl App {
     fn handle_grab(&mut self) {
         let mouse = self.camera.screen_to_world(Vec2::from(mouse_position()));
 
-        if is_mouse_button_pressed(MouseButton::Left) && self.grab.is_none() {
+        if is_mouse_button_pressed(MouseButton::Left) && self.grab.is_none() && !self.pointer_over_ui {
             let grabbed = self.world.colliders_at_point(mouse).find_map(|collider| {
                 let body = self.world.collider(collider)?.body();
                 (self.world.body(body)?.body_type() == BodyType::Dynamic).then_some(body)
@@ -200,73 +193,7 @@ impl App {
         self.last_step_ms = (get_time() - start) * 1000.0;
         self.time += TIME_STEP;
         if let Some(target) = self.scene_update.as_ref().and_then(|update| update.camera_target(&self.world)) {
-            self.camera.set_center(target);
+            self.camera.follow(target, TIME_STEP);
         }
-    }
-
-    fn draw_hud(&self) {
-        let scene = self.scene();
-        let status = if self.paused { "  [PAUSED]" } else { "" };
-        let lines = [
-            (format!("{}  ({}/{}){status}", scene.name, self.scene_index + 1, SCENES.len()), HUD_TEXT),
-            (scene.description.to_owned(), HUD_HINT),
-            (
-                format!(
-                    "bodies: {}   joints: {}   contacts: {}   events: {}   step: {:.3} ms   fps: {}",
-                    self.world.body_count(),
-                    self.world.joint_count(),
-                    self.world.contacts().count(),
-                    self.world.collision_events().len(),
-                    self.last_step_ms,
-                    get_fps()
-                ),
-                HUD_TEXT,
-            ),
-            (
-                "Space pause  S step  R reset  Left/Right scene  Tab list  A aabbs  C centers  K contacts  \
-                 J joints  left drag grab  right drag pan  wheel zoom"
-                    .to_owned(),
-                HUD_HINT,
-            ),
-        ];
-        for (row, (text, color)) in lines.iter().enumerate() {
-            draw_text(text, 12.0, 24.0 + HUD_LINE_HEIGHT * row as f32, HUD_FONT_SIZE, *color);
-        }
-    }
-
-    /// Top-left corner of the first entry of the scene list, in screen pixels.
-    fn scene_list_origin() -> Vec2 {
-        vec2(24.0, 130.0)
-    }
-
-    fn draw_scene_list(&self) {
-        let origin = Self::scene_list_origin();
-        let height = HUD_LINE_HEIGHT * SCENES.len() as f32 + 16.0;
-        draw_rectangle(origin.x - 12.0, origin.y - 22.0, 280.0, height, Color::new(0.0, 0.0, 0.0, 0.75));
-        for (index, scene) in SCENES.iter().enumerate() {
-            let color = if index == self.scene_index { HUD_HIGHLIGHT } else { HUD_TEXT };
-            let y = origin.y + HUD_LINE_HEIGHT * index as f32;
-            draw_text(format!("{:>2}  {}", index + 1, scene.name), origin.x, y, HUD_FONT_SIZE, color);
-        }
-    }
-
-    /// Loads the scene clicked in the list; returns `true` if the click was used.
-    fn handle_scene_list_click(&mut self) -> bool {
-        if !is_mouse_button_pressed(MouseButton::Left) {
-            return false;
-        }
-        let (x, y) = mouse_position();
-        let origin = Self::scene_list_origin();
-        let row = ((y - origin.y + HUD_LINE_HEIGHT) / HUD_LINE_HEIGHT).floor();
-        if x < origin.x - 12.0 || x > origin.x + 268.0 || row < 0.0 {
-            return false;
-        }
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, reason = "row is a small positive integer")]
-        let index = row as usize;
-        if index >= SCENES.len() {
-            return false;
-        }
-        self.load_scene(index);
-        true
     }
 }

@@ -1,9 +1,10 @@
 use kinetica::prelude::*;
 
-use super::{Build, Scene, add_ground};
+use super::{Build, Category, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Restitution",
+    category: Category::Contacts,
     description: "Balls with restitution from 0 (left) to 1 (right), dropped from the same height.",
     camera_center: vec2(0.0, 5.0),
     view_height: 14.0,

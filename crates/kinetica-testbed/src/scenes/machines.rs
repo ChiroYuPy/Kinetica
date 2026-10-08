@@ -1,10 +1,11 @@
 use kinetica::joint::Motor;
 use kinetica::prelude::*;
 
-use super::{Build, Scene, SceneUpdate, add_ground};
+use super::{Build, Category, Scene, SceneUpdate, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Machines",
+    category: Category::Joints,
     description: "Left: a motorised crank drives a piston. Right: an elevator on a prismatic motor reverses every 4 s.",
     camera_center: vec2(0.0, 4.0),
     view_height: 13.0,

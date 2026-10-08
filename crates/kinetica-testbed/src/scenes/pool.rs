@@ -1,9 +1,10 @@
 use kinetica::prelude::*;
 
-use super::{Build, Scene};
+use super::{Build, Category, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Pool break",
+    category: Category::Contacts,
     description: "Top-down pool: no gravity, damping as cloth friction, bouncy balls and cushions.",
     camera_center: vec2(0.0, 0.6),
     view_height: 10.0,

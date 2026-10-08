@@ -10,6 +10,7 @@ license.workspace = true
 [dependencies]
 kinetica.workspace = true
 macroquad.workspace = true
+egui-macroquad.workspace = true
 
 [lints]
 workspace = true

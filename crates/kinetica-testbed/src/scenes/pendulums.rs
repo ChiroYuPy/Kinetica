@@ -1,9 +1,10 @@
 use kinetica::prelude::*;
 
-use super::{Build, Scene};
+use super::{Build, Category, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Pendulums",
+    category: Category::Joints,
     description: "Simple, double and triple pendulums released horizontally. The last two are chaotic.",
     camera_center: vec2(0.0, 0.0),
     view_height: 16.0,

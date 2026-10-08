@@ -2,10 +2,11 @@ use std::f32::consts::PI;
 
 use kinetica::prelude::*;
 
-use super::{Build, Scene, add_ground};
+use super::{Build, Category, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Ragdolls",
+    category: Category::Joints,
     description: "Ragdolls made of ten bodies and nine limited revolute joints tumble down the stairs.",
     camera_center: vec2(0.0, 4.0),
     view_height: 14.0,

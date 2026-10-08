@@ -1,9 +1,10 @@
 use kinetica::prelude::*;
 
-use super::{Build, Scene};
+use super::{Build, Category, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Falling shapes",
+    category: Category::Contacts,
     description: "Every kind of shape falls and piles up on the ground.",
     camera_center: vec2(0.0, 5.0),
     view_height: 16.0,

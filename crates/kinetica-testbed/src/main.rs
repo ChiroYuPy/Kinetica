@@ -6,6 +6,7 @@ mod app;
 mod camera;
 mod render;
 mod scenes;
+mod ui;
 
 use macroquad::window::{Conf, next_frame};
 

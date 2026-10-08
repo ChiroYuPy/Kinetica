@@ -1,9 +1,10 @@
 use kinetica::prelude::*;
 
-use super::{Build, Scene, add_ground};
+use super::{Build, Category, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Springs",
+    category: Category::Joints,
     description: "Left: a jelly of balls linked by springs. Right: 1 Hz springs with damping ratio 0, 0.1, 0.3 and 1.",
     camera_center: vec2(0.0, 5.0),
     view_height: 13.0,

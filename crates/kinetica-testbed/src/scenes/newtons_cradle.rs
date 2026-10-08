@@ -1,9 +1,10 @@
 use kinetica::prelude::*;
 
-use super::{Build, Scene};
+use super::{Build, Category, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Newton's cradle",
+    category: Category::Joints,
     description: "Five bouncy, frictionless balls on strings, 5 cm apart. The first one is released.",
     camera_center: vec2(0.0, 5.5),
     view_height: 11.0,

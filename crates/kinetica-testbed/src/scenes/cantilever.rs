@@ -1,9 +1,10 @@
 use kinetica::prelude::*;
 
-use super::{Build, Scene};
+use super::{Build, Category, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Cantilever",
+    category: Category::Joints,
     description: "Eight welded segments: rigid welds on top (joints are slightly soft, so it sags a little), \
                   25 Hz angular springs below.",
     camera_center: vec2(0.0, 2.0),

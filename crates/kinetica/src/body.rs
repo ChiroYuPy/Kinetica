@@ -281,6 +281,10 @@ impl Body {
     }
 
     /// Rotational inertia about the center of mass; `0` when the body cannot rotate.
+    ///
+    /// A dynamic body without colliders gets a mass of 1 kg but no rotational inertia, so it
+    /// cannot rotate. Give it a collider if it must turn, for example when it is part of a
+    /// mechanism that rotates.
     #[must_use]
     pub fn inertia(&self) -> f32 {
         self.inertia

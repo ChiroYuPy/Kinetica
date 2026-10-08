@@ -26,9 +26,8 @@ mod wrecking_ball;
 use kinetica::math::Vec2;
 use kinetica::prelude::*;
 
-/// Every scene, in the order of the number keys and of the scene list.
+/// Every scene, grouped by category; the command line selects them by position, from 1.
 pub const SCENES: &[Scene] = &[
-    // Contacts.
     falling_shapes::SCENE,
     pyramid::SCENE,
     stacks::SCENE,
@@ -39,7 +38,6 @@ pub const SCENES: &[Scene] = &[
     seesaw::SCENE,
     tumbler::SCENE,
     pool::SCENE,
-    // Joints.
     pendulums::SCENE,
     pendulum_wave::SCENE,
     newtons_cradle::SCENE,
@@ -50,13 +48,13 @@ pub const SCENES: &[Scene] = &[
     springs::SCENE,
     machines::SCENE,
     cantilever::SCENE,
-    // Engine basics.
     body_types::SCENE,
     contacts::SCENE,
 ];
 
 pub struct Scene {
     pub name: &'static str,
+    pub category: Category,
     pub description: &'static str,
     /// Initial camera target, in meters.
     pub camera_center: Vec2,
@@ -64,6 +62,26 @@ pub struct Scene {
     pub view_height: f32,
     /// Fills an empty world with the scene content.
     pub build: Build,
+}
+
+/// Groups scenes in the menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Category {
+    Contacts,
+    Joints,
+    Basics,
+}
+
+impl Category {
+    pub const ALL: [Self; 3] = [Self::Contacts, Self::Joints, Self::Basics];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Contacts => "Contacts",
+            Self::Joints => "Joints",
+            Self::Basics => "Engine basics",
+        }
+    }
 }
 
 /// How a scene fills its world.

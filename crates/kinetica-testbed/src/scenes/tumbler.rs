@@ -1,9 +1,10 @@
 use kinetica::prelude::*;
 
-use super::{Build, Scene};
+use super::{Build, Category, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Tumbler",
+    category: Category::Contacts,
     description: "A slowly rotating kinematic drum full of shapes: many simultaneous contacts.",
     camera_center: vec2(0.0, 0.0),
     view_height: 16.0,

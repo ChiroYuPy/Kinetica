@@ -1,9 +1,10 @@
 use kinetica::prelude::*;
 
-use super::{Build, Scene, add_ground};
+use super::{Build, Category, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Stacks",
+    category: Category::Contacts,
     description: "Columns of boxes of various sizes and mass ratios, and a ball hitting them.",
     camera_center: vec2(0.0, 6.0),
     view_height: 16.0,
