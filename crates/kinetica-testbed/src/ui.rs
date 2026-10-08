@@ -24,10 +24,25 @@ pub struct PanelState<'a> {
     pub time: f32,
     pub stats: Stats,
     pub draw_options: &'a mut DebugDrawOptions,
+    pub settings: &'a mut SimulationSettings,
+}
+
+/// World options that survive scene changes.
+#[derive(Debug, Clone, Copy)]
+pub struct SimulationSettings {
+    pub sleeping: bool,
+    pub continuous: bool,
+}
+
+impl Default for SimulationSettings {
+    fn default() -> Self {
+        Self { sleeping: true, continuous: true }
+    }
 }
 
 pub struct Stats {
     pub bodies: usize,
+    pub awake: usize,
     pub joints: usize,
     pub contacts: usize,
     pub step_ms: f64,
@@ -76,6 +91,13 @@ pub fn side_panel(ctx: &egui::Context, state: &mut PanelState) -> Option<UiActio
         ui.label(egui::RichText::new(SCENES[state.scene_index].description).weak());
         ui.separator();
 
+        ui.label("Simulate");
+        let settings = &mut *state.settings;
+        ui.checkbox(&mut settings.sleeping, "Sleeping").on_hover_text("Resting bodies stop being simulated");
+        ui.checkbox(&mut settings.continuous, "Continuous collision")
+            .on_hover_text("Fast bodies do not pass through thin ones");
+        ui.separator();
+
         ui.label("Show");
         let options = &mut *state.draw_options;
         ui.checkbox(&mut options.shapes, "Shapes");
@@ -86,7 +108,7 @@ pub fn side_panel(ctx: &egui::Context, state: &mut PanelState) -> Option<UiActio
         ui.separator();
 
         let stats = &state.stats;
-        ui.label(format!("Bodies: {}   Joints: {}", stats.bodies, stats.joints));
+        ui.label(format!("Bodies: {} ({} awake)   Joints: {}", stats.bodies, stats.awake, stats.joints));
         ui.label(format!("Contacts: {}", stats.contacts));
         ui.label(format!("Step: {:.3} ms   {} fps", stats.step_ms, stats.fps));
         ui.separator();

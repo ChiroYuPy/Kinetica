@@ -128,6 +128,10 @@ impl WeldJoint {
         self.local_anchor_b
     }
 
+    pub(crate) fn reaction_impulse(&self) -> (Vec2, f32) {
+        (self.linear_impulse, self.angular_impulse)
+    }
+
     pub(crate) fn prepare(&mut self, frame: &JointFrame, a: &Body, b: &Body, context: &SolverContext) {
         self.delta_angle = wrap_angle(relative_angle(b.rotation(), a.rotation()) - self.reference_angle);
         self.axial_mass = frame.axial_mass();

@@ -124,6 +124,8 @@ pub struct DistanceJoint {
     impulse: f32,
     lower_impulse: f32,
     upper_impulse: f32,
+    /// Direction from anchor A to anchor B at the last solve.
+    axis: Vec2,
     axial_mass: f32,
     spring_softness: Softness,
 }
@@ -140,6 +142,7 @@ impl DistanceJoint {
             impulse: 0.0,
             lower_impulse: 0.0,
             upper_impulse: 0.0,
+            axis: Vec2::ZERO,
             axial_mass: 0.0,
             spring_softness: Softness::new(0.0, 0.0, 1.0),
         }
@@ -180,6 +183,10 @@ impl DistanceJoint {
         self.impulse = 0.0;
     }
 
+    pub(crate) fn reaction_impulse(&self) -> (Vec2, f32) {
+        ((self.impulse + self.lower_impulse - self.upper_impulse) * self.axis, 0.0)
+    }
+
     pub(crate) fn prepare(&mut self, frame: &JointFrame, context: &SolverContext) {
         let axis = (frame.delta_center + frame.anchor_b - frame.anchor_a).normalize_or_zero();
         let (arm_a, arm_b) = (frame.anchor_a.perp_dot(axis), frame.anchor_b.perp_dot(axis));
@@ -214,6 +221,7 @@ impl DistanceJoint {
         let separation = frame.separation(a, b, anchor_a, anchor_b);
         let length = separation.length();
         let axis = separation.normalize_or_zero();
+        self.axis = axis;
         let axial_speed = |a: &Body, b: &Body| relative_velocity(a, b, anchor_a, anchor_b).dot(axis);
 
         let Some(spring) = self.spring else {

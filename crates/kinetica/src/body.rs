@@ -2,6 +2,7 @@
 
 use crate::arena::{Arena, Index};
 use crate::collider::{Collider, ColliderHandle};
+use crate::constants::{SLEEP_ANGULAR_SPEED, SLEEP_LINEAR_SPEED};
 use crate::joint::JointHandle;
 use crate::math::{Rot, Transform, Vec2};
 
@@ -51,6 +52,10 @@ pub struct BodyDesc {
     pub gravity_scale: f32,
     /// Prevents the body from rotating, for example for a character.
     pub fixed_rotation: bool,
+    /// Lets the body fall asleep after resting for a while, see [`Body::is_sleeping`].
+    pub can_sleep: bool,
+    /// Continuous collision against other dynamic bodies too, see [`BodyDesc::bullet`].
+    pub bullet: bool,
 }
 
 impl BodyDesc {
@@ -67,6 +72,8 @@ impl BodyDesc {
             angular_damping: 0.0,
             gravity_scale: 1.0,
             fixed_rotation: false,
+            can_sleep: true,
+            bullet: false,
         }
     }
 
@@ -143,6 +150,24 @@ impl BodyDesc {
         self.fixed_rotation = fixed;
         self
     }
+
+    /// Allows or prevents falling asleep.
+    #[must_use]
+    pub fn can_sleep(mut self, can_sleep: bool) -> Self {
+        self.can_sleep = can_sleep;
+        self
+    }
+
+    /// Makes the body a bullet, or a regular body again.
+    ///
+    /// Fast dynamic bodies never tunnel through fixed and kinematic bodies. Bullets do not
+    /// tunnel through other dynamic bodies either, at a higher cost: use it for small fast
+    /// projectiles.
+    #[must_use]
+    pub fn bullet(mut self, bullet: bool) -> Self {
+        self.bullet = bullet;
+        self
+    }
 }
 
 impl Default for BodyDesc {
@@ -156,6 +181,7 @@ impl Default for BodyDesc {
 /// The body *origin* is the point given by [`position`](Self::position); shapes are placed
 /// relative to it. The body rotates around its *center of mass*, computed from its colliders.
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools, reason = "independent flags")]
 pub struct Body {
     body_type: BodyType,
     /// Placement of the body origin.
@@ -180,6 +206,14 @@ pub struct Body {
     angular_damping: f32,
     gravity_scale: f32,
     fixed_rotation: bool,
+    can_sleep: bool,
+    sleeping: bool,
+    /// How long the body has been nearly still, in seconds.
+    sleep_time: f32,
+    bullet: bool,
+    /// Thickness of the thinnest collider; moving more than half of it in a step risks
+    /// tunneling.
+    min_extent: f32,
     colliders: Vec<ColliderHandle>,
     joints: Vec<JointHandle>,
 }
@@ -207,6 +241,11 @@ impl Body {
             angular_damping: desc.angular_damping,
             gravity_scale: desc.gravity_scale,
             fixed_rotation: desc.fixed_rotation,
+            can_sleep: desc.can_sleep,
+            sleeping: false,
+            sleep_time: 0.0,
+            bullet: desc.bullet,
+            min_extent: f32::INFINITY,
             colliders: Vec::new(),
             joints: Vec::new(),
         };
@@ -296,6 +335,29 @@ impl Body {
         self.gravity_scale
     }
 
+    /// Returns `true` if the body is asleep.
+    ///
+    /// Bodies resting for a while fall asleep, together with everything they touch or are
+    /// joined to, and are skipped by the simulation until something wakes them: a contact with
+    /// an awake body, a change made through one of the setters below, or the removal of
+    /// something they touch. Fixed bodies never sleep.
+    #[must_use]
+    pub fn is_sleeping(&self) -> bool {
+        self.sleeping
+    }
+
+    /// Returns `true` if the body may fall asleep.
+    #[must_use]
+    pub fn can_sleep(&self) -> bool {
+        self.can_sleep
+    }
+
+    /// Returns `true` for a bullet, see [`BodyDesc::bullet`].
+    #[must_use]
+    pub fn is_bullet(&self) -> bool {
+        self.bullet
+    }
+
     /// Colliders attached to this body.
     #[must_use]
     pub fn colliders(&self) -> &[ColliderHandle] {
@@ -342,35 +404,61 @@ impl Body {
         self.set_transform(Transform::new(self.transform.position, Rot::from_angle(angle)));
     }
 
-    /// Teleports the body to a new placement.
+    /// Teleports the body to a new placement, and wakes it up.
     pub fn set_transform(&mut self, transform: Transform) {
         self.transform = transform;
         self.center = transform.transform_point(self.local_center);
+        self.wake_up();
     }
 
-    /// Sets the linear velocity. Ignored for fixed bodies.
+    /// Sets the linear velocity, and wakes the body up. Ignored for fixed bodies.
     pub fn set_linear_velocity(&mut self, velocity: Vec2) {
         if self.body_type != BodyType::Fixed {
             self.linear_velocity = velocity;
+            self.wake_up();
         }
     }
 
-    /// Sets the angular velocity. Ignored for fixed bodies and bodies with fixed rotation.
+    /// Sets the angular velocity, and wakes the body up. Ignored for fixed bodies and bodies
+    /// with fixed rotation.
     pub fn set_angular_velocity(&mut self, velocity: f32) {
         if self.body_type != BodyType::Fixed && !self.fixed_rotation {
             self.angular_velocity = velocity;
+            self.wake_up();
         }
     }
 
-    /// Sets the gravity multiplier.
+    /// Sets the gravity multiplier, and wakes the body up.
     pub fn set_gravity_scale(&mut self, scale: f32) {
         self.gravity_scale = scale;
+        self.wake_up();
     }
 
-    /// Applies a force at the center of mass until the next step. Only affects dynamic bodies.
+    /// Allows or prevents falling asleep. Preventing it wakes the body up.
+    pub fn set_can_sleep(&mut self, can_sleep: bool) {
+        self.can_sleep = can_sleep;
+        if !can_sleep {
+            self.wake_up();
+        }
+    }
+
+    /// Makes the body a bullet, or a regular body again; see [`BodyDesc::bullet`].
+    pub fn set_bullet(&mut self, bullet: bool) {
+        self.bullet = bullet;
+    }
+
+    /// Wakes the body up. Bodies it touches or is joined to wake up at the next step.
+    pub fn wake_up(&mut self) {
+        self.sleeping = false;
+        self.sleep_time = 0.0;
+    }
+
+    /// Applies a force at the center of mass until the next step, and wakes the body up. Only
+    /// affects dynamic bodies.
     pub fn apply_force(&mut self, force: Vec2) {
         if self.body_type == BodyType::Dynamic {
             self.force += force;
+            self.wake_up();
         }
     }
 
@@ -379,6 +467,7 @@ impl Body {
         if self.body_type == BodyType::Dynamic {
             self.force += force;
             self.torque += (world_point - self.center).perp_dot(force);
+            self.wake_up();
         }
     }
 
@@ -386,6 +475,7 @@ impl Body {
     pub fn apply_torque(&mut self, torque: f32) {
         if self.body_type == BodyType::Dynamic {
             self.torque += torque;
+            self.wake_up();
         }
     }
 
@@ -393,6 +483,7 @@ impl Body {
     pub fn apply_linear_impulse(&mut self, impulse: Vec2) {
         if self.body_type == BodyType::Dynamic {
             self.linear_velocity += self.inverse_mass * impulse;
+            self.wake_up();
         }
     }
 
@@ -401,6 +492,7 @@ impl Body {
         if self.body_type == BodyType::Dynamic {
             self.linear_velocity += self.inverse_mass * impulse;
             self.angular_velocity += self.inverse_inertia * (world_point - self.center).perp_dot(impulse);
+            self.wake_up();
         }
     }
 
@@ -408,6 +500,7 @@ impl Body {
     pub fn apply_angular_impulse(&mut self, impulse: f32) {
         if self.body_type == BodyType::Dynamic {
             self.angular_velocity += self.inverse_inertia * impulse;
+            self.wake_up();
         }
     }
 
@@ -427,8 +520,16 @@ impl Body {
         self.joints.retain(|&attached| attached != handle);
     }
 
-    /// Recomputes mass, inertia and center of mass from the attached colliders.
+    /// Recomputes mass, inertia, center of mass and thickness from the attached colliders.
     pub(crate) fn update_mass(&mut self, colliders: &Arena<Collider>) {
+        self.min_extent = self
+            .colliders
+            .iter()
+            .filter_map(|handle| colliders.get(handle.0))
+            .filter(|collider| !collider.is_sensor())
+            .map(|collider| collider.shape().min_extent())
+            .fold(f32::INFINITY, f32::min);
+
         self.mass = 0.0;
         self.inverse_mass = 0.0;
         self.inertia = 0.0;
@@ -469,6 +570,50 @@ impl Body {
         self.center = self.transform.transform_point(self.local_center);
     }
 
+    /// Fixed bodies and sleeping bodies are left alone by the simulation.
+    pub(crate) fn is_active(&self) -> bool {
+        self.body_type != BodyType::Fixed && !self.sleeping
+    }
+
+    /// Stops the body until it is woken up.
+    pub(crate) fn fall_asleep(&mut self) {
+        if self.body_type != BodyType::Fixed {
+            self.sleeping = true;
+            self.linear_velocity = Vec2::ZERO;
+            self.angular_velocity = 0.0;
+            self.clear_forces();
+        }
+    }
+
+    /// Adds `dt` to the time the body has been nearly still, or resets it if the body moves,
+    /// and returns it. A body that cannot sleep never accumulates time.
+    pub(crate) fn update_sleep_time(&mut self, dt: f32) -> f32 {
+        let still = if self.body_type == BodyType::Kinematic {
+            // Its velocity is chosen by the user: however slow, it must keep it.
+            self.linear_velocity == Vec2::ZERO && self.angular_velocity == 0.0
+        } else {
+            self.linear_velocity.length_squared() <= SLEEP_LINEAR_SPEED * SLEEP_LINEAR_SPEED
+                && self.angular_velocity.abs() <= SLEEP_ANGULAR_SPEED
+        };
+        self.sleep_time = if self.can_sleep && still { self.sleep_time + dt } else { 0.0 };
+        self.sleep_time
+    }
+
+    pub(crate) fn min_extent(&self) -> f32 {
+        self.min_extent
+    }
+
+    /// World center of mass when the current step started.
+    pub(crate) fn center_at_step_start(&self) -> Vec2 {
+        self.center_at_step_start
+    }
+
+    /// Moves the center of mass to `center`, keeping the orientation and velocities.
+    pub(crate) fn move_center_to(&mut self, center: Vec2) {
+        self.center = center;
+        self.transform.position = center - self.transform.rotation.rotate(self.local_center);
+    }
+
     pub(crate) fn inverse_mass(&self) -> f32 {
         self.inverse_mass
     }
@@ -507,7 +652,7 @@ impl Body {
 
     /// Applies gravity, forces and damping to the velocities.
     pub(crate) fn integrate_velocity(&mut self, gravity: Vec2, dt: f32) {
-        if self.body_type != BodyType::Dynamic {
+        if self.body_type != BodyType::Dynamic || self.sleeping {
             return;
         }
         let linear_acceleration = self.gravity_scale * gravity + self.inverse_mass * self.force;
@@ -522,7 +667,7 @@ impl Body {
 
     /// Moves the body according to its velocities.
     pub(crate) fn integrate_position(&mut self, dt: f32) {
-        if self.body_type == BodyType::Fixed {
+        if !self.is_active() {
             return;
         }
         self.center += dt * self.linear_velocity;

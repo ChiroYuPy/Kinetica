@@ -1,11 +1,13 @@
 //! The simulation world: owns every body and collider and advances time.
 
 use crate::arena::Arena;
-use crate::body::{Body, BodyDesc, BodyHandle};
+use crate::body::{Body, BodyDesc, BodyHandle, BodyType};
 use crate::collider::{Collider, ColliderDesc, ColliderHandle};
 use crate::collision::broad_phase::BroadPhase;
-use crate::constants::DEFAULT_SUBSTEP_COUNT;
-use crate::contact::{CollisionEvent, Contact, ContactSet};
+use crate::constants::{DEFAULT_SUBSTEP_COUNT, TIME_TO_SLEEP};
+use crate::contact::{CollisionEvent, Contact, ContactSet, SensorEvent, SensorPair};
+use crate::continuous;
+use crate::island::Islands;
 use crate::joint::{Joint, JointDesc, JointHandle};
 use crate::math::{Vec2, vec2};
 use crate::solver::{self, StepSettings};
@@ -36,12 +38,15 @@ pub const DEFAULT_GRAVITY: Vec2 = vec2(0.0, -9.81);
 pub struct World {
     gravity: Vec2,
     substep_count: u32,
+    sleeping_enabled: bool,
+    continuous_enabled: bool,
     bodies: Arena<Body>,
     colliders: Arena<Collider>,
     joints: Arena<Joint>,
     broad_phase: BroadPhase,
     contacts: ContactSet,
     collision_events: Vec<CollisionEvent>,
+    sensor_events: Vec<SensorEvent>,
 }
 
 impl World {
@@ -51,12 +56,15 @@ impl World {
         Self {
             gravity: DEFAULT_GRAVITY,
             substep_count: DEFAULT_SUBSTEP_COUNT,
+            sleeping_enabled: true,
+            continuous_enabled: true,
             bodies: Arena::default(),
             colliders: Arena::default(),
             joints: Arena::default(),
             broad_phase: BroadPhase::default(),
             contacts: ContactSet::default(),
             collision_events: Vec::new(),
+            sensor_events: Vec::new(),
         }
     }
 
@@ -66,9 +74,10 @@ impl World {
         self.gravity
     }
 
-    /// Sets the gravity acceleration.
+    /// Sets the gravity acceleration, and wakes every body up.
     pub fn set_gravity(&mut self, gravity: Vec2) {
         self.gravity = gravity;
+        self.wake_up_all();
     }
 
     /// Number of substeps each [`step`](Self::step) is divided into. Defaults to 4.
@@ -88,13 +97,49 @@ impl World {
         self.substep_count = count;
     }
 
+    /// Returns `true` if resting bodies may fall asleep, see [`Body::is_sleeping`]. Enabled by
+    /// default.
+    #[must_use]
+    pub fn sleeping_enabled(&self) -> bool {
+        self.sleeping_enabled
+    }
+
+    /// Allows or prevents bodies from falling asleep. Disabling it wakes every body up.
+    ///
+    /// Sleeping saves most of the cost of resting bodies, and removes the tiny residual motion
+    /// of large stacks.
+    pub fn set_sleeping_enabled(&mut self, enabled: bool) {
+        self.sleeping_enabled = enabled;
+        if !enabled {
+            self.wake_up_all();
+        }
+    }
+
+    /// Returns `true` if fast bodies are kept from tunneling through others. Enabled by default.
+    #[must_use]
+    pub fn continuous_enabled(&self) -> bool {
+        self.continuous_enabled
+    }
+
+    /// Enables or disables continuous collision detection.
+    ///
+    /// When enabled, a dynamic body moving more than half its thickness in a step is swept
+    /// along its motion and stopped at the first fixed or kinematic collider it hits (and at
+    /// dynamic colliders too for [bullets](crate::BodyDesc::bullet)).
+    pub fn set_continuous_enabled(&mut self, enabled: bool) {
+        self.continuous_enabled = enabled;
+    }
+
     /// Creates a body and returns its handle.
     pub fn add_body(&mut self, desc: BodyDesc) -> BodyHandle {
         BodyHandle(self.bodies.insert(Body::new(desc)))
     }
 
     /// Removes a body with all its colliders and joints, returning the body if it existed.
+    ///
+    /// Bodies it touched wake up.
     pub fn remove_body(&mut self, handle: BodyHandle) -> Option<Body> {
+        self.wake_up_touching(handle);
         let body = self.bodies.remove(handle.0)?;
         for &collider in body.colliders() {
             self.destroy_collider(collider);
@@ -127,7 +172,7 @@ impl World {
         self.bodies.len()
     }
 
-    /// Attaches a new collider to a body and updates the body mass.
+    /// Attaches a new collider to a body, updates the body mass and wakes the body up.
     ///
     /// # Panics
     ///
@@ -142,13 +187,18 @@ impl World {
         }));
         owner.attach_collider(handle);
         owner.update_mass(&self.colliders);
+        owner.wake_up();
         handle
     }
 
     /// Removes a collider and updates the mass of its body, returning the collider if it existed.
+    ///
+    /// Its body, and the bodies it touched, wake up.
     pub fn remove_collider(&mut self, handle: ColliderHandle) -> Option<Collider> {
+        let body = self.colliders.get(handle.0)?.body();
+        self.wake_up_touching(body);
         let collider = self.destroy_collider(handle)?;
-        if let Some(owner) = self.bodies.get_mut(collider.body().0) {
+        if let Some(owner) = self.bodies.get_mut(body.0) {
             owner.detach_collider(handle);
             owner.update_mass(&self.colliders);
         }
@@ -185,7 +235,7 @@ impl World {
         self.colliders.len()
     }
 
-    /// Connects two bodies with a joint.
+    /// Connects two bodies with a joint, and wakes them up.
     ///
     /// Unless the joint allows it, the two bodies stop colliding with each other.
     ///
@@ -202,6 +252,8 @@ impl World {
         let handle = JointHandle(self.joints.insert(joint));
         a.attach_joint(handle);
         b.attach_joint(handle);
+        a.wake_up();
+        b.wake_up();
         if !collide_connected {
             self.contacts.remove_between(body_a, body_b);
         }
@@ -210,12 +262,13 @@ impl World {
 
     /// Removes a joint, returning it if it existed.
     ///
-    /// The bodies it connected may collide again from the next step.
+    /// The bodies it connected wake up, and may collide again from the next step.
     pub fn remove_joint(&mut self, handle: JointHandle) -> Option<Joint> {
         let joint = self.joints.remove(handle.0)?;
         for body in [joint.body_a(), joint.body_b()] {
             if let Some(body) = self.bodies.get_mut(body.0) {
                 body.detach_joint(handle);
+                body.wake_up();
             }
         }
         // Let the broad phase find the pair again.
@@ -235,9 +288,16 @@ impl World {
         self.joints.get(handle.0)
     }
 
-    /// Returns the joint for modification, or `None` if it was removed.
+    /// Returns the joint for modification, or `None` if it was removed. Wakes up the bodies
+    /// it connects, so they react to the change.
     pub fn joint_mut(&mut self, handle: JointHandle) -> Option<&mut Joint> {
-        self.joints.get_mut(handle.0)
+        let joint = self.joints.get_mut(handle.0)?;
+        for body in [joint.body_a(), joint.body_b()] {
+            if let Some(body) = self.bodies.get_mut(body.0) {
+                body.wake_up();
+            }
+        }
+        Some(joint)
     }
 
     /// Iterates over all joints, in a deterministic order.
@@ -270,6 +330,39 @@ impl World {
         &self.collision_events
     }
 
+    /// Sensors overlaps that started or stopped during the last step, in a deterministic order.
+    #[must_use]
+    pub fn sensor_events(&self) -> &[SensorEvent] {
+        &self.sensor_events
+    }
+
+    /// Colliders overlapping the sensor `sensor`, as of the last step.
+    pub fn sensor_overlaps(&self, sensor: ColliderHandle) -> impl Iterator<Item = &SensorPair> {
+        self.contacts.sensor_overlaps(sensor)
+    }
+
+    /// Wakes every body up.
+    pub fn wake_up_all(&mut self) {
+        for body in self.bodies.values_mut() {
+            body.wake_up();
+        }
+    }
+
+    /// Wakes up `body` and the bodies touching it or joined to it.
+    fn wake_up_touching(&mut self, handle: BodyHandle) {
+        let mut neighbours: Vec<BodyHandle> =
+            self.contacts.touching().filter_map(|contact| contact.pair().other_body(handle)).collect();
+        if let Some(body) = self.bodies.get(handle.0) {
+            neighbours.extend(body.joints().iter().filter_map(|&joint| self.joints.get(joint.0)?.other_body(handle)));
+        }
+        neighbours.push(handle);
+        for handle in neighbours {
+            if let Some(body) = self.bodies.get_mut(handle.0) {
+                body.wake_up();
+            }
+        }
+    }
+
     pub(crate) fn broad_phase(&self) -> &BroadPhase {
         &self.broad_phase
     }
@@ -283,9 +376,22 @@ impl World {
             return;
         }
         self.collision_events.clear();
+        self.sensor_events.clear();
 
         // Contact geometry for the current positions.
-        self.contacts.update(&self.colliders, &self.bodies, &self.broad_phase, &mut self.collision_events);
+        self.contacts.update(
+            &self.colliders,
+            &self.bodies,
+            &self.broad_phase,
+            &mut self.collision_events,
+            &mut self.sensor_events,
+        );
+
+        // Bodies touched by awake ones wake up before solving, so they react at once.
+        let islands = self.sleeping_enabled.then(|| Islands::build(&self.bodies, &self.contacts, &self.joints));
+        if let Some(islands) = &islands {
+            islands.wake_up(&mut self.bodies);
+        }
 
         let settings = StepSettings { gravity: self.gravity, dt, substep_count: self.substep_count };
         solver::step(&mut self.bodies, &self.colliders, &mut self.contacts, &mut self.joints, &settings);
@@ -293,8 +399,20 @@ impl World {
             body.clear_forces();
         }
 
-        // Find the pairs the motion brought together; they are collided at the next step.
         self.synchronize_colliders();
+        if self.continuous_enabled {
+            let moved = continuous::solve(&mut self.bodies, &self.colliders, &self.joints, &self.broad_phase);
+            for body in moved {
+                self.synchronize_body_colliders(body);
+            }
+        }
+
+        if let Some(islands) = &islands {
+            islands.fall_asleep(&mut self.bodies, dt);
+            self.put_kinematic_bodies_to_sleep(dt);
+        }
+
+        // Find the pairs the motion brought together; they are collided at the next step.
         let new_pairs = self.broad_phase.find_new_pairs();
         self.contacts.add_pairs(&new_pairs, &self.colliders, &self.bodies, &self.joints);
     }
@@ -302,9 +420,33 @@ impl World {
     /// Moves collider bounding boxes and broad phase proxies to their bodies' new placement.
     fn synchronize_colliders(&mut self) {
         for collider in self.colliders.values_mut() {
-            if let Some(body) = self.bodies.get(collider.body().0) {
+            if let Some(body) = self.bodies.get(collider.body().0)
+                && !body.is_sleeping()
+            {
                 collider.update_aabb(body.transform());
                 self.broad_phase.update_proxy(collider.proxy(), collider.aabb());
+            }
+        }
+    }
+
+    fn synchronize_body_colliders(&mut self, handle: BodyHandle) {
+        let Some(body) = self.bodies.get(handle.0) else { return };
+        for collider in body.colliders() {
+            if let Some(collider) = self.colliders.get_mut(collider.0) {
+                collider.update_aabb(body.transform());
+                self.broad_phase.update_proxy(collider.proxy(), collider.aabb());
+            }
+        }
+    }
+
+    /// Kinematic bodies are not part of islands; each one sleeps on its own once still.
+    fn put_kinematic_bodies_to_sleep(&mut self, dt: f32) {
+        for body in self.bodies.values_mut() {
+            if body.body_type() == BodyType::Kinematic
+                && !body.is_sleeping()
+                && body.update_sleep_time(dt) >= TIME_TO_SLEEP
+            {
+                body.fall_asleep();
             }
         }
     }

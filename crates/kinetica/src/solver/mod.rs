@@ -11,7 +11,7 @@ use contact_constraint::ContactConstraint;
 pub(crate) use softness::Softness;
 
 use crate::arena::Arena;
-use crate::body::Body;
+use crate::body::{Body, BodyHandle};
 use crate::collider::Collider;
 use crate::constants::{CONTACT_DAMPING_RATIO, CONTACT_HERTZ, JOINT_DAMPING_RATIO, JOINT_HERTZ_RATIO};
 use crate::contact::ContactSet;
@@ -59,14 +59,19 @@ pub(crate) fn step(
     settings: &StepSettings,
 ) {
     let context = SolverContext::new(settings);
+    let is_active = |handle: BodyHandle| bodies.get(handle.0).is_some_and(Body::is_active);
 
-    for joint in joints.values_mut() {
-        joint.prepare(bodies, &context);
-    }
+    // Sleeping bodies are skipped, along with the constraints between them.
+    let awake_joints: Vec<bool> =
+        joints.iter().map(|(_, joint)| is_active(joint.body_a()) || is_active(joint.body_b())).collect();
     let mut constraints: Vec<_> = contacts
         .touching()
+        .filter(|contact| is_active(contact.pair().body_a) || is_active(contact.pair().body_b))
         .filter_map(|contact| ContactConstraint::new(contact, colliders, bodies, &context))
         .collect();
+    for joint in awake(joints, &awake_joints) {
+        joint.prepare(bodies, &context);
+    }
 
     for body in bodies.values_mut() {
         body.begin_step();
@@ -77,7 +82,7 @@ pub(crate) fn step(
             body.integrate_velocity(settings.gravity, context.substep);
         }
 
-        for joint in joints.values_mut() {
+        for joint in awake(joints, &awake_joints) {
             joint.warm_start(bodies);
         }
         for constraint in &constraints {
@@ -85,7 +90,7 @@ pub(crate) fn step(
         }
 
         // Joints first: contacts are solved last because overlap is the most visible error.
-        for joint in joints.values_mut() {
+        for joint in awake(joints, &awake_joints) {
             joint.solve(bodies, &context, true);
         }
         for constraint in &mut constraints {
@@ -96,7 +101,7 @@ pub(crate) fn step(
             body.integrate_position(context.substep);
         }
 
-        for joint in joints.values_mut() {
+        for joint in awake(joints, &awake_joints) {
             joint.solve(bodies, &context, false);
         }
         for constraint in &mut constraints {
@@ -112,4 +117,9 @@ pub(crate) fn step(
             constraint.store_impulses(contact.manifold_mut());
         }
     }
+}
+
+/// The joints flagged in `awake`, which follows the arena order.
+fn awake<'a>(joints: &'a mut Arena<Joint>, awake: &'a [bool]) -> impl Iterator<Item = &'a mut Joint> {
+    joints.values_mut().zip(awake).filter_map(|(joint, &awake)| awake.then_some(joint))
 }

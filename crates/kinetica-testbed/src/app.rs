@@ -8,7 +8,7 @@ use macroquad::prelude::*;
 use crate::camera::WorldCamera;
 use crate::render::MacroquadDraw;
 use crate::scenes::{Frame, SCENES, SceneUpdate};
-use crate::ui::{self, PanelState, Stats, UiAction};
+use crate::ui::{self, PanelState, SimulationSettings, Stats, UiAction};
 
 /// The simulation always advances by this fixed amount, whatever the frame rate.
 const TIME_STEP: f32 = 1.0 / 60.0;
@@ -40,6 +40,7 @@ pub struct App {
     /// Simulated time since the scene started.
     time: f32,
     draw_options: DebugDrawOptions,
+    settings: SimulationSettings,
     last_step_ms: f64,
 }
 
@@ -62,6 +63,7 @@ impl App {
             accumulator: 0.0,
             time: 0.0,
             draw_options: DebugDrawOptions { contacts: true, ..DebugDrawOptions::default() },
+            settings: SimulationSettings::default(),
             last_step_ms: 0.0,
         }
     }
@@ -70,6 +72,7 @@ impl App {
         if let Some(action) = self.run_ui() {
             self.apply(action);
         }
+        self.apply_settings();
         self.handle_keys();
         self.handle_grab();
         self.camera.handle_input(!self.pointer_over_ui);
@@ -101,6 +104,11 @@ impl App {
         let mut action = None;
         let stats = Stats {
             bodies: self.world.body_count(),
+            awake: self
+                .world
+                .bodies()
+                .filter(|(_, body)| body.body_type() != BodyType::Fixed && !body.is_sleeping())
+                .count(),
             joints: self.world.joint_count(),
             contacts: self.world.contacts().count(),
             step_ms: self.last_step_ms,
@@ -112,6 +120,7 @@ impl App {
             time: self.time,
             stats,
             draw_options: &mut self.draw_options,
+            settings: &mut self.settings,
         };
         let mut pointer_over_ui = false;
         egui_macroquad::ui(|ctx: &egui::Context| {
@@ -135,9 +144,18 @@ impl App {
     }
 
     fn load_scene(&mut self, index: usize) {
-        let keep_options = self.draw_options;
+        let (draw_options, settings) = (self.draw_options, self.settings);
         *self = Self::new(index);
-        self.draw_options = keep_options;
+        self.draw_options = draw_options;
+        self.settings = settings;
+        self.apply_settings();
+    }
+
+    fn apply_settings(&mut self) {
+        if self.world.sleeping_enabled() != self.settings.sleeping {
+            self.world.set_sleeping_enabled(self.settings.sleeping);
+        }
+        self.world.set_continuous_enabled(self.settings.continuous);
     }
 
     /// A few shortcuts for what is used constantly; everything else is in the panel.

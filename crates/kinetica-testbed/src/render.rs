@@ -1,7 +1,8 @@
 //! Draws Kinetica debug primitives with macroquad.
 
 use kinetica::math::{Rot, Vec2};
-use kinetica::{Color, DebugDraw};
+use kinetica::shape::Shape;
+use kinetica::{BodyHandle, ColliderHandle, Color, DebugDraw, World};
 use macroquad::shapes;
 
 /// Opacity of shape interiors, relative to their outline.
@@ -17,6 +18,34 @@ pub struct MacroquadDraw {
 impl MacroquadDraw {
     pub fn new(pixels_per_meter: f32) -> Self {
         Self { line_width: LINE_WIDTH_PIXELS / pixels_per_meter }
+    }
+
+    /// Draws a collider in a custom color, for scenes that highlight some of them.
+    pub fn draw_collider(&mut self, world: &World, collider: ColliderHandle, color: Color) {
+        let Some(collider) = world.collider(collider) else { return };
+        let Some(body) = world.body(collider.body()) else { return };
+        let transform = body.transform();
+        match collider.shape() {
+            Shape::Circle(circle) => {
+                self.draw_circle(
+                    transform.transform_point(circle.center()),
+                    circle.radius(),
+                    transform.rotation,
+                    color,
+                );
+            }
+            Shape::Polygon(polygon) => {
+                let vertices: Vec<Vec2> = polygon.vertices().iter().map(|&v| transform.transform_point(v)).collect();
+                self.draw_polygon(&vertices, color);
+            }
+        }
+    }
+
+    /// Draws every collider of a body in a custom color.
+    pub fn draw_body(&mut self, world: &World, body: BodyHandle, color: Color) {
+        for &collider in world.body(body).map_or(&[][..], kinetica::Body::colliders) {
+            self.draw_collider(world, collider, color);
+        }
     }
 }
 

@@ -30,5 +30,18 @@ pub(crate) const RESTITUTION_THRESHOLD: f32 = 1.0;
 pub(crate) const JOINT_HERTZ_RATIO: f32 = 2.0;
 pub(crate) const JOINT_DAMPING_RATIO: f32 = 2.0;
 
+/// Bodies slower than this, in m/s, are considered still and may fall asleep.
+pub(crate) const SLEEP_LINEAR_SPEED: f32 = 0.05;
+
+/// Bodies turning slower than this, in rad/s (about 2°/s), are considered still.
+pub(crate) const SLEEP_ANGULAR_SPEED: f32 = 0.035;
+
+/// How long, in seconds, a group of touching bodies must stay still before falling asleep.
+pub(crate) const TIME_TO_SLEEP: f32 = 0.5;
+
+/// A dynamic body moving more than this fraction of its thickness in one step is checked for
+/// tunneling.
+pub(crate) const CONTINUOUS_THRESHOLD: f32 = 0.5;
+
 /// Default number of substeps per step.
 pub(crate) const DEFAULT_SUBSTEP_COUNT: u32 = 4;

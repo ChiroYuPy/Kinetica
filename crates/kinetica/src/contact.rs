@@ -1,4 +1,5 @@
-//! Contacts between colliders, and the events reporting when they start and stop.
+//! Contacts between colliders, sensor overlaps, and the events reporting when they start and
+//! stop.
 
 use std::collections::BTreeMap;
 
@@ -6,7 +7,7 @@ use crate::arena::Arena;
 use crate::body::{Body, BodyHandle, BodyType};
 use crate::collider::{Collider, ColliderHandle};
 use crate::collision::broad_phase::{BroadPhase, CandidatePair};
-use crate::collision::{Manifold, collide};
+use crate::collision::{Manifold, collide, separation_lower_bound};
 use crate::joint::Joint;
 
 /// Two colliders in contact, and the bodies they belong to.
@@ -53,6 +54,9 @@ impl ContactPair {
 pub struct Contact {
     pair: ContactPair,
     manifold: Manifold,
+    /// Cleared while a one-way platform lets the other collider through. Decided when the
+    /// manifold becomes non-empty, and kept until it is empty again.
+    enabled: bool,
 }
 
 impl Contact {
@@ -73,7 +77,7 @@ impl Contact {
     }
 
     fn is_touching(&self) -> bool {
-        !self.manifold.is_empty()
+        self.enabled && !self.manifold.is_empty()
     }
 }
 
@@ -99,12 +103,57 @@ impl CollisionEvent {
     }
 }
 
-/// Every pair of colliders whose fat bounding boxes overlap, touching or not.
+/// A sensor and a collider overlapping it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SensorPair {
+    /// The sensor collider.
+    pub sensor: ColliderHandle,
+    /// Body of the sensor.
+    pub sensor_body: BodyHandle,
+    /// The collider inside the sensor; never a sensor itself.
+    pub visitor: ColliderHandle,
+    /// Body of the visitor.
+    pub visitor_body: BodyHandle,
+}
+
+/// Reported by [`World::sensor_events`](crate::World::sensor_events) when a collider starts or
+/// stops overlapping a sensor.
 ///
-/// An ordered map keeps the iteration order, and therefore the simulation, deterministic.
+/// Sensors detect every non-sensor collider allowed by their [layers](crate::CollisionLayers),
+/// except colliders of their own body, and colliders of fixed bodies when the sensor is fixed
+/// too. Removing a collider or a body does not report `Exited`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SensorEvent {
+    /// The visitor started overlapping the sensor during the step.
+    Entered(SensorPair),
+    /// The visitor stopped overlapping the sensor during the step.
+    Exited(SensorPair),
+}
+
+impl SensorEvent {
+    /// The sensor and visitor concerned.
+    #[must_use]
+    pub fn pair(&self) -> &SensorPair {
+        match self {
+            Self::Entered(pair) | Self::Exited(pair) => pair,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SensorOverlap {
+    pair: SensorPair,
+    overlapping: bool,
+}
+
+/// Every pair of colliders whose fat bounding boxes overlap, touching or not, split between
+/// solid contacts and sensor overlaps.
+///
+/// Ordered maps keep the iteration order, and therefore the simulation, deterministic.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ContactSet {
     contacts: BTreeMap<CandidatePair, Contact>,
+    sensors: BTreeMap<CandidatePair, SensorOverlap>,
 }
 
 impl ContactSet {
@@ -117,43 +166,82 @@ impl ContactSet {
         bodies: &Arena<Body>,
         joints: &Arena<Joint>,
     ) {
-        for &(collider_a, collider_b) in pairs {
-            if self.contacts.contains_key(&(collider_a, collider_b)) {
+        for &key in pairs {
+            if self.contacts.contains_key(&key) || self.sensors.contains_key(&key) {
                 continue;
             }
+            let (collider_a, collider_b) = key;
             let (Some(a), Some(b)) = (colliders.get(collider_a.0), colliders.get(collider_b.0)) else { continue };
             let pair = ContactPair { collider_a, collider_b, body_a: a.body(), body_b: b.body() };
-            if should_collide(&pair, bodies, joints) {
-                self.contacts.insert((collider_a, collider_b), Contact { pair, manifold: Manifold::default() });
+            match (a.is_sensor(), b.is_sensor()) {
+                (false, false) => {
+                    if should_collide(&pair, bodies, joints) {
+                        let contact = Contact { pair, manifold: Manifold::default(), enabled: true };
+                        self.contacts.insert(key, contact);
+                    }
+                }
+                (true, false) | (false, true) => {
+                    if should_sense(&pair, bodies) {
+                        let pair = if a.is_sensor() {
+                            SensorPair {
+                                sensor: collider_a,
+                                sensor_body: pair.body_a,
+                                visitor: collider_b,
+                                visitor_body: pair.body_b,
+                            }
+                        } else {
+                            SensorPair {
+                                sensor: collider_b,
+                                sensor_body: pair.body_b,
+                                visitor: collider_a,
+                                visitor_body: pair.body_a,
+                            }
+                        };
+                        self.sensors.insert(key, SensorOverlap { pair, overlapping: false });
+                    }
+                }
+                (true, true) => {}
             }
         }
     }
 
-    /// Recomputes every contact, drops the ones whose fat boxes no longer overlap, and reports
-    /// changes in touching state.
+    /// Recomputes every contact and sensor overlap, drops the ones whose fat boxes no longer
+    /// overlap, and reports changes. Pairs where no body is awake are left as they are.
     pub(crate) fn update(
         &mut self,
         colliders: &Arena<Collider>,
         bodies: &Arena<Body>,
         broad_phase: &BroadPhase,
         events: &mut Vec<CollisionEvent>,
+        sensor_events: &mut Vec<SensorEvent>,
     ) {
         self.contacts.retain(|_, contact| {
             let pair = contact.pair;
-            let was_touching = contact.is_touching();
-            let colliders = (colliders.get(pair.collider_a.0), colliders.get(pair.collider_b.0));
-            let bodies = (bodies.get(pair.body_a.0), bodies.get(pair.body_b.0));
-            let ((Some(collider_a), Some(collider_b)), (Some(body_a), Some(body_b))) = (colliders, bodies) else {
+            let (Some((collider_a, body_a)), Some((collider_b, body_b))) = (
+                placed(pair.collider_a, pair.body_a, colliders, bodies),
+                placed(pair.collider_b, pair.body_b, colliders, bodies),
+            ) else {
                 return false;
             };
+            if !(body_a.is_active() || body_b.is_active()) {
+                return true;
+            }
 
+            let was_touching = contact.is_touching();
+            let had_points = !contact.manifold.is_empty();
             let keep = broad_phase.fat_aabb(collider_a.proxy()).overlaps(&broad_phase.fat_aabb(collider_b.proxy()));
-            let mut manifold = if keep {
+            let mut manifold = if keep && collider_a.layers().interacts_with(&collider_b.layers()) {
                 collide(collider_a.shape(), body_a.transform(), collider_b.shape(), body_b.transform())
             } else {
                 Manifold::default()
             };
             manifold.inherit_impulses(&contact.manifold);
+            if !had_points && !manifold.is_empty() {
+                // One-way platforms decide once, when the colliders start touching.
+                let normal = manifold.normal();
+                contact.enabled = collider_a.blocks_along(body_a.rotation(), normal)
+                    && collider_b.blocks_along(body_b.rotation(), -normal);
+            }
             contact.manifold = manifold;
 
             match (was_touching, contact.is_touching()) {
@@ -163,6 +251,36 @@ impl ContactSet {
             }
             keep
         });
+
+        self.sensors.retain(|_, overlap| {
+            let pair = overlap.pair;
+            let (Some((sensor, sensor_body)), Some((visitor, visitor_body))) = (
+                placed(pair.sensor, pair.sensor_body, colliders, bodies),
+                placed(pair.visitor, pair.visitor_body, colliders, bodies),
+            ) else {
+                return false;
+            };
+            if !(sensor_body.is_active() || visitor_body.is_active()) {
+                return true;
+            }
+
+            let keep = broad_phase.fat_aabb(sensor.proxy()).overlaps(&broad_phase.fat_aabb(visitor.proxy()));
+            let overlapping = keep
+                && sensor.layers().interacts_with(&visitor.layers())
+                && separation_lower_bound(
+                    sensor.shape(),
+                    sensor_body.transform(),
+                    visitor.shape(),
+                    visitor_body.transform(),
+                ) < 0.0;
+            match (overlap.overlapping, overlapping) {
+                (false, true) => sensor_events.push(SensorEvent::Entered(overlap.pair)),
+                (true, false) => sensor_events.push(SensorEvent::Exited(overlap.pair)),
+                _ => {}
+            }
+            overlap.overlapping = overlapping;
+            keep
+        });
     }
 
     /// Forgets every contact between the two bodies, without reporting events.
@@ -170,9 +288,18 @@ impl ContactSet {
         self.contacts.retain(|_, contact| !(contact.pair.involves_body(body) && contact.pair.involves_body(other)));
     }
 
-    /// Forgets every contact involving `collider`, without reporting events.
+    /// Forgets every contact and sensor overlap involving `collider`, without reporting events.
     pub(crate) fn remove_collider(&mut self, collider: ColliderHandle) {
         self.contacts.retain(|_, contact| !contact.pair.involves_collider(collider));
+        self.sensors.retain(|&(collider_a, collider_b), _| collider_a != collider && collider_b != collider);
+    }
+
+    /// Colliders currently overlapping `sensor`.
+    pub(crate) fn sensor_overlaps(&self, sensor: ColliderHandle) -> impl Iterator<Item = &SensorPair> {
+        self.sensors
+            .values()
+            .filter(move |overlap| overlap.overlapping && overlap.pair.sensor == sensor)
+            .map(|overlap| &overlap.pair)
     }
 
     pub(crate) fn touching(&self) -> impl Iterator<Item = &Contact> {
@@ -184,9 +311,26 @@ impl ContactSet {
     }
 }
 
+/// A collider with its body, or `None` if either was removed.
+fn placed<'a>(
+    collider: ColliderHandle,
+    body: BodyHandle,
+    colliders: &'a Arena<Collider>,
+    bodies: &'a Arena<Body>,
+) -> Option<(&'a Collider, &'a Body)> {
+    Some((colliders.get(collider.0)?, bodies.get(body.0)?))
+}
+
+/// Sensors detect anything but their own body; two fixed bodies never move, so there is nothing
+/// to detect between them.
+fn should_sense(pair: &ContactPair, bodies: &Arena<Body>) -> bool {
+    let (Some(body_a), Some(body_b)) = (bodies.get(pair.body_a.0), bodies.get(pair.body_b.0)) else { return false };
+    pair.body_a != pair.body_b && !(body_a.body_type() == BodyType::Fixed && body_b.body_type() == BodyType::Fixed)
+}
+
 /// Contacts only matter when at least one dynamic body can react to them, and joints may opt
 /// their bodies out of colliding.
-fn should_collide(pair: &ContactPair, bodies: &Arena<Body>, joints: &Arena<Joint>) -> bool {
+pub(crate) fn should_collide(pair: &ContactPair, bodies: &Arena<Body>, joints: &Arena<Joint>) -> bool {
     if pair.body_a == pair.body_b {
         return false;
     }

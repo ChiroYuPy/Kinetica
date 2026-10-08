@@ -3,14 +3,18 @@
 mod arch;
 mod body_types;
 mod bridge;
+mod bullets;
 mod cantilever;
 mod car;
+mod cloth;
 mod contacts;
 mod dominoes;
 mod falling_shapes;
 mod friction;
+mod layers;
 mod machines;
 mod newtons_cradle;
+mod one_way;
 mod pendulum_wave;
 mod pendulums;
 mod pool;
@@ -18,9 +22,14 @@ mod pyramid;
 mod queries;
 mod ragdolls;
 mod restitution;
+mod ropes;
 mod seesaw;
+mod sensors;
+mod sleeping;
+mod soft_bodies;
 mod springs;
 mod stacks;
+mod tearing;
 mod tumbler;
 mod wrecking_ball;
 
@@ -51,6 +60,15 @@ pub const SCENES: &[Scene] = &[
     springs::SCENE,
     machines::SCENE,
     cantilever::SCENE,
+    cloth::SCENE,
+    tearing::SCENE,
+    soft_bodies::SCENE,
+    ropes::SCENE,
+    sleeping::SCENE,
+    layers::SCENE,
+    sensors::SCENE,
+    bullets::SCENE,
+    one_way::SCENE,
     queries::SCENE,
     body_types::SCENE,
     contacts::SCENE,
@@ -73,17 +91,22 @@ pub struct Scene {
 pub enum Category {
     Contacts,
     Joints,
+    SoftStructures,
+    GameFeatures,
     Queries,
     Basics,
 }
 
 impl Category {
-    pub const ALL: [Self; 4] = [Self::Contacts, Self::Joints, Self::Queries, Self::Basics];
+    pub const ALL: [Self; 6] =
+        [Self::Contacts, Self::Joints, Self::SoftStructures, Self::GameFeatures, Self::Queries, Self::Basics];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Contacts => "Contacts",
             Self::Joints => "Joints",
+            Self::SoftStructures => "Soft structures",
+            Self::GameFeatures => "Game features",
             Self::Queries => "Queries",
             Self::Basics => "Engine basics",
         }

@@ -445,3 +445,57 @@ fn point_query_finds_the_shapes_under_a_point() {
     assert!(bodies_at(vec2(4.0, 1.0)).is_empty(), "outside the rotated square");
     assert!(world.colliders_at_point(vec2(3.0, 0.0), &QueryFilter::new()).contains(&block_collider));
 }
+
+#[test]
+fn constraint_force_holds_a_hanging_weight() {
+    let descs: [fn(&World, BodyHandle, BodyHandle) -> kinetica::JointDesc; 4] = [
+        |world, a, b| RevoluteJointDesc::at_world_point(world, a, b, Vec2::ZERO).into(),
+        |world, a, b| DistanceJointDesc::between_world_points(world, a, b, Vec2::ZERO, vec2(0.0, -1.0)).into(),
+        |world, a, b| {
+            DistanceJointDesc::between_world_points(world, a, b, Vec2::ZERO, vec2(0.0, -1.0))
+                .spring(0.0, 0.0)
+                .limits(0.0..=1.0)
+                .into()
+        },
+        |world, a, b| WeldJointDesc::at_world_point(world, a, b, Vec2::ZERO).into(),
+    ];
+    for desc in descs {
+        let mut world = World::new();
+        let ceiling = world.add_body(BodyDesc::fixed());
+        let weight = world.add_body(BodyDesc::dynamic().position(vec2(0.0, -1.0)));
+        world.add_collider(weight, ColliderDesc::circle(0.2).density(10.0));
+        let joint = world.add_joint(desc(&world, ceiling, weight));
+        for _ in 0..120 {
+            world.step(1.0 / 60.0);
+        }
+        let weight_force = world.body(weight).unwrap().mass() * 9.81;
+        let force = world.joint(joint).unwrap().constraint_force();
+        assert!(
+            force.abs_diff_eq(vec2(0.0, weight_force), 0.02 * weight_force),
+            "{force} for a weight of {weight_force}"
+        );
+    }
+}
+
+#[test]
+fn constraint_torque_holds_a_cantilever() {
+    let mut world = World::new();
+    let wall = world.add_body(BodyDesc::fixed());
+    // A 2 m beam welded to the wall at its left end.
+    let beam = world.add_body(BodyDesc::dynamic().position(vec2(1.0, 0.0)));
+    world.add_collider(beam, ColliderDesc::rectangle(1.0, 0.1));
+    let joint = world.add_joint(WeldJointDesc::at_world_point(&world, wall, beam, Vec2::ZERO));
+    for _ in 0..120 {
+        world.step(1.0 / 60.0);
+    }
+    let weight = world.body(beam).unwrap().mass() * 9.81;
+    let joint = world.joint(joint).unwrap();
+    // The weight acts 1 m from the weld: the joint must turn the beam back up.
+    let expected_torque = weight * 1.0;
+    assert!(
+        (joint.constraint_torque() - expected_torque).abs() < 0.05 * expected_torque,
+        "{}",
+        joint.constraint_torque()
+    );
+    assert!((joint.constraint_force().y - weight).abs() < 0.02 * weight);
+}

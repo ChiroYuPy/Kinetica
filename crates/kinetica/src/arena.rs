@@ -27,6 +27,13 @@ pub(crate) struct Arena<T> {
     len: usize,
 }
 
+impl Index {
+    /// Position in the arena, unique among the values currently stored.
+    pub(crate) fn slot(self) -> usize {
+        self.slot as usize
+    }
+}
+
 impl<T> Default for Arena<T> {
     fn default() -> Self {
         Self { entries: Vec::new(), first_free: None, len: 0 }
@@ -102,6 +109,11 @@ impl<T> Arena<T> {
 
     pub(crate) fn len(&self) -> usize {
         self.len
+    }
+
+    /// Upper bound of the [`Index::slot`] of every stored value.
+    pub(crate) fn slot_count(&self) -> usize {
+        self.entries.len()
     }
 
     pub(crate) fn iter(&self) -> impl Iterator<Item = (Index, &T)> {

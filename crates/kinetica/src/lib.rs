@@ -30,7 +30,9 @@ mod collider;
 pub mod collision;
 mod constants;
 mod contact;
+mod continuous;
 mod debug_draw;
+mod island;
 pub mod joint;
 pub mod math;
 mod query;
@@ -39,8 +41,8 @@ mod solver;
 mod world;
 
 pub use body::{Body, BodyDesc, BodyHandle, BodyType};
-pub use collider::{Collider, ColliderDesc, ColliderHandle};
-pub use contact::{CollisionEvent, Contact, ContactPair};
+pub use collider::{Collider, ColliderDesc, ColliderHandle, CollisionLayers};
+pub use contact::{CollisionEvent, Contact, ContactPair, SensorEvent, SensorPair};
 pub use debug_draw::{Color, DebugDraw, DebugDrawOptions};
 pub use joint::{
     DistanceJointDesc, Joint, JointDesc, JointHandle, JointKind, MouseJointDesc, PrismaticJointDesc, RevoluteJointDesc,
@@ -54,7 +56,8 @@ pub use world::{DEFAULT_GRAVITY, World};
 pub mod prelude {
     pub use crate::math::{Rot, Transform, Vec2, vec2};
     pub use crate::{
-        BodyDesc, BodyHandle, BodyType, ColliderDesc, ColliderHandle, CollisionEvent, DistanceJointDesc, JointHandle,
-        JointKind, MouseJointDesc, PrismaticJointDesc, QueryFilter, RevoluteJointDesc, WeldJointDesc, World,
+        BodyDesc, BodyHandle, BodyType, ColliderDesc, ColliderHandle, CollisionEvent, CollisionLayers,
+        DistanceJointDesc, JointHandle, JointKind, MouseJointDesc, PrismaticJointDesc, QueryFilter, RevoluteJointDesc,
+        SensorEvent, WeldJointDesc, World,
     };
 }

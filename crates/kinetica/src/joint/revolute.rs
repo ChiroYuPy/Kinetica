@@ -179,6 +179,10 @@ impl RevoluteJoint {
         }
     }
 
+    pub(crate) fn reaction_impulse(&self) -> (Vec2, f32) {
+        (self.linear_impulse, self.motor_impulse + self.lower_impulse - self.upper_impulse)
+    }
+
     pub(crate) fn prepare(&mut self, frame: &JointFrame, a: &Body, b: &Body) {
         self.delta_angle = wrap_angle(relative_angle(b.rotation(), a.rotation()) - self.reference_angle);
         self.axial_mass = frame.axial_mass();

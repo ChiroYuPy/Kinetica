@@ -152,6 +152,8 @@ pub struct Joint {
     collide_connected: bool,
     kind: JointKind,
     frame: JointFrame,
+    /// Converts the stored per-substep impulses to forces.
+    inverse_substep: f32,
 }
 
 impl Joint {
@@ -165,7 +167,14 @@ impl Joint {
             JointDesc::Weld(desc) => JointKind::Weld(WeldJoint::new(desc)),
             JointDesc::Mouse(desc) => JointKind::Mouse(MouseJoint::new(desc)),
         };
-        Self { body_a, body_b, collide_connected: desc.collide_connected(), kind, frame: JointFrame::default() }
+        Self {
+            body_a,
+            body_b,
+            collide_connected: desc.collide_connected(),
+            kind,
+            frame: JointFrame::default(),
+            inverse_substep: 0.0,
+        }
     }
 
     /// First body.
@@ -221,6 +230,36 @@ impl Joint {
         }
     }
 
+    /// Force the joint applied to body B during the last step, in newtons, in world space.
+    /// Body A received the opposite force.
+    ///
+    /// Useful to break joints under load:
+    ///
+    /// ```
+    /// # use kinetica::prelude::*;
+    /// # let mut world = World::new();
+    /// # let ceiling = world.add_body(BodyDesc::fixed());
+    /// # let lamp = world.add_body(BodyDesc::dynamic().position(vec2(0.0, -1.0)));
+    /// # world.add_collider(lamp, ColliderDesc::circle(0.2));
+    /// let chain = world.add_joint(RevoluteJointDesc::at_world_point(&world, ceiling, lamp, Vec2::ZERO));
+    /// world.step(1.0 / 60.0);
+    /// if world.joint(chain).unwrap().constraint_force().length() > 1000.0 {
+    ///     world.remove_joint(chain);
+    /// }
+    /// ```
+    #[must_use]
+    pub fn constraint_force(&self) -> Vec2 {
+        self.inverse_substep * self.kind.reaction_impulse().0
+    }
+
+    /// Torque the joint applied to body B during the last step, in N·m, not counting the
+    /// torque of [`constraint_force`](Self::constraint_force) about the anchor. Body A
+    /// received the opposite torque.
+    #[must_use]
+    pub fn constraint_torque(&self) -> f32 {
+        self.inverse_substep * self.kind.reaction_impulse().1
+    }
+
     /// Returns `true` if the joint stops `body` and `other` from colliding.
     pub(crate) fn prevents_collision(&self, body: BodyHandle, other: BodyHandle) -> bool {
         !self.collide_connected && self.other_body(body) == Some(other)
@@ -234,6 +273,7 @@ impl Joint {
             _ => self.local_anchors(),
         };
         self.frame = JointFrame::new(a, b, local_anchor_a, local_anchor_b);
+        self.inverse_substep = context.inverse_substep;
         match &mut self.kind {
             JointKind::Revolute(joint) => joint.prepare(&self.frame, a, b),
             JointKind::Distance(joint) => joint.prepare(&self.frame, context),
@@ -265,6 +305,19 @@ impl Joint {
             JointKind::Weld(joint) => joint.solve(frame, a, b, context, use_bias),
             // A soft spring by design: identical with and without bias.
             JointKind::Mouse(joint) => joint.solve(frame, b, context),
+        }
+    }
+}
+
+impl JointKind {
+    /// Linear and angular impulses applied to body B during the last substep.
+    fn reaction_impulse(&self) -> (Vec2, f32) {
+        match self {
+            Self::Revolute(joint) => joint.reaction_impulse(),
+            Self::Distance(joint) => joint.reaction_impulse(),
+            Self::Prismatic(joint) => joint.reaction_impulse(),
+            Self::Weld(joint) => joint.reaction_impulse(),
+            Self::Mouse(joint) => joint.reaction_impulse(),
         }
     }
 }

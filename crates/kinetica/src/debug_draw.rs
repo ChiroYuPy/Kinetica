@@ -28,6 +28,12 @@ impl Color {
         Self { r, g, b, a: 1.0 }
     }
 
+    /// Returns the color with its red, green and blue components multiplied by `factor`.
+    #[must_use]
+    pub const fn scaled(self, factor: f32) -> Self {
+        Self { r: self.r * factor, g: self.g * factor, b: self.b * factor, a: self.a }
+    }
+
     /// Returns the same color with another opacity.
     #[must_use]
     pub const fn with_alpha(self, a: f32) -> Self {
@@ -51,7 +57,7 @@ pub trait DebugDraw {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(clippy::struct_excessive_bools, reason = "independent on/off switches")]
 pub struct DebugDrawOptions {
-    /// Collider shapes, colored by body type.
+    /// Collider shapes, colored by body type, darker when sleeping and see-through for sensors.
     pub shapes: bool,
     /// Collider bounding boxes.
     pub aabbs: bool,
@@ -79,6 +85,10 @@ const SPECULATIVE_POINT_COLOR: Color = Color::rgb(0.95, 0.85, 0.25);
 const CONTACT_NORMAL_COLOR: Color = Color::rgb(0.35, 0.85, 0.45);
 const JOINT_COLOR: Color = Color::rgb(0.4, 0.85, 0.85);
 const MOUSE_JOINT_COLOR: Color = Color::rgb(0.95, 0.95, 0.4);
+/// Sleeping bodies are drawn darker.
+const SLEEPING_BRIGHTNESS: f32 = 0.55;
+/// Sensors are drawn see-through.
+const SENSOR_OPACITY: f32 = 0.3;
 /// Length of the drawn contact normals, in meters.
 const CONTACT_NORMAL_LENGTH: f32 = 0.3;
 
@@ -89,11 +99,17 @@ impl World {
             let Some(body) = self.body(collider.body()) else { continue };
 
             if options.shapes {
-                let color = match body.body_type() {
+                let mut color = match body.body_type() {
                     BodyType::Fixed => FIXED_COLOR,
                     BodyType::Kinematic => KINEMATIC_COLOR,
                     BodyType::Dynamic => DYNAMIC_COLOR,
                 };
+                if body.is_sleeping() {
+                    color = color.scaled(SLEEPING_BRIGHTNESS);
+                }
+                if collider.is_sensor() {
+                    color = color.with_alpha(SENSOR_OPACITY);
+                }
                 draw_shape(drawer, collider.shape(), body.transform(), color);
             }
 
@@ -147,11 +163,15 @@ impl World {
                     drawer.draw_segment(a.world_point(local_anchor_a), anchor_b, JOINT_COLOR);
                 }
                 _ => {
-                    // Each body's center linked to its anchor, like a skeleton.
+                    // Each moving body's center linked to its anchor, like a skeleton. Fixed and
+                    // kinematic bodies are often large or far away, so they would only add noise.
                     let anchor_a = a.world_point(local_anchor_a);
-                    drawer.draw_segment(a.center_of_mass(), anchor_a, JOINT_COLOR);
+                    for (body, anchor) in [(a, anchor_a), (b, anchor_b)] {
+                        if body.body_type() == BodyType::Dynamic {
+                            drawer.draw_segment(body.center_of_mass(), anchor, JOINT_COLOR);
+                        }
+                    }
                     drawer.draw_segment(anchor_a, anchor_b, JOINT_COLOR);
-                    drawer.draw_segment(b.center_of_mass(), anchor_b, JOINT_COLOR);
                     drawer.draw_point(anchor_b, JOINT_COLOR);
                 }
             }

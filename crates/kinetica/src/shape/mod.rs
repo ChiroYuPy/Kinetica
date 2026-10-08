@@ -27,6 +27,20 @@ impl Shape {
         }
     }
 
+    /// Distance from the center of the shape to its closest edge: how far it can move before
+    /// it could pass through something thin.
+    pub(crate) fn min_extent(&self) -> f32 {
+        match self {
+            Self::Circle(circle) => circle.radius(),
+            Self::Polygon(polygon) => polygon
+                .vertices()
+                .iter()
+                .zip(polygon.normals())
+                .map(|(&vertex, normal)| normal.dot(vertex - polygon.centroid()))
+                .fold(f32::INFINITY, f32::min),
+        }
+    }
+
     /// Returns `true` if `point` (in world space) is inside the shape placed at `transform`.
     #[must_use]
     pub fn contains_point(&self, transform: &Transform, point: Vec2) -> bool {

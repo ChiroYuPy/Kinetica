@@ -10,7 +10,8 @@ use crate::math::{Aabb, Transform, Vec2};
 use crate::shape::Shape;
 use crate::world::World;
 
-/// Selects which colliders a query considers. The default accepts everything.
+/// Selects which colliders a query considers. The default accepts every collider except
+/// sensors.
 ///
 /// ```
 /// use kinetica::prelude::*;
@@ -20,9 +21,12 @@ use crate::world::World;
 /// let filter = QueryFilter::new().exclude_body(player).exclude_dynamic();
 /// let ground_below = world.cast_ray(vec2(0.0, 0.0), vec2(0.0, -2.0), &filter);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(clippy::struct_excessive_bools, reason = "independent on/off switches")]
 pub struct QueryFilter {
+    /// Only accepts colliders belonging to one of these layers, see
+    /// [`CollisionLayers::memberships`](crate::CollisionLayers::memberships).
+    pub layers: u32,
     /// Skips every collider of this body.
     pub excluded_body: Option<BodyHandle>,
     /// Skips colliders of fixed bodies.
@@ -31,13 +35,42 @@ pub struct QueryFilter {
     pub skip_kinematic: bool,
     /// Skips colliders of dynamic bodies.
     pub skip_dynamic: bool,
+    /// Accepts sensors too.
+    pub include_sensors: bool,
+}
+
+impl Default for QueryFilter {
+    fn default() -> Self {
+        Self {
+            layers: u32::MAX,
+            excluded_body: None,
+            skip_fixed: false,
+            skip_kinematic: false,
+            skip_dynamic: false,
+            include_sensors: false,
+        }
+    }
 }
 
 impl QueryFilter {
-    /// A filter accepting every collider.
+    /// A filter accepting every collider except sensors.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Only accepts colliders belonging to one of the `layers`.
+    #[must_use]
+    pub fn layers(mut self, layers: u32) -> Self {
+        self.layers = layers;
+        self
+    }
+
+    /// Accepts sensors too.
+    #[must_use]
+    pub fn include_sensors(mut self) -> Self {
+        self.include_sensors = true;
+        self
     }
 
     /// Skips every collider of `body`.
@@ -69,7 +102,10 @@ impl QueryFilter {
     }
 
     fn accepts(&self, world: &World, collider: &Collider) -> bool {
-        if self.excluded_body == Some(collider.body()) {
+        if self.excluded_body == Some(collider.body())
+            || collider.layers().memberships & self.layers == 0
+            || (collider.is_sensor() && !self.include_sensors)
+        {
             return false;
         }
         match world.body(collider.body()).map(crate::Body::body_type) {

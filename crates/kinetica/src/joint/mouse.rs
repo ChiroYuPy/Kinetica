@@ -116,6 +116,10 @@ impl MouseJoint {
         self.max_force = max_force;
     }
 
+    pub(crate) fn reaction_impulse(&self) -> (Vec2, f32) {
+        (self.linear_impulse, 0.0)
+    }
+
     pub(crate) fn prepare(&mut self, b: &Body, context: &SolverContext) {
         self.softness = Softness::new(self.spring.hertz, self.spring.damping_ratio, context.substep);
         self.offset = b.center_of_mass() - self.target;

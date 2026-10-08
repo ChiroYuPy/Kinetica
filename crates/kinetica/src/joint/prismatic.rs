@@ -187,6 +187,12 @@ impl PrismaticJoint {
         }
     }
 
+    /// Uses the axis at the start of the step, close enough for reporting.
+    pub(crate) fn reaction_impulse(&self) -> (Vec2, f32) {
+        let axial = self.motor_impulse + self.lower_impulse - self.upper_impulse;
+        (axial * self.axis + self.impulse.x * self.axis.perp(), self.impulse.y)
+    }
+
     pub(crate) fn prepare(&mut self, frame: &JointFrame, a: &Body, b: &Body) {
         self.axis = a.world_vector(self.local_axis_a);
         self.delta_angle = wrap_angle(relative_angle(b.rotation(), a.rotation()) - self.reference_angle);
