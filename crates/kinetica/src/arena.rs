@@ -82,6 +82,24 @@ impl<T> Arena<T> {
         }
     }
 
+    /// Returns two distinct values mutably at once, or `None` if either index is invalid.
+    ///
+    /// # Panics
+    ///
+    /// Panics if both indices refer to the same slot.
+    pub(crate) fn get2_mut(&mut self, a: Index, b: Index) -> Option<(&mut T, &mut T)> {
+        assert_ne!(a.slot, b.slot, "cannot borrow the same arena slot twice");
+        let [entry_a, entry_b] =
+            self.entries.get_disjoint_mut([a.slot as usize, b.slot as usize]).expect("slots are distinct");
+        match (entry_a, entry_b) {
+            (
+                Entry::Occupied { generation: generation_a, value: value_a },
+                Entry::Occupied { generation: generation_b, value: value_b },
+            ) if *generation_a == a.generation && *generation_b == b.generation => Some((value_a, value_b)),
+            _ => None,
+        }
+    }
+
     pub(crate) fn len(&self) -> usize {
         self.len
     }
@@ -126,6 +144,20 @@ mod tests {
         assert_eq!(new.slot, old.slot, "the freed slot should be reused");
         assert_eq!(arena.get(old), None);
         assert_eq!(arena.get(new), Some(&2));
+    }
+
+    #[test]
+    fn get2_mut_returns_both_values_in_order() {
+        let mut arena = Arena::default();
+        let a = arena.insert(1);
+        let b = arena.insert(2);
+        let (first, second) = arena.get2_mut(b, a).unwrap();
+        assert_eq!((*first, *second), (2, 1));
+        *first = 20;
+        assert_eq!(arena.get(b), Some(&20));
+
+        arena.remove(a);
+        assert!(arena.get2_mut(a, b).is_none());
     }
 
     #[test]

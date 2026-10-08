@@ -4,8 +4,10 @@ use crate::arena::Arena;
 use crate::body::{Body, BodyDesc, BodyHandle};
 use crate::collider::{Collider, ColliderDesc, ColliderHandle};
 use crate::collision::broad_phase::BroadPhase;
+use crate::constants::DEFAULT_SUBSTEP_COUNT;
 use crate::contact::{CollisionEvent, Contact, ContactSet};
 use crate::math::{Vec2, vec2};
+use crate::solver::{self, StepSettings};
 
 /// Earth gravity, pointing down the Y axis.
 pub const DEFAULT_GRAVITY: Vec2 = vec2(0.0, -9.81);
@@ -32,6 +34,7 @@ pub const DEFAULT_GRAVITY: Vec2 = vec2(0.0, -9.81);
 #[derive(Debug, Clone)]
 pub struct World {
     gravity: Vec2,
+    substep_count: u32,
     bodies: Arena<Body>,
     colliders: Arena<Collider>,
     broad_phase: BroadPhase,
@@ -45,6 +48,7 @@ impl World {
     pub fn new() -> Self {
         Self {
             gravity: DEFAULT_GRAVITY,
+            substep_count: DEFAULT_SUBSTEP_COUNT,
             bodies: Arena::default(),
             colliders: Arena::default(),
             broad_phase: BroadPhase::default(),
@@ -62,6 +66,23 @@ impl World {
     /// Sets the gravity acceleration.
     pub fn set_gravity(&mut self, gravity: Vec2) {
         self.gravity = gravity;
+    }
+
+    /// Number of substeps each [`step`](Self::step) is divided into. Defaults to 4.
+    #[must_use]
+    pub fn substep_count(&self) -> u32 {
+        self.substep_count
+    }
+
+    /// Sets the number of substeps. More substeps make stacks and fast bodies more accurate, at
+    /// a proportional cost.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `count` is zero.
+    pub fn set_substep_count(&mut self, count: u32) {
+        assert!(count > 0, "a step needs at least one substep");
+        self.substep_count = count;
     }
 
     /// Creates a body and returns its handle.
@@ -190,12 +211,10 @@ impl World {
         // Contact geometry for the current positions.
         self.contacts.update(&self.colliders, &self.bodies, &self.broad_phase, &mut self.collision_events);
 
-        let gravity = self.gravity;
+        let settings = StepSettings { gravity: self.gravity, dt, substep_count: self.substep_count };
+        solver::step(&mut self.bodies, &self.colliders, &mut self.contacts, &settings);
         for body in self.bodies.values_mut() {
-            body.integrate_velocity(gravity, dt);
-        }
-        for body in self.bodies.values_mut() {
-            body.integrate_position(dt);
+            body.clear_forces();
         }
 
         // Find the pairs the motion brought together; they are collided at the next step.

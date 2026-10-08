@@ -33,8 +33,7 @@ fn build(world: &mut World) {
 
     // A bar sweeping both rings: its body origin is the pivot, the shape is off-center.
     let bar = world.add_body(BodyDesc::kinematic().angular_velocity(0.35));
-    let bar_shape = [vec2(1.0, -0.12), vec2(6.0, -0.12), vec2(6.0, 0.12), vec2(1.0, 0.12)];
-    world.add_collider(bar, ColliderDesc::convex_hull(&bar_shape).expect("the bar is a valid rectangle"));
+    world.add_collider(bar, ColliderDesc::offset_rectangle(2.5, 0.12, vec2(3.5, 0.0), 0.0));
 
     // A ball orbiting the other way, through the outer ring.
     let orbiter = world.add_body(BodyDesc::kinematic().angular_velocity(-0.5));

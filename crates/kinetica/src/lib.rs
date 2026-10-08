@@ -33,6 +33,7 @@ mod contact;
 mod debug_draw;
 pub mod math;
 pub mod shape;
+mod solver;
 mod world;
 
 pub use body::{Body, BodyDesc, BodyHandle, BodyType};

@@ -67,6 +67,10 @@ impl Contact {
         &self.manifold
     }
 
+    pub(crate) fn manifold_mut(&mut self) -> &mut Manifold {
+        &mut self.manifold
+    }
+
     fn is_touching(&self) -> bool {
         !self.manifold.is_empty()
     }
@@ -137,11 +141,13 @@ impl ContactSet {
             };
 
             let keep = broad_phase.fat_aabb(collider_a.proxy()).overlaps(&broad_phase.fat_aabb(collider_b.proxy()));
-            contact.manifold = if keep {
+            let mut manifold = if keep {
                 collide(collider_a.shape(), body_a.transform(), collider_b.shape(), body_b.transform())
             } else {
                 Manifold::default()
             };
+            manifold.inherit_impulses(&contact.manifold);
+            contact.manifold = manifold;
 
             match (was_touching, contact.is_touching()) {
                 (false, true) => events.push(CollisionEvent::Started(pair)),
@@ -159,6 +165,10 @@ impl ContactSet {
 
     pub(crate) fn touching(&self) -> impl Iterator<Item = &Contact> {
         self.contacts.values().filter(|contact| contact.is_touching())
+    }
+
+    pub(crate) fn get_mut(&mut self, pair: &ContactPair) -> Option<&mut Contact> {
+        self.contacts.get_mut(&(pair.collider_a, pair.collider_b))
     }
 }
 

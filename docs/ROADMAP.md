@@ -11,6 +11,7 @@
   `*Desc` builders.
 - **Events**: queued during `step`, read afterwards with `World::collision_events`. No
   callbacks. Removing a collider or body does not report `Stopped` for its contacts.
+- **Materials**: combined friction is `sqrt(a * b)`, combined restitution is `max(a, b)`.
 - **Contacts**: only created when at least one body is dynamic, never between colliders of the
   same body. Points are reported slightly before shapes touch (speculative distance).
 - **Determinism**: same inputs on the same build give bit-identical results, and
@@ -27,8 +28,8 @@
 - [x] **1. Collision detection**: broad phase (dynamic AABB tree with fat boxes), narrow
       phase (circle/polygon manifolds via SAT and clipping), deterministic contact set,
       `Started`/`Stopped` events, contact debug drawing.
-- [ ] **2. Contact solver**: soft-step solver with substepping, warm starting, friction and
-      restitution. Goal: stable stacks and pyramids.
+- [x] **2. Contact solver**: soft-step solver (Box2D v3 style) with 4 substeps, relax pass,
+      warm starting by feature id, Coulomb friction, restitution. A 210-box pyramid stands.
 - [ ] **3. Queries**: ray casts, shape casts, point and AABB queries. Mouse dragging in the
       testbed.
 - [ ] **4. Joints**: revolute, distance, prismatic, weld, mouse; motors and limits.

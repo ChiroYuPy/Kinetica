@@ -58,6 +58,16 @@ impl ColliderDesc {
         Self::new(Polygon::rectangle(half_width, half_height))
     }
 
+    /// Describes a rectangle placed at `center` and rotated by `angle`, relative to the body origin.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a half extent is not strictly positive and finite.
+    #[must_use]
+    pub fn offset_rectangle(half_width: f32, half_height: f32, center: Vec2, angle: f32) -> Self {
+        Self::new(Polygon::offset_rectangle(half_width, half_height, center, angle))
+    }
+
     /// Describes a regular polygon centered on the body origin.
     ///
     /// # Panics

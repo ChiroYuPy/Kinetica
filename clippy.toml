@@ -1,1 +1,1 @@
-doc-valid-idents = ["Box2D", ".."]
+doc-valid-idents = ["Box2D", "Solver2D", ".."]

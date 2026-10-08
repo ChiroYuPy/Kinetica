@@ -4,7 +4,7 @@ use super::Scene;
 
 pub const SCENE: Scene = Scene {
     name: "Falling shapes",
-    description: "Every shape under gravity. Collisions are not implemented yet: they fall through the ground.",
+    description: "Every kind of shape falls and piles up on the ground.",
     camera_center: vec2(0.0, 5.0),
     view_height: 16.0,
     build,

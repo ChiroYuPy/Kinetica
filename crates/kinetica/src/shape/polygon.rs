@@ -3,7 +3,7 @@ use std::fmt;
 
 use super::MassProperties;
 use crate::constants::LINEAR_SLOP;
-use crate::math::{Aabb, Transform, Vec2, vec2};
+use crate::math::{Aabb, Rot, Transform, Vec2, vec2};
 
 /// Maximum number of vertices of a [`Polygon`].
 ///
@@ -64,6 +64,26 @@ impl Polygon {
             vec2(half_width, half_height),
             vec2(-half_width, half_height),
         ])
+    }
+
+    /// Creates a rectangle centered on `center` and rotated by `angle` radians, both relative to
+    /// the body origin. Useful to build compound bodies, such as an open box from four walls.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a half extent is not strictly positive and finite.
+    #[must_use]
+    pub fn offset_rectangle(half_width: f32, half_height: f32, center: Vec2, angle: f32) -> Self {
+        let placement = Transform::new(center, Rot::from_angle(angle));
+        let mut rectangle = Self::rectangle(half_width, half_height);
+        for vertex in &mut rectangle.vertices {
+            *vertex = placement.transform_point(*vertex);
+        }
+        for normal in &mut rectangle.normals {
+            *normal = placement.rotation.rotate(*normal);
+        }
+        rectangle.centroid = center;
+        rectangle
     }
 
     /// Creates a regular polygon centered on the body origin, with a vertex on the +X axis.
@@ -249,6 +269,23 @@ mod tests {
         let polygon = Polygon::rectangle(1.0, 1.0);
         for (vertex, normal) in polygon.vertices().iter().zip(polygon.normals()) {
             assert!((*vertex - polygon.centroid()).dot(*normal) > 0.0);
+        }
+    }
+
+    #[test]
+    fn offset_rectangle_matches_moved_rectangle() {
+        let center = vec2(3.0, -1.0);
+        let offset = Polygon::offset_rectangle(1.0, 0.5, center, std::f32::consts::FRAC_PI_2);
+        assert!(offset.centroid().abs_diff_eq(center, 1e-6));
+        let props = offset.mass_properties(1.0);
+        let reference = Polygon::rectangle(1.0, 0.5).mass_properties(1.0);
+        assert!((props.mass - reference.mass).abs() < 1e-5);
+        assert!((props.inertia - reference.inertia).abs() < 1e-4);
+        // Rotated a quarter turn, the long side is vertical.
+        let aabb = offset.compute_aabb(&Transform::IDENTITY);
+        assert!(aabb.half_extents().abs_diff_eq(vec2(0.5, 1.0), 1e-5));
+        for (vertex, normal) in offset.vertices().iter().zip(offset.normals()) {
+            assert!((*vertex - center).dot(*normal) > 0.0);
         }
     }
 

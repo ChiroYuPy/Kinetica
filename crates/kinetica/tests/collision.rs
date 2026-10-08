@@ -11,7 +11,7 @@ struct Scene {
     ball: BodyHandle,
 }
 
-/// A ball dropped from above a thin fixed ground. There is no solver yet, so it falls through.
+/// A ball dropped from above a thin fixed ground.
 fn ball_above_ground() -> Scene {
     let mut world = World::new();
     let ground = world.add_body(BodyDesc::fixed());
@@ -22,17 +22,26 @@ fn ball_above_ground() -> Scene {
 }
 
 #[test]
-fn falling_ball_starts_then_stops_touching_the_ground() {
+fn ball_lands_then_leaves_the_ground() {
     let Scene { mut world, ground, ball } = ball_above_ground();
-
     let mut history = Vec::new();
-    for _ in 0..120 {
-        world.step(DT);
+    let mut record_events = |world: &World| {
         for event in world.collision_events() {
             assert!(event.pair().involves_body(ground) && event.pair().involves_body(ball));
             history.push(matches!(event, CollisionEvent::Started(_)));
         }
+    };
+
+    for _ in 0..120 {
+        world.step(DT);
+        record_events(&world);
     }
+    world.body_mut(ball).unwrap().set_linear_velocity(vec2(0.0, 5.0));
+    for _ in 0..30 {
+        world.step(DT);
+        record_events(&world);
+    }
+
     assert_eq!(history, [true, false], "expected exactly one Started then one Stopped");
 }
 

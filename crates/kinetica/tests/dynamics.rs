@@ -22,11 +22,13 @@ fn free_fall_matches_semi_implicit_euler() {
         world.step(DT);
     }
 
-    // Semi-implicit Euler: v_n = n·g·dt and y_n = y_0 + g·dt²·n(n+1)/2.
-    let n = steps as f32;
+    // Semi-implicit Euler over n substeps of length h: v = n·g·h and y = y_0 + g·h²·n(n+1)/2.
+    let substeps = world.substep_count() as f32;
+    let h = DT / substeps;
+    let n = steps as f32 * substeps;
     let body = world.body(body).unwrap();
-    assert!((body.linear_velocity().y - n * gravity * DT).abs() < 1e-3);
-    let expected_height = start_height + gravity * DT * DT * n * (n + 1.0) / 2.0;
+    assert!((body.linear_velocity().y - n * gravity * h).abs() < 1e-3);
+    let expected_height = start_height + gravity * h * h * n * (n + 1.0) / 2.0;
     assert!((body.position().y - expected_height).abs() < 1e-3);
 }
 

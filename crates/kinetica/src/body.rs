@@ -163,6 +163,10 @@ pub struct Body {
     center: Vec2,
     /// Center of mass relative to the body origin, in the local frame.
     local_center: Vec2,
+    /// World center of mass and rotation when the current step started; the contact solver
+    /// measures how far the body moved since then.
+    center_at_step_start: Vec2,
+    rotation_at_step_start: Rot,
     linear_velocity: Vec2,
     angular_velocity: f32,
     force: Vec2,
@@ -187,6 +191,8 @@ impl Body {
             transform,
             center: transform.position,
             local_center: Vec2::ZERO,
+            center_at_step_start: transform.position,
+            rotation_at_step_start: transform.rotation,
             linear_velocity: if is_fixed { Vec2::ZERO } else { desc.linear_velocity },
             angular_velocity: if is_fixed { 0.0 } else { desc.angular_velocity },
             force: Vec2::ZERO,
@@ -418,6 +424,37 @@ impl Body {
         self.center = self.transform.transform_point(self.local_center);
     }
 
+    pub(crate) fn inverse_mass(&self) -> f32 {
+        self.inverse_mass
+    }
+
+    pub(crate) fn inverse_inertia(&self) -> f32 {
+        self.inverse_inertia
+    }
+
+    /// Changes the velocities as if `impulse` were applied at `anchor`, a point relative to the
+    /// center of mass. Has no effect on fixed and kinematic bodies, whose inverse mass is zero.
+    pub(crate) fn apply_solver_impulse(&mut self, impulse: Vec2, anchor: Vec2) {
+        self.linear_velocity += self.inverse_mass * impulse;
+        self.angular_velocity += self.inverse_inertia * anchor.perp_dot(impulse);
+    }
+
+    /// Records the placement at the start of a step, see [`Self::delta_position`].
+    pub(crate) fn begin_step(&mut self) {
+        self.center_at_step_start = self.center;
+        self.rotation_at_step_start = self.transform.rotation;
+    }
+
+    /// Displacement of the center of mass since [`Self::begin_step`].
+    pub(crate) fn delta_position(&self) -> Vec2 {
+        self.center - self.center_at_step_start
+    }
+
+    /// Rotation since [`Self::begin_step`].
+    pub(crate) fn delta_rotation(&self) -> Rot {
+        self.transform.rotation * self.rotation_at_step_start.inverse()
+    }
+
     /// Applies gravity, forces and damping to the velocities.
     pub(crate) fn integrate_velocity(&mut self, gravity: Vec2, dt: f32) {
         if self.body_type != BodyType::Dynamic {
@@ -433,15 +470,18 @@ impl Body {
         self.angular_velocity /= 1.0 + dt * self.angular_damping;
     }
 
-    /// Moves the body according to its velocities and clears the accumulated forces.
+    /// Moves the body according to its velocities.
     pub(crate) fn integrate_position(&mut self, dt: f32) {
-        self.force = Vec2::ZERO;
-        self.torque = 0.0;
         if self.body_type == BodyType::Fixed {
             return;
         }
         self.center += dt * self.linear_velocity;
         self.transform.rotation = self.transform.rotation.integrate(dt * self.angular_velocity);
         self.transform.position = self.center - self.transform.rotation.rotate(self.local_center);
+    }
+
+    pub(crate) fn clear_forces(&mut self) {
+        self.force = Vec2::ZERO;
+        self.torque = 0.0;
     }
 }
