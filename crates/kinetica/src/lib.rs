@@ -33,6 +33,7 @@ mod contact;
 mod debug_draw;
 pub mod joint;
 pub mod math;
+mod query;
 pub mod shape;
 mod solver;
 mod world;
@@ -46,6 +47,7 @@ pub use joint::{
     WeldJointDesc,
 };
 pub use math::{Vec2, vec2};
+pub use query::{QueryFilter, RayHit, ShapeHit};
 pub use world::{DEFAULT_GRAVITY, World};
 
 /// The types needed by most programs, to import with `use kinetica::prelude::*;`.
@@ -53,6 +55,6 @@ pub mod prelude {
     pub use crate::math::{Rot, Transform, Vec2, vec2};
     pub use crate::{
         BodyDesc, BodyHandle, BodyType, ColliderDesc, ColliderHandle, CollisionEvent, DistanceJointDesc, JointHandle,
-        JointKind, MouseJointDesc, PrismaticJointDesc, RevoluteJointDesc, WeldJointDesc, World,
+        JointKind, MouseJointDesc, PrismaticJointDesc, QueryFilter, RevoluteJointDesc, WeldJointDesc, World,
     };
 }

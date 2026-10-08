@@ -70,6 +70,19 @@ pub(super) fn collide_polygons(a: &Polygon, transform_a: &Transform, b: &Polygon
     manifold
 }
 
+/// A lower bound of the distance between two polygons, negative when they overlap.
+///
+/// The largest separation along any edge normal: exact when overlapping or when the closest
+/// features are an edge and a vertex, an underestimate when they are two vertices.
+pub(super) fn separation_lower_bound(
+    a: &Polygon,
+    transform_a: &Transform,
+    b: &Polygon,
+    transform_b: &Transform,
+) -> f32 {
+    find_max_separation(a, transform_a, b, transform_b).1.max(find_max_separation(b, transform_b, a, transform_a).1)
+}
+
 /// Finds the edge of `polygon` along whose normal `other` is the farthest away.
 /// Returns the edge index and that separation (negative when overlapping).
 fn find_max_separation(

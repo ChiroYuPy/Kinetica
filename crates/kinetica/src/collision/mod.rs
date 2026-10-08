@@ -9,3 +9,4 @@ mod narrow_phase;
 
 pub use manifold::{Manifold, ManifoldPoint};
 pub use narrow_phase::collide;
+pub(crate) use narrow_phase::{separation_lower_bound, time_of_impact};

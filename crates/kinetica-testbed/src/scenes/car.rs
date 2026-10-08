@@ -2,7 +2,7 @@ use kinetica::joint::Motor;
 use kinetica::prelude::*;
 use macroquad::input::{KeyCode, is_key_down};
 
-use super::{Build, Category, Scene, SceneUpdate};
+use super::{Build, Category, Frame, Scene, SceneUpdate};
 
 pub const SCENE: Scene = Scene {
     name: "Car",
@@ -128,7 +128,7 @@ impl Car {
 }
 
 impl SceneUpdate for Car {
-    fn update(&mut self, world: &mut World, _time: f32) {
+    fn update(&mut self, world: &mut World, _frame: &Frame) {
         let direction = match (is_key_down(KeyCode::Right), is_key_down(KeyCode::Left)) {
             (true, false) => 1.0,
             (false, true) => -1.0,

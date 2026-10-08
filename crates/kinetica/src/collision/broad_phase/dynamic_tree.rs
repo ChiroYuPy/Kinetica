@@ -9,7 +9,7 @@
 //!
 //! Based on the tree used in Box2D.
 
-use crate::math::Aabb;
+use crate::math::{Aabb, Vec2};
 
 /// Identifies a leaf of the tree. It stays valid until the leaf is destroyed, even when the
 /// leaf moves.
@@ -86,6 +86,31 @@ impl<T: Copy> DynamicTree<T> {
             }
             match node.kind {
                 NodeKind::Leaf(data) => visit(ProxyId(id), data),
+                NodeKind::Internal(children) => stack.extend(children),
+                NodeKind::Free { .. } => unreachable!("free nodes are never linked into the tree"),
+            }
+        }
+    }
+
+    /// Calls `visit` for every leaf whose box the segment from `origin` to
+    /// `origin + max_fraction * translation` crosses. `visit` returns the new maximum fraction,
+    /// which shortens the segment for the remaining leaves (return its input to keep it).
+    pub(crate) fn ray_cast(
+        &self,
+        origin: Vec2,
+        translation: Vec2,
+        max_fraction: f32,
+        mut visit: impl FnMut(T, f32) -> f32,
+    ) {
+        let mut max_fraction = max_fraction;
+        let mut stack: Vec<NodeId> = self.root.into_iter().collect();
+        while let Some(id) = stack.pop() {
+            let node = self.node(id);
+            if node.aabb.ray_entry(origin, translation, max_fraction).is_none() {
+                continue;
+            }
+            match node.kind {
+                NodeKind::Leaf(data) => max_fraction = visit(data, max_fraction),
                 NodeKind::Internal(children) => stack.extend(children),
                 NodeKind::Free { .. } => unreachable!("free nodes are never linked into the tree"),
             }
@@ -337,6 +362,22 @@ mod tests {
         let query = Aabb::new(vec2(3.2, 2.0), vec2(9.0, 6.1));
         let expected: Vec<_> = (0..boxes.len()).filter(|&i| boxes[i].overlaps(&query)).collect();
         assert_eq!(query_all(&tree, &query), expected);
+    }
+
+    #[test]
+    fn ray_cast_visits_crossed_leaves() {
+        let mut tree = DynamicTree::default();
+        for i in 0..10 {
+            tree.create_proxy(unit_box_at(i as f32 * 2.0, 0.0), i);
+        }
+        let mut visited = Vec::new();
+        tree.ray_cast(vec2(-1.0, 0.5), vec2(10.0, 0.0), 1.0, |data, max_fraction| {
+            visited.push(data);
+            max_fraction
+        });
+        visited.sort_unstable();
+        // The segment ends at x = 9: boxes starting at 0, 2, 4, 6 and 8.
+        assert_eq!(visited, [0, 1, 2, 3, 4]);
     }
 
     #[test]

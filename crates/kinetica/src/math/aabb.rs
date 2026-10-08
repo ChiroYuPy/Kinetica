@@ -62,6 +62,33 @@ impl Aabb {
         self.min.cmple(other.max).all() && other.min.cmple(self.max).all()
     }
 
+    /// Returns the fraction of `translation` at which the segment from `origin` to
+    /// `origin + max_fraction * translation` enters the box, or `None` if it misses it.
+    /// A segment starting inside the box enters at `0`.
+    #[must_use]
+    pub fn ray_entry(&self, origin: Vec2, translation: Vec2, max_fraction: f32) -> Option<f32> {
+        let mut entry = 0.0_f32;
+        let mut exit = max_fraction;
+        // Slab method: intersect the parameter ranges spent between each pair of parallel sides.
+        for axis in 0..2 {
+            let (start, direction) = (origin[axis], translation[axis]);
+            let (low, high) = (self.min[axis], self.max[axis]);
+            if direction == 0.0 {
+                if start < low || start > high {
+                    return None;
+                }
+            } else {
+                let (near, far) = ((low - start) / direction, (high - start) / direction);
+                entry = entry.max(near.min(far));
+                exit = exit.min(near.max(far));
+                if entry > exit {
+                    return None;
+                }
+            }
+        }
+        Some(entry)
+    }
+
     /// Returns `true` if `other` lies entirely inside this box.
     #[must_use]
     pub fn contains(&self, other: &Self) -> bool {
@@ -87,6 +114,16 @@ mod tests {
         let aabb = Aabb::from_points(points).unwrap();
         assert_eq!(aabb, Aabb::new(vec2(-3.0, -2.0), vec2(2.0, 4.0)));
         assert!(Aabb::from_points([]).is_none());
+    }
+
+    #[test]
+    fn ray_entry_finds_where_segments_enter() {
+        let aabb = Aabb::new(Vec2::ZERO, Vec2::ONE);
+        assert_eq!(aabb.ray_entry(vec2(-1.0, 0.5), vec2(4.0, 0.0), 1.0), Some(0.25));
+        assert_eq!(aabb.ray_entry(vec2(0.5, 0.5), vec2(4.0, 0.0), 1.0), Some(0.0), "starts inside");
+        assert_eq!(aabb.ray_entry(vec2(-1.0, 0.5), vec2(4.0, 0.0), 0.2), None, "too short");
+        assert_eq!(aabb.ray_entry(vec2(-1.0, 2.0), vec2(4.0, 0.0), 1.0), None, "passes above");
+        assert_eq!(aabb.ray_entry(vec2(2.0, 0.5), vec2(4.0, 0.0), 1.0), None, "points away");
     }
 
     #[test]

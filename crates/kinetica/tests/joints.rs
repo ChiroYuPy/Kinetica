@@ -434,10 +434,14 @@ fn point_query_finds_the_shapes_under_a_point() {
     let block_collider = world.add_collider(block, ColliderDesc::rectangle(1.0, 1.0));
 
     let bodies_at = |point: Vec2| -> Vec<BodyHandle> {
-        world.colliders_at_point(point).map(|collider| world.collider(collider).unwrap().body()).collect()
+        world
+            .colliders_at_point(point, &QueryFilter::new())
+            .into_iter()
+            .map(|collider| world.collider(collider).unwrap().body())
+            .collect()
     };
     assert_eq!(bodies_at(vec2(0.5, 0.5)), [circle]);
     assert_eq!(bodies_at(vec2(3.0, 1.3)), [block], "inside the rotated square's top corner");
     assert!(bodies_at(vec2(4.0, 1.0)).is_empty(), "outside the rotated square");
-    assert!(world.colliders_at_point(vec2(3.0, 0.0)).any(|collider| collider == block_collider));
+    assert!(world.colliders_at_point(vec2(3.0, 0.0), &QueryFilter::new()).contains(&block_collider));
 }

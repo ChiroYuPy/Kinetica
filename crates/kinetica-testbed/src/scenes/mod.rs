@@ -15,6 +15,7 @@ mod pendulum_wave;
 mod pendulums;
 mod pool;
 mod pyramid;
+mod queries;
 mod ragdolls;
 mod restitution;
 mod seesaw;
@@ -25,6 +26,8 @@ mod wrecking_ball;
 
 use kinetica::math::Vec2;
 use kinetica::prelude::*;
+
+use crate::render::MacroquadDraw;
 
 /// Every scene, grouped by category; the command line selects them by position, from 1.
 pub const SCENES: &[Scene] = &[
@@ -48,6 +51,7 @@ pub const SCENES: &[Scene] = &[
     springs::SCENE,
     machines::SCENE,
     cantilever::SCENE,
+    queries::SCENE,
     body_types::SCENE,
     contacts::SCENE,
 ];
@@ -69,16 +73,18 @@ pub struct Scene {
 pub enum Category {
     Contacts,
     Joints,
+    Queries,
     Basics,
 }
 
 impl Category {
-    pub const ALL: [Self; 3] = [Self::Contacts, Self::Joints, Self::Basics];
+    pub const ALL: [Self; 4] = [Self::Contacts, Self::Joints, Self::Queries, Self::Basics];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Contacts => "Contacts",
             Self::Joints => "Joints",
+            Self::Queries => "Queries",
             Self::Basics => "Engine basics",
         }
     }
@@ -92,9 +98,21 @@ pub enum Build {
     Animated(fn(&mut World) -> Box<dyn SceneUpdate>),
 }
 
-/// Code run by an animated scene before every step; `time` is the simulated time in seconds.
+/// What an animated scene knows about the current frame.
+pub struct Frame {
+    /// Simulated time since the scene started, in seconds.
+    pub time: f32,
+    /// Mouse position, in world coordinates.
+    pub mouse: Vec2,
+}
+
+/// Code run by an animated scene.
 pub trait SceneUpdate {
-    fn update(&mut self, world: &mut World, time: f32);
+    /// Runs before every step.
+    fn update(&mut self, world: &mut World, frame: &Frame);
+
+    /// Draws on top of the world, every frame, even when paused.
+    fn draw(&self, _world: &World, _frame: &Frame, _drawer: &mut MacroquadDraw) {}
 
     /// A point the camera should follow, if any.
     fn camera_target(&self, _world: &World) -> Option<Vec2> {
@@ -102,9 +120,9 @@ pub trait SceneUpdate {
     }
 }
 
-impl<F: FnMut(&mut World, f32)> SceneUpdate for F {
-    fn update(&mut self, world: &mut World, time: f32) {
-        self(world, time);
+impl<F: FnMut(&mut World, &Frame)> SceneUpdate for F {
+    fn update(&mut self, world: &mut World, frame: &Frame) {
+        self(world, frame);
     }
 }
 

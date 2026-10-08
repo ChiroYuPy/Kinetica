@@ -1,7 +1,7 @@
 use kinetica::joint::Motor;
 use kinetica::prelude::*;
 
-use super::{Build, Category, Scene, SceneUpdate, add_ground};
+use super::{Build, Category, Frame, Scene, SceneUpdate, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Machines",
@@ -20,9 +20,9 @@ fn build(world: &mut World) -> Box<dyn SceneUpdate> {
     add_crank_slider(world, vec2(-8.0, 3.0));
     let elevator = add_elevator(world, vec2(5.0, 0.5));
 
-    Box::new(move |world: &mut World, time: f32| {
+    Box::new(move |world: &mut World, frame: &Frame| {
         // Up for one period, down for the next.
-        let going_up = (time / ELEVATOR_PERIOD).rem_euclid(2.0) < 1.0;
+        let going_up = (frame.time / ELEVATOR_PERIOD).rem_euclid(2.0) < 1.0;
         let speed = if going_up { ELEVATOR_SPEED } else { -ELEVATOR_SPEED };
         if let Some(JointKind::Prismatic(slider)) = world.joint_mut(elevator).map(kinetica::Joint::kind_mut) {
             slider.set_motor(Some(Motor { speed, max_force: 5000.0 }));

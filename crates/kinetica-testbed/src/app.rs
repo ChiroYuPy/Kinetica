@@ -7,7 +7,7 @@ use macroquad::prelude::*;
 
 use crate::camera::WorldCamera;
 use crate::render::MacroquadDraw;
-use crate::scenes::{SCENES, SceneUpdate};
+use crate::scenes::{Frame, SCENES, SceneUpdate};
 use crate::ui::{self, PanelState, Stats, UiAction};
 
 /// The simulation always advances by this fixed amount, whatever the frame rate.
@@ -84,9 +84,16 @@ impl App {
         set_camera(&self.camera.to_camera2d());
         let mut drawer = MacroquadDraw::new(self.camera.pixels_per_meter());
         self.world.debug_draw(&mut drawer, &self.draw_options);
+        if let Some(update) = &self.scene_update {
+            update.draw(&self.world, &self.frame(), &mut drawer);
+        }
 
         set_default_camera();
         egui_macroquad::draw();
+    }
+
+    fn frame(&self) -> Frame {
+        Frame { time: self.time, mouse: self.camera.screen_to_world(Vec2::from(mouse_position())) }
     }
 
     /// Builds the side panel for this frame and returns what the user clicked.
@@ -151,7 +158,7 @@ impl App {
         let mouse = self.camera.screen_to_world(Vec2::from(mouse_position()));
 
         if is_mouse_button_pressed(MouseButton::Left) && self.grab.is_none() && !self.pointer_over_ui {
-            let grabbed = self.world.colliders_at_point(mouse).find_map(|collider| {
+            let grabbed = self.world.colliders_at_point(mouse, &QueryFilter::new()).into_iter().find_map(|collider| {
                 let body = self.world.collider(collider)?.body();
                 (self.world.body(body)?.body_type() == BodyType::Dynamic).then_some(body)
             });
@@ -185,8 +192,9 @@ impl App {
     }
 
     fn step(&mut self) {
+        let frame = self.frame();
         if let Some(update) = &mut self.scene_update {
-            update.update(&mut self.world, self.time);
+            update.update(&mut self.world, &frame);
         }
         let start = get_time();
         self.world.step(TIME_STEP);

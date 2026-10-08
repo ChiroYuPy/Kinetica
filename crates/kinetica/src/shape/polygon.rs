@@ -162,6 +162,34 @@ impl Polygon {
         MassProperties { mass, center: origin + center, inertia }
     }
 
+    /// Ray cast in the local frame; returns the fraction and the local normal.
+    pub(crate) fn cast_ray(&self, origin: Vec2, translation: Vec2, max_fraction: f32) -> Option<(f32, Vec2)> {
+        // Cyrus–Beck clipping: shrink [entry, exit] with the half-plane of every edge.
+        let mut entry = 0.0;
+        let mut exit = max_fraction;
+        let mut entry_edge = None;
+        for (i, (vertex, normal)) in self.vertices.iter().zip(&self.normals).enumerate() {
+            let numerator = normal.dot(*vertex - origin);
+            let denominator = normal.dot(translation);
+            if denominator == 0.0 {
+                // Parallel to the edge: outside of it means a miss.
+                if numerator < 0.0 {
+                    return None;
+                }
+            } else if denominator < 0.0 && numerator < entry * denominator {
+                entry = numerator / denominator;
+                entry_edge = Some(i);
+            } else if denominator > 0.0 && numerator < exit * denominator {
+                exit = numerator / denominator;
+            }
+            if exit < entry {
+                return None;
+            }
+        }
+        // Without an entry edge the ray starts inside the polygon.
+        entry_edge.map(|edge| (entry, self.normals[edge]))
+    }
+
     pub(crate) fn compute_aabb(&self, transform: &Transform) -> Aabb {
         Aabb::from_points(self.vertices.iter().map(|&v| transform.transform_point(v)))
             .expect("a polygon has at least three vertices")

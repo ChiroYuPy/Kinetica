@@ -47,6 +47,27 @@ impl Circle {
         MassProperties { mass, center: self.center, inertia: 0.5 * mass * radius_squared }
     }
 
+    /// Ray cast in the local frame; returns the fraction and the local normal.
+    pub(crate) fn cast_ray(&self, origin: Vec2, translation: Vec2, max_fraction: f32) -> Option<(f32, Vec2)> {
+        // Solve |origin + t·translation − center|² = radius² for the smallest t.
+        let offset = origin - self.center;
+        let c = offset.length_squared() - self.radius * self.radius;
+        if c < 0.0 {
+            return None;
+        }
+        let a = translation.length_squared();
+        let b = offset.dot(translation);
+        let discriminant = b * b - a * c;
+        if a == 0.0 || discriminant < 0.0 {
+            return None;
+        }
+        let fraction = (-b - discriminant.sqrt()) / a;
+        if !(0.0..=max_fraction).contains(&fraction) {
+            return None;
+        }
+        Some((fraction, (offset + fraction * translation).normalize()))
+    }
+
     pub(crate) fn compute_aabb(&self, transform: &Transform) -> Aabb {
         let center = transform.transform_point(self.center);
         Aabb::new(center - self.radius, center + self.radius)

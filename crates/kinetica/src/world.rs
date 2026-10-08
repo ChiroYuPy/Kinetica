@@ -7,7 +7,7 @@ use crate::collision::broad_phase::BroadPhase;
 use crate::constants::DEFAULT_SUBSTEP_COUNT;
 use crate::contact::{CollisionEvent, Contact, ContactSet};
 use crate::joint::{Joint, JointDesc, JointHandle};
-use crate::math::{Aabb, Vec2, vec2};
+use crate::math::{Vec2, vec2};
 use crate::solver::{self, StepSettings};
 
 /// Earth gravity, pointing down the Y axis.
@@ -251,20 +251,6 @@ impl World {
         self.joints.len()
     }
 
-    /// Colliders containing the world point `point`.
-    pub fn colliders_at_point(&self, point: Vec2) -> impl Iterator<Item = ColliderHandle> {
-        let mut found = Vec::new();
-        self.broad_phase.query(&Aabb::new(point, point), |handle| {
-            let Some(collider) = self.colliders.get(handle.0) else { return };
-            let Some(body) = self.bodies.get(collider.body().0) else { return };
-            if collider.shape().contains_point(body.transform(), point) {
-                found.push(handle);
-            }
-        });
-        found.sort_unstable();
-        found.into_iter()
-    }
-
     /// Contacts between touching colliders, as of the last step.
     ///
     /// Shapes count as touching slightly before they overlap: points with a small positive
@@ -282,6 +268,10 @@ impl World {
     #[must_use]
     pub fn collision_events(&self) -> &[CollisionEvent] {
         &self.collision_events
+    }
+
+    pub(crate) fn broad_phase(&self) -> &BroadPhase {
+        &self.broad_phase
     }
 
     /// Advances the simulation by `dt` seconds.

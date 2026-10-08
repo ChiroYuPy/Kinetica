@@ -18,6 +18,8 @@
 - **Joints**: soft like contacts (60 Hz, damping ratio 2), so long rigid assemblies sag a
   little under load (an 8 m welded cantilever drops about 0.7 m at its tip). Joined bodies do
   not collide unless `collide_connected` is set.
+- **Queries**: rays starting inside a shape do not hit it; a shape cast starting in contact
+  hits at fraction 0. Set queries return a sorted `Vec`.
 - **Contacts**: only created when at least one body is dynamic, never between colliders of the
   same body. Points are reported slightly before shapes touch (speculative distance).
 - **Determinism**: same inputs on the same build give bit-identical results, and
@@ -36,8 +38,8 @@
       `Started`/`Stopped` events, contact debug drawing.
 - [x] **2. Contact solver**: soft-step solver (Box2D v3 style) with 4 substeps, relax pass,
       warm starting by feature id, Coulomb friction, restitution. A 210-box pyramid stands.
-- [ ] **3. Queries**: ray casts, shape casts, AABB queries. (Point queries and mouse dragging
-      were done with the joints.)
+- [x] **3. Queries**: closest and all-hits ray casts, shape casts (conservative advancement),
+      point, box and overlap queries, all with a `QueryFilter`; brute-force checked.
 - [x] **4. Joints**: revolute (limits, motor), distance (rod, spring, rope), prismatic (limits,
       motor), weld (rigid or elastic), mouse. Joint-only scenes: pendulums, Newton's cradle,
       chains, bridge, ragdolls, suspended car, springs, crank-slider, elevator, cantilever.

@@ -11,7 +11,7 @@ pub(crate) use dynamic_tree::ProxyId;
 
 use crate::collider::ColliderHandle;
 use crate::constants::AABB_MARGIN;
-use crate::math::Aabb;
+use crate::math::{Aabb, Vec2};
 
 /// A pair of colliders whose fat boxes overlap, with the smaller handle first.
 pub(crate) type CandidatePair = (ColliderHandle, ColliderHandle);
@@ -46,6 +46,17 @@ impl BroadPhase {
     /// Calls `visit` for every collider whose fat box overlaps `aabb`.
     pub(crate) fn query(&self, aabb: &Aabb, mut visit: impl FnMut(ColliderHandle)) {
         self.tree.query(aabb, |_, collider| visit(collider));
+    }
+
+    /// Visits colliders whose fat box the segment crosses; see [`DynamicTree::ray_cast`].
+    pub(crate) fn ray_cast(
+        &self,
+        origin: Vec2,
+        translation: Vec2,
+        max_fraction: f32,
+        visit: impl FnMut(ColliderHandle, f32) -> f32,
+    ) {
+        self.tree.ray_cast(origin, translation, max_fraction, visit);
     }
 
     /// Makes the next search for pairs look at this proxy again, even if it did not move.

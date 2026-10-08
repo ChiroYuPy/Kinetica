@@ -41,6 +41,27 @@ impl Shape {
         }
     }
 
+    /// Intersects the segment from `origin` to `origin + max_fraction * translation` with the
+    /// shape placed at `transform`.
+    ///
+    /// A segment starting inside the shape does not hit it.
+    #[must_use]
+    pub fn cast_ray(
+        &self,
+        transform: &Transform,
+        origin: Vec2,
+        translation: Vec2,
+        max_fraction: f32,
+    ) -> Option<RayIntersection> {
+        let local_origin = transform.inverse_transform_point(origin);
+        let local_translation = transform.rotation.inverse_rotate(translation);
+        let (fraction, local_normal) = match self {
+            Self::Circle(circle) => circle.cast_ray(local_origin, local_translation, max_fraction),
+            Self::Polygon(polygon) => polygon.cast_ray(local_origin, local_translation, max_fraction),
+        }?;
+        Some(RayIntersection { fraction, normal: transform.rotation.rotate(local_normal) })
+    }
+
     /// Computes the world-space bounding box of the shape placed at `transform`.
     #[must_use]
     pub fn compute_aabb(&self, transform: &Transform) -> Aabb {
@@ -61,6 +82,15 @@ impl From<Polygon> for Shape {
     fn from(polygon: Polygon) -> Self {
         Self::Polygon(polygon)
     }
+}
+
+/// Where a ray enters a shape.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RayIntersection {
+    /// Fraction of the ray translation travelled before the hit.
+    pub fraction: f32,
+    /// Outward surface normal at the hit, in world space.
+    pub normal: Vec2,
 }
 
 /// Mass distribution of a shape or a body.
