@@ -1,0 +1,16 @@
+[package]
+name = "kinetica"
+description = "A 2D rigid-body physics engine for games."
+keywords = ["physics", "2d", "gamedev", "rigid-body"]
+categories = ["game-development", "simulation"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+glam.workspace = true
+
+[lints]
+workspace = true

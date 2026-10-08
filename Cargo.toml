@@ -1,0 +1,36 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/adrian/kinetica"
+
+[workspace.dependencies]
+kinetica = { path = "crates/kinetica" }
+# Kept on the same version as macroquad so both crates share the exact same `Vec2` type.
+glam = "0.27"
+macroquad = "0.4.16"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# Physics code is full of short, conventional names (`dt`, `v`, `w`, `rx`, `ry`).
+similar_names = "allow"
+many_single_char_names = "allow"
+# Index/count conversions to f32 are intentional and bounded.
+cast_precision_loss = "allow"
+# `Body::body_type` reads better than an invented synonym.
+struct_field_names = "allow"
+
+# macroquad is slow without optimisations; keep our own crates debuggable.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

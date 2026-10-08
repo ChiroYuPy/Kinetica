@@ -1,0 +1,15 @@
+[package]
+name = "kinetica-testbed"
+description = "Interactive macroquad testbed for the Kinetica physics engine."
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+kinetica.workspace = true
+macroquad.workspace = true
+
+[lints]
+workspace = true
