@@ -4,7 +4,7 @@ use crate::arena::Index;
 use crate::body::BodyHandle;
 use crate::collision::broad_phase::ProxyId;
 use crate::math::{Aabb, Rot, Transform, Vec2};
-use crate::shape::{Circle, MassProperties, Polygon, PolygonError, Shape};
+use crate::shape::{Capsule, Circle, MassProperties, Polygon, PolygonError, Segment, Shape};
 
 /// Handle to a [`Collider`] stored in a [`World`](crate::World).
 ///
@@ -133,6 +133,38 @@ impl ColliderDesc {
         Self::new(Polygon::offset_rectangle(half_width, half_height, center, angle))
     }
 
+    /// Describes a capsule around the segment from `start` to `end`, relative to the body origin.
+    ///
+    /// # Panics
+    ///
+    /// See [`Capsule::new`].
+    #[must_use]
+    pub fn capsule(start: Vec2, end: Vec2, radius: f32) -> Self {
+        Self::new(Capsule::new(start, end, radius))
+    }
+
+    /// Describes a vertical capsule centered on the body origin, `2 * (half_length + radius)`
+    /// tall: the usual shape of a character.
+    ///
+    /// # Panics
+    ///
+    /// See [`Capsule::new`].
+    #[must_use]
+    pub fn vertical_capsule(half_length: f32, radius: f32) -> Self {
+        Self::new(Capsule::vertical(half_length, radius))
+    }
+
+    /// Describes a two-sided segment without thickness, relative to the body origin. It has no
+    /// mass; use it on fixed bodies.
+    ///
+    /// # Panics
+    ///
+    /// See [`Segment::new`].
+    #[must_use]
+    pub fn segment(start: Vec2, end: Vec2) -> Self {
+        Self::new(Segment::new(start, end))
+    }
+
     /// Describes a regular polygon centered on the body origin.
     ///
     /// # Panics
@@ -201,6 +233,78 @@ impl ColliderDesc {
     pub fn one_way(mut self, direction: Vec2) -> Self {
         let direction = direction.try_normalize().expect("a one-way direction must be non-zero and finite");
         self.one_way = Some(direction);
+        self
+    }
+}
+
+/// Description of a chain of segments, for terrain and level outlines; see
+/// [`World::add_chain`](crate::World::add_chain).
+///
+/// Chains are one-sided: they collide on the left of the direction from one point to the next.
+/// List a ground from left to right, and a closed outline clockwise to make it solid from the
+/// outside (counter-clockwise to keep things inside it).
+///
+/// ```
+/// use kinetica::prelude::*;
+///
+/// let mut world = World::new();
+/// let ground = world.add_body(BodyDesc::fixed());
+/// let hills = [vec2(-10.0, 0.0), vec2(-4.0, 0.0), vec2(0.0, 1.5), vec2(4.0, 0.0), vec2(10.0, 0.0)];
+/// world.add_chain(ground, &ChainDesc::new(hills).friction(0.8));
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChainDesc {
+    /// The points the chain goes through, in the body's local frame.
+    pub points: Vec<Vec2>,
+    /// Links the last point back to the first one.
+    pub closed: bool,
+    /// Friction coefficient of every segment.
+    pub friction: f32,
+    /// Bounciness of every segment.
+    pub restitution: f32,
+    /// Which colliders the segments can touch.
+    pub layers: CollisionLayers,
+}
+
+impl ChainDesc {
+    /// Describes an open chain through `points`, with the default material.
+    #[must_use]
+    pub fn new(points: impl Into<Vec<Vec2>>) -> Self {
+        let material = ColliderDesc::circle(1.0);
+        Self {
+            points: points.into(),
+            closed: false,
+            friction: material.friction,
+            restitution: material.restitution,
+            layers: material.layers,
+        }
+    }
+
+    /// Links the last point back to the first one, or not.
+    #[must_use]
+    pub fn closed(mut self, closed: bool) -> Self {
+        self.closed = closed;
+        self
+    }
+
+    /// Sets the friction coefficient.
+    #[must_use]
+    pub fn friction(mut self, friction: f32) -> Self {
+        self.friction = friction;
+        self
+    }
+
+    /// Sets the restitution.
+    #[must_use]
+    pub fn restitution(mut self, restitution: f32) -> Self {
+        self.restitution = restitution;
+        self
+    }
+
+    /// Sets which colliders the segments can touch.
+    #[must_use]
+    pub fn layers(mut self, layers: CollisionLayers) -> Self {
+        self.layers = layers;
         self
     }
 }

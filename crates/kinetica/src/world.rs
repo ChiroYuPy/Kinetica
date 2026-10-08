@@ -2,7 +2,7 @@
 
 use crate::arena::Arena;
 use crate::body::{Body, BodyDesc, BodyHandle, BodyType};
-use crate::collider::{Collider, ColliderDesc, ColliderHandle};
+use crate::collider::{ChainDesc, Collider, ColliderDesc, ColliderHandle};
 use crate::collision::broad_phase::BroadPhase;
 use crate::constants::{DEFAULT_SUBSTEP_COUNT, TIME_TO_SLEEP};
 use crate::contact::{CollisionEvent, Contact, ContactSet, SensorEvent, SensorPair};
@@ -10,6 +10,7 @@ use crate::continuous;
 use crate::island::Islands;
 use crate::joint::{Joint, JointDesc, JointHandle};
 use crate::math::{Vec2, vec2};
+use crate::shape::{ChainSegment, Segment};
 use crate::solver::{self, StepSettings};
 
 /// Earth gravity, pointing down the Y axis.
@@ -189,6 +190,36 @@ impl World {
         owner.update_mass(&self.colliders);
         owner.wake_up();
         handle
+    }
+
+    /// Attaches a chain of segments to a body, one collider per segment, and returns them in
+    /// order.
+    ///
+    /// Shapes slide smoothly across the joints between segments, which a row of separate
+    /// boxes or segments does not guarantee.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the body was removed, if the chain has fewer than two points (three when
+    /// closed), or if two consecutive points are equal.
+    pub fn add_chain(&mut self, body: BodyHandle, desc: &ChainDesc) -> Vec<ColliderHandle> {
+        let points = &desc.points;
+        let count = points.len();
+        assert!(count >= if desc.closed { 3 } else { 2 }, "a chain needs more points");
+        let segment_count = if desc.closed { count } else { count - 1 };
+        let point = |index: usize| points[index % count];
+        (0..segment_count)
+            .map(|i| {
+                let previous = (i > 0 || desc.closed).then(|| point(i + count - 1));
+                let next = (i + 2 < count || desc.closed).then(|| point(i + 2));
+                let segment = ChainSegment::new(Segment::new(point(i), point(i + 1)), previous, next);
+                let collider = ColliderDesc::new(segment)
+                    .friction(desc.friction)
+                    .restitution(desc.restitution)
+                    .layers(desc.layers);
+                self.add_collider(body, collider)
+            })
+            .collect()
     }
 
     /// Removes a collider and updates the mass of its body, returning the collider if it existed.

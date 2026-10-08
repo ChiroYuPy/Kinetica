@@ -25,6 +25,7 @@ mod restitution;
 mod ropes;
 mod seesaw;
 mod sensors;
+mod shapes;
 mod sleeping;
 mod soft_bodies;
 mod springs;
@@ -50,6 +51,7 @@ pub const SCENES: &[Scene] = &[
     seesaw::SCENE,
     tumbler::SCENE,
     pool::SCENE,
+    shapes::SCENE,
     pendulums::SCENE,
     pendulum_wave::SCENE,
     newtons_cradle::SCENE,

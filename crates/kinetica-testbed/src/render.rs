@@ -34,9 +34,29 @@ impl MacroquadDraw {
                     color,
                 );
             }
+            Shape::Capsule(capsule) => {
+                let (start, end) =
+                    (transform.transform_point(capsule.start()), transform.transform_point(capsule.end()));
+                self.draw_capsule(start, end, capsule.radius(), color);
+            }
             Shape::Polygon(polygon) => {
                 let vertices: Vec<Vec2> = polygon.vertices().iter().map(|&v| transform.transform_point(v)).collect();
                 self.draw_polygon(&vertices, color);
+            }
+            Shape::Segment(segment) => {
+                self.draw_segment(
+                    transform.transform_point(segment.start()),
+                    transform.transform_point(segment.end()),
+                    color,
+                );
+            }
+            Shape::ChainSegment(chain) => {
+                let segment = chain.segment();
+                self.draw_segment(
+                    transform.transform_point(segment.start()),
+                    transform.transform_point(segment.end()),
+                    color,
+                );
             }
         }
     }

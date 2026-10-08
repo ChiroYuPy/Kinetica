@@ -18,6 +18,7 @@ use crate::constants::{CONTINUOUS_THRESHOLD, SPECULATIVE_DISTANCE};
 use crate::contact::{ContactPair, should_collide};
 use crate::joint::Joint;
 use crate::math::{Transform, Vec2};
+use crate::shape::Shape;
 
 /// Moves fast bodies back to where they first hit something, and returns them.
 pub(crate) fn solve(
@@ -106,8 +107,12 @@ fn blocks(body: &Body, collider: &Collider, other_body: &Body, other: &Collider,
         // Bullets are checked against regular dynamic bodies, which have finished moving.
         BodyType::Dynamic => body.is_bullet() && !other_body.is_bullet(),
     };
-    // A one-way platform only stops what comes from its blocking side.
-    let one_way_ok = other.one_way().is_none_or(|direction| other_body.world_vector(direction).dot(translation) < 0.0);
+    // A one-way platform or a chain only stops what comes from its blocking side.
+    let blocking_side = match other.shape() {
+        Shape::ChainSegment(chain) => Some(chain.segment().normal()),
+        _ => other.one_way(),
+    };
+    let one_way_ok = blocking_side.is_none_or(|direction| other_body.world_vector(direction).dot(translation) < 0.0);
     target_type_ok
         && one_way_ok
         && !other.is_sensor()

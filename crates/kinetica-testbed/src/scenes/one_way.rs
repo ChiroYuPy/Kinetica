@@ -45,7 +45,8 @@ fn build(world: &mut World) -> Box<dyn SceneUpdate> {
 fn add_player(world: &mut World, position: Vec2) -> Player {
     let player = world.add_body(BodyDesc::dynamic().position(position).fixed_rotation(true));
     // No friction, so the character does not stick to walls; running sets the speed directly.
-    world.add_collider(player, ColliderDesc::rectangle(0.3, 0.55).friction(0.0));
+    // A capsule: its round bottom glides over edges instead of catching on them.
+    world.add_collider(player, ColliderDesc::vertical_capsule(0.25, 0.3).friction(0.0));
     let feet =
         world.add_collider(player, ColliderDesc::offset_rectangle(0.25, 0.08, vec2(0.0, -0.55), 0.0).sensor(true));
     Player { body: player, feet }

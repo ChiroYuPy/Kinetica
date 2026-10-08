@@ -1,9 +1,10 @@
 //! Contacts involving a circle.
 
+use super::convex::Rounded;
 use crate::collision::{Manifold, ManifoldPoint};
 use crate::constants::SPECULATIVE_DISTANCE;
 use crate::math::{Transform, Vec2};
-use crate::shape::{Circle, Polygon};
+use crate::shape::Circle;
 
 pub(super) fn collide_circles(a: &Circle, transform_a: &Transform, b: &Circle, transform_b: &Transform) -> Manifold {
     let center_a = transform_a.transform_point(a.center());
@@ -24,53 +25,41 @@ pub(super) fn collide_circles(a: &Circle, transform_a: &Transform, b: &Circle, t
     manifold
 }
 
-pub(super) fn collide_polygon_circle(
-    polygon: &Polygon,
-    transform_a: &Transform,
-    circle: &Circle,
-    transform_b: &Transform,
-) -> Manifold {
-    // Work in the polygon's local frame.
-    let center = transform_a.inverse_transform_point(transform_b.transform_point(circle.center()));
-    let radius = circle.radius();
-    let ClosestPoint { point: closest, normal: local_normal, distance } = closest_point_on_polygon(polygon, center);
+/// Contact between a rounded convex shape (A) and a circle (B).
+pub(super) fn collide_rounded_circle(shape: &Rounded, circle: &Circle, transform_b: &Transform) -> Manifold {
+    let center = transform_b.transform_point(circle.center());
+    let radius = circle.radius() + shape.radius();
+    let ClosestPoint { point: closest, normal, distance } = closest_point_on_core(shape, center);
     let separation = distance - radius;
     if separation > SPECULATIVE_DISTANCE {
         return Manifold::default();
     }
 
-    let normal = transform_a.rotation.rotate(local_normal);
-    let surface_a = transform_a.transform_point(closest);
-    let surface_b = transform_b.transform_point(circle.center()) - radius * normal;
-
+    let surface_a = closest + shape.radius() * normal;
+    let surface_b = center - circle.radius() * normal;
     let mut manifold = Manifold::new(normal);
     manifold.push(ManifoldPoint::new(0.5 * (surface_a + surface_b), separation, 0));
     manifold
 }
 
-/// Distance between a circle and a polygon; negative when they overlap.
-pub(super) fn polygon_circle_separation(
-    polygon: &Polygon,
-    transform_a: &Transform,
-    circle: &Circle,
-    transform_b: &Transform,
-) -> f32 {
-    let center = transform_a.inverse_transform_point(transform_b.transform_point(circle.center()));
-    closest_point_on_polygon(polygon, center).distance - circle.radius()
+/// Distance between a rounded convex shape and a circle; negative when they overlap.
+pub(super) fn rounded_circle_separation(shape: &Rounded, circle: &Circle, transform_b: &Transform) -> f32 {
+    let center = transform_b.transform_point(circle.center());
+    closest_point_on_core(shape, center).distance - circle.radius() - shape.radius()
 }
 
-/// The point of a polygon's boundary closest to a point, in the polygon's local frame.
+/// The point of a core's boundary closest to a point.
 struct ClosestPoint {
     point: Vec2,
     /// Outward direction from `point` towards the query point (or the face normal).
     normal: Vec2,
-    /// Signed distance from the boundary to the query point, negative inside the polygon.
+    /// Signed distance from the boundary to the query point, negative inside the core.
     distance: f32,
 }
 
-fn closest_point_on_polygon(polygon: &Polygon, point: Vec2) -> ClosestPoint {
-    let vertices = polygon.vertices();
-    let normals = polygon.normals();
+fn closest_point_on_core(shape: &Rounded, point: Vec2) -> ClosestPoint {
+    let vertices = shape.vertices();
+    let normals = shape.normals();
 
     // The edge the point is farthest in front of.
     let mut edge = 0;
@@ -90,12 +79,13 @@ fn closest_point_on_polygon(polygon: &Polygon, point: Vec2) -> ClosestPoint {
         let offset = point - vertex;
         ClosestPoint { point: vertex, normal: offset.try_normalize().unwrap_or(face_normal), distance: offset.length() }
     };
-    if face_distance > 0.0 && (point - start).dot(end - start) < 0.0 {
+    // On the line of the edge counts as outside: for a segment core, the line goes on past it.
+    if face_distance >= 0.0 && (point - start).dot(end - start) < 0.0 {
         towards_vertex(start)
-    } else if face_distance > 0.0 && (point - end).dot(start - end) < 0.0 {
+    } else if face_distance >= 0.0 && (point - end).dot(start - end) < 0.0 {
         towards_vertex(end)
     } else {
-        // In front of the edge, or inside the polygon.
+        // In front of the edge, or inside the core.
         ClosestPoint { point: point - face_distance * face_normal, normal: face_normal, distance: face_distance }
     }
 }
@@ -103,8 +93,18 @@ fn closest_point_on_polygon(polygon: &Polygon, point: Vec2) -> ClosestPoint {
 #[cfg(test)]
 mod tests {
     use crate::math::{Rot, vec2};
+    use crate::shape::Polygon;
 
     use super::*;
+
+    fn collide_polygon_circle(
+        polygon: &Polygon,
+        transform_a: &Transform,
+        circle: &Circle,
+        transform_b: &Transform,
+    ) -> Manifold {
+        collide_rounded_circle(&Rounded::polygon(polygon, transform_a), circle, transform_b)
+    }
 
     fn at(x: f32, y: f32) -> Transform {
         Transform::new(vec2(x, y), Rot::IDENTITY)
@@ -162,5 +162,25 @@ mod tests {
         assert!(manifold.normal().abs_diff_eq(Vec2::Y, 1e-5));
         let [point] = manifold.points() else { panic!("expected one point") };
         assert!((point.separation() + 0.45).abs() < 1e-5);
+    }
+}
+
+#[cfg(test)]
+mod capsule_tests {
+    use crate::math::{Rot, vec2};
+    use crate::shape::Capsule;
+
+    use super::*;
+
+    #[test]
+    fn circle_on_capsule_side_and_end() {
+        let capsule = Rounded::capsule(&Capsule::new(vec2(-1.0, 0.0), vec2(1.0, 0.0), 0.5), &Transform::IDENTITY);
+        let side = collide_rounded_circle(&capsule, &Circle::new(0.5), &Transform::new(vec2(0.2, 0.9), Rot::IDENTITY));
+        assert!(side.normal().abs_diff_eq(Vec2::Y, 1e-6));
+        assert!((side.points()[0].separation() + 0.1).abs() < 1e-5);
+
+        let end = collide_rounded_circle(&capsule, &Circle::new(0.5), &Transform::new(vec2(2.0, 0.0), Rot::IDENTITY));
+        assert!(end.normal().abs_diff_eq(Vec2::X, 1e-6));
+        assert!(end.points()[0].separation().abs() < 1e-5);
     }
 }

@@ -7,7 +7,8 @@ use super::{Build, Category, Scene, add_ground};
 pub const SCENE: Scene = Scene {
     name: "Ragdolls",
     category: Category::Joints,
-    description: "Ragdolls made of ten bodies and nine limited revolute joints tumble down the stairs.",
+    description: "Ragdolls made of ten capsules and nine limited revolute joints tumble down stairs made of \
+                  a single chain.",
     camera_center: vec2(0.0, 4.0),
     view_height: 14.0,
     build: Build::Static(build),
@@ -16,13 +17,18 @@ pub const SCENE: Scene = Scene {
 fn build(world: &mut World) {
     add_ground(world, 40.0);
 
-    // Stairs going down to the right.
+    // Stairs going down to the right: the outline of eight steps, from the left wall's foot.
     let stairs = world.add_body(BodyDesc::fixed());
+    let mut outline = vec![vec2(-8.5, 0.0)];
     for step in 0..8 {
         let height = 0.4 * (8 - step) as f32;
-        let center = vec2(-8.0 + 1.0 * step as f32, height / 2.0);
-        world.add_collider(stairs, ColliderDesc::offset_rectangle(0.5, height / 2.0, center, 0.0));
+        let left = -8.5 + step as f32;
+        outline.extend([vec2(left, height), vec2(left + 1.0, height)]);
     }
+    outline.push(vec2(-0.5, 0.0));
+    // Consecutive points must differ: each step's left edge starts where the previous one ends.
+    outline.dedup();
+    world.add_chain(stairs, &ChainDesc::new(outline));
 
     for (i, x) in [-8.0, -6.5, -5.0].into_iter().enumerate() {
         let floor = 3.2 + 2.5 * i as f32;
@@ -37,13 +43,14 @@ fn add_ragdoll(world: &mut World, feet: Vec2) {
         world.add_collider(body, collider.friction(0.6));
         body
     };
-    let torso = part(vec2(0.0, 1.3), ColliderDesc::rectangle(0.15, 0.3));
+    // Capsules spanning from joint to joint: half length + radius = half the limb length.
+    let torso = part(vec2(0.0, 1.3), ColliderDesc::vertical_capsule(0.15, 0.15));
     let head = part(vec2(0.0, 1.82), ColliderDesc::circle(0.15));
     let limbs = [-1.0_f32, 1.0].map(|side| {
-        let upper_arm = part(vec2(0.22 * side, 1.4), ColliderDesc::rectangle(0.05, 0.15));
-        let lower_arm = part(vec2(0.22 * side, 1.1), ColliderDesc::rectangle(0.045, 0.15));
-        let upper_leg = part(vec2(0.09 * side, 0.75), ColliderDesc::rectangle(0.07, 0.25));
-        let lower_leg = part(vec2(0.09 * side, 0.25), ColliderDesc::rectangle(0.06, 0.25));
+        let upper_arm = part(vec2(0.22 * side, 1.4), ColliderDesc::vertical_capsule(0.1, 0.05));
+        let lower_arm = part(vec2(0.22 * side, 1.1), ColliderDesc::vertical_capsule(0.105, 0.045));
+        let upper_leg = part(vec2(0.09 * side, 0.75), ColliderDesc::vertical_capsule(0.18, 0.07));
+        let lower_leg = part(vec2(0.09 * side, 0.25), ColliderDesc::vertical_capsule(0.19, 0.06));
         (side, upper_arm, lower_arm, upper_leg, lower_leg)
     });
 

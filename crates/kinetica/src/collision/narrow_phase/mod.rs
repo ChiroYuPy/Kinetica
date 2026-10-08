@@ -1,12 +1,14 @@
 //! Narrow phase: exact contact computation between two shapes.
 
+mod chain;
 mod circle;
-mod polygon;
+mod convex;
 
 use super::Manifold;
 use crate::constants::LINEAR_SLOP;
 use crate::math::{Transform, Vec2};
 use crate::shape::Shape;
+use convex::Rounded;
 
 /// Computes the contact between two placed shapes.
 ///
@@ -16,19 +18,26 @@ use crate::shape::Shape;
 #[must_use]
 pub fn collide(shape_a: &Shape, transform_a: &Transform, shape_b: &Shape, transform_b: &Transform) -> Manifold {
     match (shape_a, shape_b) {
-        (Shape::Circle(a), Shape::Circle(b)) => circle::collide_circles(a, transform_a, b, transform_b),
-        (Shape::Polygon(a), Shape::Circle(b)) => circle::collide_polygon_circle(a, transform_a, b, transform_b),
-        (Shape::Circle(a), Shape::Polygon(b)) => {
-            circle::collide_polygon_circle(b, transform_b, a, transform_a).flipped()
+        (Shape::ChainSegment(chain), _) => chain::collide_chain_segment(chain, transform_a, shape_b, transform_b),
+        (_, Shape::ChainSegment(chain)) => {
+            chain::collide_chain_segment(chain, transform_b, shape_a, transform_a).flipped()
         }
-        (Shape::Polygon(a), Shape::Polygon(b)) => polygon::collide_polygons(a, transform_a, b, transform_b),
+        (Shape::Circle(a), Shape::Circle(b)) => circle::collide_circles(a, transform_a, b, transform_b),
+        (_, Shape::Circle(b)) => rounded(shape_a, transform_a)
+            .map_or_else(Manifold::default, |a| circle::collide_rounded_circle(&a, b, transform_b)),
+        (Shape::Circle(a), _) => rounded(shape_b, transform_b)
+            .map_or_else(Manifold::default, |b| circle::collide_rounded_circle(&b, a, transform_a).flipped()),
+        _ => match (rounded(shape_a, transform_a), rounded(shape_b, transform_b)) {
+            (Some(a), Some(b)) => convex::collide_rounded(&a, &b),
+            _ => Manifold::default(),
+        },
     }
 }
 
 /// A lower bound of the distance between two placed shapes, negative when they overlap.
 ///
-/// Exact when a circle is involved; see [`polygon::separation_lower_bound`] otherwise. It is
-/// negative exactly when the shapes overlap.
+/// Exact when a circle is involved; see [`convex::separation_lower_bound`] otherwise. It is
+/// negative exactly when the shapes overlap. Chain segments count as two-sided here.
 pub(crate) fn separation_lower_bound(
     shape_a: &Shape,
     transform_a: &Transform,
@@ -41,9 +50,25 @@ pub(crate) fn separation_lower_bound(
                 - a.radius()
                 - b.radius()
         }
-        (Shape::Polygon(a), Shape::Circle(b)) => circle::polygon_circle_separation(a, transform_a, b, transform_b),
-        (Shape::Circle(a), Shape::Polygon(b)) => circle::polygon_circle_separation(b, transform_b, a, transform_a),
-        (Shape::Polygon(a), Shape::Polygon(b)) => polygon::separation_lower_bound(a, transform_a, b, transform_b),
+        (_, Shape::Circle(b)) => rounded(shape_a, transform_a)
+            .map_or(f32::INFINITY, |a| circle::rounded_circle_separation(&a, b, transform_b)),
+        (Shape::Circle(a), _) => rounded(shape_b, transform_b)
+            .map_or(f32::INFINITY, |b| circle::rounded_circle_separation(&b, a, transform_a)),
+        _ => match (rounded(shape_a, transform_a), rounded(shape_b, transform_b)) {
+            (Some(a), Some(b)) => convex::separation_lower_bound(&a, &b),
+            _ => f32::INFINITY,
+        },
+    }
+}
+
+/// Every shape but the circle, as a rounded convex shape in world space.
+fn rounded(shape: &Shape, transform: &Transform) -> Option<Rounded> {
+    match shape {
+        Shape::Circle(_) => None,
+        Shape::Capsule(capsule) => Some(Rounded::capsule(capsule, transform)),
+        Shape::Polygon(polygon) => Some(Rounded::polygon(polygon, transform)),
+        Shape::Segment(segment) => Some(Rounded::segment(segment, transform)),
+        Shape::ChainSegment(chain) => Some(Rounded::segment(chain.segment(), transform)),
     }
 }
 

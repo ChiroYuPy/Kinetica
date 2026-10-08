@@ -38,6 +38,15 @@
 - **Continuous collision**: a dynamic body moving more than half its thickness in a step is
   swept (translation only, final orientation) against fixed and kinematic colliders, and
   moved back to the time of impact; bullets also sweep against dynamic bodies.
+- **Shapes**: circle, polygon (up to 8 vertices), capsule, segment and chain segment.
+  Everything but the circle is a *rounded convex core* in the narrow phase (Box2D v3 style):
+  SAT and clipping with radii, a closest-points pass for rounded corners, and a dedicated
+  routine for two segment cores (SAT misses the axis along them). Segments have no mass.
+- **Chains**: one collider per segment, created by `World::add_chain`. One-sided, colliding
+  on the left of their direction (ground listed left to right; closed outlines clockwise for
+  solids, counter-clockwise for containers). Each segment knows its neighbors and only
+  accepts contact normals they make possible, so shapes slide across joints without
+  catching; queries still hit them from both sides.
 - **Contacts**: only created when at least one body is dynamic, never between colliders of the
   same body. Points are reported slightly before shapes touch (speculative distance).
 - **Determinism**: same inputs on the same build give bit-identical results, and
@@ -63,6 +72,7 @@
       chains, bridge, ragdolls, suspended car, springs, crank-slider, elevator, cantilever.
 - [x] **5. Game features**: sleeping by islands, collision layers, sensors with events,
       continuous collision (bullets), one-way platforms.
-- [ ] **6. More shapes**: capsule, segment, chain (terrain).
+- [x] **6. More shapes**: capsule, segment, smooth one-sided chains for terrain; the car
+      terrain, ragdolls and stairs use them.
 - [ ] **7. Games**: a `kinetica-macroquad` glue crate, first small games under `games/`,
       WASM builds, optional `serde` feature.

@@ -49,27 +49,38 @@ impl Circle {
 
     /// Ray cast in the local frame; returns the fraction and the local normal.
     pub(crate) fn cast_ray(&self, origin: Vec2, translation: Vec2, max_fraction: f32) -> Option<(f32, Vec2)> {
-        // Solve |origin + t·translation − center|² = radius² for the smallest t.
-        let offset = origin - self.center;
-        let c = offset.length_squared() - self.radius * self.radius;
-        if c < 0.0 {
-            return None;
-        }
-        let a = translation.length_squared();
-        let b = offset.dot(translation);
-        let discriminant = b * b - a * c;
-        if a == 0.0 || discriminant < 0.0 {
-            return None;
-        }
-        let fraction = (-b - discriminant.sqrt()) / a;
-        if !(0.0..=max_fraction).contains(&fraction) {
-            return None;
-        }
-        Some((fraction, (offset + fraction * translation).normalize()))
+        cast_ray_at_disc(self.center, self.radius, origin, translation, max_fraction)
     }
 
     pub(crate) fn compute_aabb(&self, transform: &Transform) -> Aabb {
         let center = transform.transform_point(self.center);
         Aabb::new(center - self.radius, center + self.radius)
     }
+}
+
+/// Ray cast against a disc; rays starting inside do not hit it.
+pub(super) fn cast_ray_at_disc(
+    center: Vec2,
+    radius: f32,
+    origin: Vec2,
+    translation: Vec2,
+    max_fraction: f32,
+) -> Option<(f32, Vec2)> {
+    // Solve |origin + t·translation − center|² = radius² for the smallest t.
+    let offset = origin - center;
+    let c = offset.length_squared() - radius * radius;
+    if c < 0.0 {
+        return None;
+    }
+    let a = translation.length_squared();
+    let b = offset.dot(translation);
+    let discriminant = b * b - a * c;
+    if a == 0.0 || discriminant < 0.0 {
+        return None;
+    }
+    let fraction = (-b - discriminant.sqrt()) / a;
+    if !(0.0..=max_fraction).contains(&fraction) {
+        return None;
+    }
+    Some((fraction, (offset + fraction * translation).normalize()))
 }

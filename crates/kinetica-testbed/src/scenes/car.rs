@@ -41,7 +41,7 @@ fn build(world: &mut World) -> Box<dyn SceneUpdate> {
     Box::new(add_car(world, START))
 }
 
-/// Rolling hills made of rectangles laid end to end.
+/// Rolling hills: a single chain, walled at both ends.
 fn add_terrain(world: &mut World) {
     let ground = world.add_body(BodyDesc::fixed());
     let heights = [
@@ -52,24 +52,12 @@ fn add_terrain(world: &mut World) {
     let segment_width = 2.0;
     let points: Vec<Vec2> =
         heights.iter().enumerate().map(|(i, &height)| vec2(start_x + segment_width * i as f32, height)).collect();
-    // Walls at both ends keep the car on the track.
-    for end in [points[0], points[points.len() - 1]] {
-        world.add_collider(ground, ColliderDesc::offset_rectangle(0.25, 2.0, end + vec2(0.0, 1.5), 0.0));
-    }
-    for pair in points.windows(2) {
-        let (start, end) = (pair[0], pair[1]);
-        let direction = end - start;
-        let thickness = 0.25;
-        // Sink the rectangle by its half thickness so its top edge follows the profile.
-        let normal = direction.perp().normalize();
-        let center = (start + end) / 2.0 - thickness * normal;
-        let angle = direction.y.atan2(direction.x);
-        // Slightly longer than the segment so neighbours overlap and wheels do not catch on seams.
-        world.add_collider(
-            ground,
-            ColliderDesc::offset_rectangle(direction.length() / 2.0 + 0.05, thickness, center, angle).friction(0.9),
-        );
-    }
+    // Walls at both ends keep the car on the track: the chain comes down the left one and
+    // goes up the right one, so it faces the track everywhere.
+    let mut outline = vec![points[0] + vec2(0.0, 4.0)];
+    outline.extend(&points);
+    outline.push(points[points.len() - 1] + vec2(0.0, 4.0));
+    world.add_chain(ground, &ChainDesc::new(outline).friction(0.9));
 }
 
 struct Car {

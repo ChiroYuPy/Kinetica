@@ -51,6 +51,24 @@ pub trait DebugDraw {
     fn draw_segment(&mut self, start: Vec2, end: Vec2, color: Color);
     /// Draws a small marker at a point.
     fn draw_point(&mut self, point: Vec2, color: Color);
+
+    /// Draws a capsule: every point within `radius` of the segment from `start` to `end`.
+    ///
+    /// The default implementation draws it as a polygon.
+    fn draw_capsule(&mut self, start: Vec2, end: Vec2, radius: f32, color: Color) {
+        const ARC_POINTS: usize = 8;
+        let axis = (end - start).normalize_or_zero();
+        let side = axis.perp();
+        let mut outline = Vec::with_capacity(2 * ARC_POINTS);
+        // Half circle around the end, then around the start, counter-clockwise.
+        for (center, from) in [(end, -side), (start, side)] {
+            for i in 0..ARC_POINTS {
+                let angle = std::f32::consts::PI * i as f32 / (ARC_POINTS - 1) as f32;
+                outline.push(center + radius * Rot::from_angle(angle).rotate(from));
+            }
+        }
+        self.draw_polygon(&outline, color);
+    }
 }
 
 /// Selects what [`World::debug_draw`] shows.
@@ -179,8 +197,33 @@ impl World {
     }
 }
 
+/// Length of the tick showing which side of a chain collides, in meters.
+const CHAIN_NORMAL_LENGTH: f32 = 0.15;
+
 fn draw_shape(drawer: &mut impl DebugDraw, shape: &Shape, transform: &Transform, color: Color) {
     match shape {
+        Shape::Capsule(capsule) => {
+            let (start, end) = (transform.transform_point(capsule.start()), transform.transform_point(capsule.end()));
+            drawer.draw_capsule(start, end, capsule.radius(), color);
+        }
+        Shape::Segment(segment) => {
+            drawer.draw_segment(
+                transform.transform_point(segment.start()),
+                transform.transform_point(segment.end()),
+                color,
+            );
+        }
+        Shape::ChainSegment(chain) => {
+            let segment = chain.segment();
+            let (start, end) = (transform.transform_point(segment.start()), transform.transform_point(segment.end()));
+            drawer.draw_segment(start, end, color);
+            let middle = 0.5 * (start + end);
+            drawer.draw_segment(
+                middle,
+                middle + CHAIN_NORMAL_LENGTH * transform.rotation.rotate(segment.normal()),
+                color,
+            );
+        }
         Shape::Circle(circle) => {
             drawer.draw_circle(transform.transform_point(circle.center()), circle.radius(), transform.rotation, color);
         }
