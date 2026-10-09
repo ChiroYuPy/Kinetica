@@ -1,8 +1,8 @@
 //! Joints: constraints connecting two bodies.
 //!
-//! Create a joint from one of the `*JointDesc` types with
-//! [`World::add_joint`](crate::World::add_joint). By default, the two connected bodies stop
-//! colliding with each other.
+//! Describe a joint with one of the `*JointDesc` types, anchors given as world points, and add
+//! it with [`World::add_joint`](crate::World::add_joint). By default, the two connected bodies stop colliding with each
+//! other.
 //!
 //! | Joint | Keeps | Typical use |
 //! |-------|-------|-------------|
@@ -11,6 +11,76 @@
 //! | [`PrismaticJoint`] | a slide axis | pistons, elevators, sliding doors |
 //! | [`WeldJoint`] | the relative placement | breakable or bendable structures |
 //! | [`MouseJoint`] | a point near a target | dragging bodies with the mouse |
+//!
+//! The handle returned by [`World::add_joint`](crate::World::add_joint) knows the type of the joint, so indexing the
+//! world with it gives that joint directly:
+//!
+//! ```
+//! use kinetica::prelude::*;
+//!
+//! let mut world = World::new();
+//! let ground = world.add_body(BodyDesc::fixed());
+//! let wheel = world.add_body(BodyDesc::dynamic().collider(ColliderDesc::circle(0.5)));
+//!
+//! let axle = world.add_joint(RevoluteJointDesc::new(ground, wheel, Vec2::ZERO));
+//! world[axle].set_motor(Some(Motor { speed: 2.0, max_force: 50.0 }));
+//! world.step(1.0 / 60.0);
+//!
+//! // Every joint reports the force it applies, to break it under load.
+//! if world[axle].constraint_force().length() > 1000.0 {
+//!     world.remove_joint(axle);
+//! }
+//! ```
+
+/// Methods shared by [`Joint`] and every joint type, which reach the common data through
+/// `base()` and `reaction_impulse()`.
+macro_rules! shared_joint_methods {
+    () => {
+        /// First body.
+        #[must_use]
+        pub fn body_a(&self) -> BodyHandle {
+            self.base().body_a
+        }
+
+        /// Second body.
+        #[must_use]
+        pub fn body_b(&self) -> BodyHandle {
+            self.base().body_b
+        }
+
+        /// Given one body of the joint, returns the other one.
+        #[must_use]
+        pub fn other_body(&self, body: BodyHandle) -> Option<BodyHandle> {
+            let base = self.base();
+            match body {
+                _ if body == base.body_a => Some(base.body_b),
+                _ if body == base.body_b => Some(base.body_a),
+                _ => None,
+            }
+        }
+
+        /// Whether the two bodies still collide with each other.
+        #[must_use]
+        pub fn collide_connected(&self) -> bool {
+            self.base().collide_connected
+        }
+
+        /// Force the joint applied to body B during the last step, in newtons, in world space.
+        /// Body A received the opposite force. Useful to break joints under load.
+        #[must_use]
+        pub fn constraint_force(&self) -> Vec2 {
+            self.base().inverse_substep * self.reaction_impulse().0
+        }
+
+        /// Torque the joint applied to body B during the last step, in N·m, not counting the
+        /// torque of [`constraint_force`](Self::constraint_force) about the anchor. Body A
+        /// received the opposite torque.
+        #[must_use]
+        pub fn constraint_torque(&self) -> f32 {
+            self.base().inverse_substep * self.reaction_impulse().1
+        }
+    };
+}
 
 mod distance;
 mod frame;
@@ -19,6 +89,9 @@ mod prismatic;
 mod revolute;
 mod weld;
 
+use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::marker::PhantomData;
 use std::ops::RangeInclusive;
 
 pub use distance::{DistanceJoint, DistanceJointDesc};
@@ -32,14 +105,69 @@ use crate::arena::{Arena, Index};
 use crate::body::{Body, BodyHandle};
 use crate::math::Vec2;
 use crate::solver::SolverContext;
-use crate::world::World;
 
-/// Handle to a [`Joint`] stored in a [`World`].
+/// Handle to a joint stored in a [`World`](crate::World).
+///
+/// `J` is the type of the joint: [`World::add_joint`](crate::World::add_joint)(crate::World::add_joint) returns, say, a
+/// `JointHandle<RevoluteJoint>`, and `world[handle]` is then a [`RevoluteJoint`]. A plain
+/// `JointHandle` refers to a joint of any type and gives a [`Joint`].
 ///
 /// A handle stays valid until its joint (or one of its bodies) is removed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct JointHandle(pub(crate) Index);
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(bound = ""))]
+pub struct JointHandle<J = Joint>(pub(crate) Index, #[cfg_attr(feature = "serde", serde(skip))] PhantomData<fn() -> J>);
+
+impl<J> JointHandle<J> {
+    pub(crate) fn new(index: Index) -> Self {
+        Self(index, PhantomData)
+    }
+
+    /// The same handle, forgetting the joint type, to store joints of different types together.
+    #[must_use]
+    pub fn untyped(self) -> JointHandle {
+        JointHandle::new(self.0)
+    }
+}
+
+// Written by hand: derives would require `J` itself to be `Clone`, `Eq`…
+impl<J> Clone for JointHandle<J> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<J> Copy for JointHandle<J> {}
+
+impl<J> PartialEq for JointHandle<J> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<J> Eq for JointHandle<J> {}
+
+impl<J> PartialOrd for JointHandle<J> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<J> Ord for JointHandle<J> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
+impl<J> Hash for JointHandle<J> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
+impl<J> fmt::Debug for JointHandle<J> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("JointHandle").field(&self.0).finish()
+    }
+}
 
 /// Drives a joint towards a target speed with a bounded force.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -64,79 +192,10 @@ pub struct Spring {
     pub damping_ratio: f32,
 }
 
-/// Description of any joint, accepted by [`World::add_joint`].
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum JointDesc {
-    /// See [`RevoluteJointDesc`].
-    Revolute(RevoluteJointDesc),
-    /// See [`DistanceJointDesc`].
-    Distance(DistanceJointDesc),
-    /// See [`PrismaticJointDesc`].
-    Prismatic(PrismaticJointDesc),
-    /// See [`WeldJointDesc`].
-    Weld(WeldJointDesc),
-    /// See [`MouseJointDesc`].
-    Mouse(MouseJointDesc),
-}
-
-impl JointDesc {
-    pub(crate) fn bodies(&self) -> (BodyHandle, BodyHandle) {
-        match self {
-            Self::Revolute(desc) => (desc.body_a, desc.body_b),
-            Self::Distance(desc) => (desc.body_a, desc.body_b),
-            Self::Prismatic(desc) => (desc.body_a, desc.body_b),
-            Self::Weld(desc) => (desc.body_a, desc.body_b),
-            Self::Mouse(desc) => (desc.body_a, desc.body_b),
-        }
-    }
-
-    fn collide_connected(&self) -> bool {
-        match self {
-            Self::Revolute(desc) => desc.collide_connected,
-            Self::Distance(desc) => desc.collide_connected,
-            Self::Prismatic(desc) => desc.collide_connected,
-            Self::Weld(desc) => desc.collide_connected,
-            // The reference body is not really connected.
-            Self::Mouse(_) => true,
-        }
-    }
-}
-
-impl From<RevoluteJointDesc> for JointDesc {
-    fn from(desc: RevoluteJointDesc) -> Self {
-        Self::Revolute(desc)
-    }
-}
-
-impl From<DistanceJointDesc> for JointDesc {
-    fn from(desc: DistanceJointDesc) -> Self {
-        Self::Distance(desc)
-    }
-}
-
-impl From<PrismaticJointDesc> for JointDesc {
-    fn from(desc: PrismaticJointDesc) -> Self {
-        Self::Prismatic(desc)
-    }
-}
-
-impl From<WeldJointDesc> for JointDesc {
-    fn from(desc: WeldJointDesc) -> Self {
-        Self::Weld(desc)
-    }
-}
-
-impl From<MouseJointDesc> for JointDesc {
-    fn from(desc: MouseJointDesc) -> Self {
-        Self::Mouse(desc)
-    }
-}
-
-/// The specific behaviour of a [`Joint`].
+/// A joint of any type, living in a [`World`](crate::World).
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum JointKind {
+pub enum Joint {
     /// See [`RevoluteJoint`].
     Revolute(RevoluteJoint),
     /// See [`DistanceJoint`].
@@ -149,173 +208,43 @@ pub enum JointKind {
     Mouse(MouseJoint),
 }
 
-/// A constraint between two bodies, living in a [`World`].
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Joint {
-    body_a: BodyHandle,
-    body_b: BodyHandle,
-    collide_connected: bool,
-    kind: JointKind,
-    frame: JointFrame,
-    /// Converts the stored per-substep impulses to forces.
-    inverse_substep: f32,
-}
-
 impl Joint {
-    /// Builds the joint; both bodies must exist and be distinct.
-    pub(crate) fn new(desc: &JointDesc, a: &Body, b: &Body) -> Self {
-        let (body_a, body_b) = desc.bodies();
-        let kind = match desc {
-            JointDesc::Revolute(desc) => JointKind::Revolute(RevoluteJoint::new(desc)),
-            JointDesc::Distance(desc) => JointKind::Distance(DistanceJoint::new(desc, a, b)),
-            JointDesc::Prismatic(desc) => JointKind::Prismatic(PrismaticJoint::new(desc)),
-            JointDesc::Weld(desc) => JointKind::Weld(WeldJoint::new(desc)),
-            JointDesc::Mouse(desc) => JointKind::Mouse(MouseJoint::new(desc)),
-        };
-        Self {
-            body_a,
-            body_b,
-            collide_connected: desc.collide_connected(),
-            kind,
-            frame: JointFrame::default(),
-            inverse_substep: 0.0,
-        }
-    }
-
-    /// First body.
-    #[must_use]
-    pub fn body_a(&self) -> BodyHandle {
-        self.body_a
-    }
-
-    /// Second body.
-    #[must_use]
-    pub fn body_b(&self) -> BodyHandle {
-        self.body_b
-    }
-
-    /// Given one body of the joint, returns the other one.
-    #[must_use]
-    pub fn other_body(&self, body: BodyHandle) -> Option<BodyHandle> {
-        match body {
-            _ if body == self.body_a => Some(self.body_b),
-            _ if body == self.body_b => Some(self.body_a),
-            _ => None,
-        }
-    }
-
-    /// Whether the two bodies still collide with each other.
-    #[must_use]
-    pub fn collide_connected(&self) -> bool {
-        self.collide_connected
-    }
-
-    /// The specific behaviour, to read its settings.
-    #[must_use]
-    pub fn kind(&self) -> &JointKind {
-        &self.kind
-    }
-
-    /// The specific behaviour, to change its settings (motor, limits, target…).
-    pub fn kind_mut(&mut self) -> &mut JointKind {
-        &mut self.kind
-    }
+    shared_joint_methods!();
 
     /// Attachment points in the local frames of body A and body B.
     ///
     /// For a mouse joint, the first point is the target, in world space.
     #[must_use]
     pub fn local_anchors(&self) -> (Vec2, Vec2) {
-        match &self.kind {
-            JointKind::Revolute(joint) => (joint.local_anchor_a(), joint.local_anchor_b()),
-            JointKind::Distance(joint) => (joint.local_anchor_a(), joint.local_anchor_b()),
-            JointKind::Prismatic(joint) => (joint.local_anchor_a(), joint.local_anchor_b()),
-            JointKind::Weld(joint) => (joint.local_anchor_a(), joint.local_anchor_b()),
-            JointKind::Mouse(joint) => (joint.target(), joint.local_anchor_b()),
+        match self {
+            Self::Revolute(joint) => (joint.local_anchor_a(), joint.local_anchor_b()),
+            Self::Distance(joint) => (joint.local_anchor_a(), joint.local_anchor_b()),
+            Self::Prismatic(joint) => (joint.local_anchor_a(), joint.local_anchor_b()),
+            Self::Weld(joint) => (joint.local_anchor_a(), joint.local_anchor_b()),
+            Self::Mouse(joint) => (joint.target(), joint.local_anchor_b()),
         }
     }
 
-    /// Force the joint applied to body B during the last step, in newtons, in world space.
-    /// Body A received the opposite force.
-    ///
-    /// Useful to break joints under load:
-    ///
-    /// ```
-    /// # use kinetica::prelude::*;
-    /// # let mut world = World::new();
-    /// # let ceiling = world.add_body(BodyDesc::fixed());
-    /// # let lamp = world.add_body(BodyDesc::dynamic().position(vec2(0.0, -1.0)));
-    /// # world.add_collider(lamp, ColliderDesc::circle(0.2));
-    /// let chain = world.add_joint(RevoluteJointDesc::at_world_point(&world, ceiling, lamp, Vec2::ZERO));
-    /// world.step(1.0 / 60.0);
-    /// if world.joint(chain).unwrap().constraint_force().length() > 1000.0 {
-    ///     world.remove_joint(chain);
-    /// }
-    /// ```
-    #[must_use]
-    pub fn constraint_force(&self) -> Vec2 {
-        self.inverse_substep * self.kind.reaction_impulse().0
-    }
-
-    /// Torque the joint applied to body B during the last step, in N·m, not counting the
-    /// torque of [`constraint_force`](Self::constraint_force) about the anchor. Body A
-    /// received the opposite torque.
-    #[must_use]
-    pub fn constraint_torque(&self) -> f32 {
-        self.inverse_substep * self.kind.reaction_impulse().1
-    }
-
-    /// Returns `true` if the joint stops `body` and `other` from colliding.
-    pub(crate) fn prevents_collision(&self, body: BodyHandle, other: BodyHandle) -> bool {
-        !self.collide_connected && self.other_body(body) == Some(other)
-    }
-
-    pub(crate) fn prepare(&mut self, bodies: &Arena<Body>, context: &SolverContext) {
-        let (Some(a), Some(b)) = (bodies.get(self.body_a.0), bodies.get(self.body_b.0)) else { return };
-        let (local_anchor_a, local_anchor_b) = match &self.kind {
-            // The target is not attached to body A.
-            JointKind::Mouse(joint) => (a.local_center_of_mass(), joint.local_anchor_b()),
-            _ => self.local_anchors(),
-        };
-        self.frame = JointFrame::new(a, b, local_anchor_a, local_anchor_b);
-        self.inverse_substep = context.inverse_substep;
-        match &mut self.kind {
-            JointKind::Revolute(joint) => joint.prepare(&self.frame, a, b),
-            JointKind::Distance(joint) => joint.prepare(&self.frame, context),
-            JointKind::Prismatic(joint) => joint.prepare(&self.frame, a, b),
-            JointKind::Weld(joint) => joint.prepare(&self.frame, a, b, context),
-            JointKind::Mouse(joint) => joint.prepare(b, context),
+    fn base(&self) -> &JointBase {
+        match self {
+            Self::Revolute(joint) => &joint.base,
+            Self::Distance(joint) => &joint.base,
+            Self::Prismatic(joint) => &joint.base,
+            Self::Weld(joint) => &joint.base,
+            Self::Mouse(joint) => &joint.base,
         }
     }
 
-    pub(crate) fn warm_start(&mut self, bodies: &mut Arena<Body>) {
-        let Some((a, b)) = bodies.get2_mut(self.body_a.0, self.body_b.0) else { return };
-        let frame = &self.frame;
-        match &self.kind {
-            JointKind::Revolute(joint) => joint.warm_start(frame, a, b),
-            JointKind::Distance(joint) => joint.warm_start(frame, a, b),
-            JointKind::Prismatic(joint) => joint.warm_start(frame, a, b),
-            JointKind::Weld(joint) => joint.warm_start(frame, a, b),
-            JointKind::Mouse(joint) => joint.warm_start(frame, b),
+    fn base_mut(&mut self) -> &mut JointBase {
+        match self {
+            Self::Revolute(joint) => &mut joint.base,
+            Self::Distance(joint) => &mut joint.base,
+            Self::Prismatic(joint) => &mut joint.base,
+            Self::Weld(joint) => &mut joint.base,
+            Self::Mouse(joint) => &mut joint.base,
         }
     }
 
-    pub(crate) fn solve(&mut self, bodies: &mut Arena<Body>, context: &SolverContext, use_bias: bool) {
-        let Some((a, b)) = bodies.get2_mut(self.body_a.0, self.body_b.0) else { return };
-        let frame = &self.frame;
-        match &mut self.kind {
-            JointKind::Revolute(joint) => joint.solve(frame, a, b, context, use_bias),
-            JointKind::Distance(joint) => joint.solve(frame, a, b, context, use_bias),
-            JointKind::Prismatic(joint) => joint.solve(frame, a, b, context, use_bias),
-            JointKind::Weld(joint) => joint.solve(frame, a, b, context, use_bias),
-            // A soft spring by design: identical with and without bias.
-            JointKind::Mouse(joint) => joint.solve(frame, b, context),
-        }
-    }
-}
-
-impl JointKind {
     /// Linear and angular impulses applied to body B during the last substep.
     fn reaction_impulse(&self) -> (Vec2, f32) {
         match self {
@@ -326,14 +255,151 @@ impl JointKind {
             Self::Mouse(joint) => joint.reaction_impulse(),
         }
     }
+
+    /// Returns `true` if the joint stops `body` and `other` from colliding.
+    pub(crate) fn prevents_collision(&self, body: BodyHandle, other: BodyHandle) -> bool {
+        !self.collide_connected() && self.other_body(body) == Some(other)
+    }
+
+    pub(crate) fn prepare(&mut self, bodies: &Arena<Body>, context: &SolverContext) {
+        let (Some(a), Some(b)) = (bodies.get(self.body_a().0), bodies.get(self.body_b().0)) else { return };
+        let (local_anchor_a, local_anchor_b) = match self {
+            // The target is not attached to body A.
+            Self::Mouse(joint) => (a.local_center_of_mass(), joint.local_anchor_b()),
+            _ => self.local_anchors(),
+        };
+        let base = self.base_mut();
+        base.frame = JointFrame::new(a, b, local_anchor_a, local_anchor_b);
+        base.inverse_substep = context.inverse_substep;
+        let frame = base.frame;
+        match self {
+            Self::Revolute(joint) => joint.prepare(&frame, a, b),
+            Self::Distance(joint) => joint.prepare(&frame, context),
+            Self::Prismatic(joint) => joint.prepare(&frame, a, b),
+            Self::Weld(joint) => joint.prepare(&frame, a, b, context),
+            Self::Mouse(joint) => joint.prepare(b, context),
+        }
+    }
+
+    pub(crate) fn warm_start(&self, bodies: &mut Arena<Body>) {
+        let Some((a, b)) = bodies.get2_mut(self.body_a().0, self.body_b().0) else { return };
+        let frame = &self.base().frame;
+        match self {
+            Self::Revolute(joint) => joint.warm_start(frame, a, b),
+            Self::Distance(joint) => joint.warm_start(frame, a, b),
+            Self::Prismatic(joint) => joint.warm_start(frame, a, b),
+            Self::Weld(joint) => joint.warm_start(frame, a, b),
+            Self::Mouse(joint) => joint.warm_start(frame, b),
+        }
+    }
+
+    pub(crate) fn solve(&mut self, bodies: &mut Arena<Body>, context: &SolverContext, use_bias: bool) {
+        let Some((a, b)) = bodies.get2_mut(self.body_a().0, self.body_b().0) else { return };
+        let frame = self.base().frame;
+        match self {
+            Self::Revolute(joint) => joint.solve(&frame, a, b, context, use_bias),
+            Self::Distance(joint) => joint.solve(&frame, a, b, context, use_bias),
+            Self::Prismatic(joint) => joint.solve(&frame, a, b, context, use_bias),
+            Self::Weld(joint) => joint.solve(&frame, a, b, context, use_bias),
+            // A soft spring by design: identical with and without bias.
+            Self::Mouse(joint) => joint.solve(&frame, b, context),
+        }
+    }
 }
 
-/// Looks up the two bodies a joint description refers to.
-fn bodies_of(world: &World, body_a: BodyHandle, body_b: BodyHandle) -> (&Body, &Body) {
-    let a = world.body(body_a).expect("joint body A was removed from the world");
-    let b = world.body(body_b).expect("joint body B was removed from the world");
-    (a, b)
+/// What every joint holds besides its own settings.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub(crate) struct JointBase {
+    body_a: BodyHandle,
+    body_b: BodyHandle,
+    collide_connected: bool,
+    frame: JointFrame,
+    /// Converts the stored per-substep impulses to forces.
+    inverse_substep: f32,
 }
+
+impl JointBase {
+    fn new(body_a: BodyHandle, body_b: BodyHandle, collide_connected: bool) -> Self {
+        Self { body_a, body_b, collide_connected, frame: JointFrame::default(), inverse_substep: 0.0 }
+    }
+}
+
+/// A type of joint: [`Joint`] for any joint, or one of the specific types such as
+/// [`RevoluteJoint`]. It is the `J` of a [`JointHandle<J>`].
+pub trait JointType: sealed::JointType {}
+
+/// A joint description, accepted by [`World::add_joint`](crate::World::add_joint)(crate::World::add_joint).
+pub trait JointDesc: sealed::JointDesc {
+    /// The type of joint it creates.
+    type Joint: JointType;
+}
+
+/// Keeps the methods of [`JointType`] and [`JointDesc`] internal, and the traits closed.
+mod sealed {
+    use super::Joint;
+    use crate::body::{Body, BodyHandle};
+
+    pub trait JointType: Sized {
+        fn from_joint(joint: &Joint) -> Option<&Self>;
+        fn from_joint_mut(joint: &mut Joint) -> Option<&mut Self>;
+    }
+
+    pub trait JointDesc {
+        fn bodies(&self) -> (BodyHandle, BodyHandle);
+        /// Builds the joint from the current placement of its bodies.
+        fn create(self, a: &Body, b: &Body) -> Joint;
+    }
+}
+
+impl sealed::JointType for Joint {
+    fn from_joint(joint: &Joint) -> Option<&Self> {
+        Some(joint)
+    }
+
+    fn from_joint_mut(joint: &mut Joint) -> Option<&mut Self> {
+        Some(joint)
+    }
+}
+
+impl JointType for Joint {}
+
+/// Links a joint type to its variant of [`Joint`] and to its description.
+macro_rules! joint_type {
+    ($joint:ident, $desc:ident, $variant:ident) => {
+        impl sealed::JointType for $joint {
+            fn from_joint(joint: &Joint) -> Option<&Self> {
+                if let Joint::$variant(joint) = joint { Some(joint) } else { None }
+            }
+
+            fn from_joint_mut(joint: &mut Joint) -> Option<&mut Self> {
+                if let Joint::$variant(joint) = joint { Some(joint) } else { None }
+            }
+        }
+
+        impl JointType for $joint {}
+
+        impl sealed::JointDesc for $desc {
+            fn bodies(&self) -> (BodyHandle, BodyHandle) {
+                (self.body_a, self.body_b)
+            }
+
+            fn create(self, a: &Body, b: &Body) -> Joint {
+                Joint::$variant($joint::new(&self, a, b))
+            }
+        }
+
+        impl JointDesc for $desc {
+            type Joint = $joint;
+        }
+    };
+}
+
+joint_type!(RevoluteJoint, RevoluteJointDesc, Revolute);
+joint_type!(DistanceJoint, DistanceJointDesc, Distance);
+joint_type!(PrismaticJoint, PrismaticJointDesc, Prismatic);
+joint_type!(WeldJoint, WeldJointDesc, Weld);
+joint_type!(MouseJoint, MouseJointDesc, Mouse);
 
 /// Converts a range to `(lower, upper)`, checking it is not empty.
 fn validated_range(range: RangeInclusive<f32>) -> (f32, f32) {

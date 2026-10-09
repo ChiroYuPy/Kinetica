@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     fn circle_resting_on_box_face() {
-        let ground = Polygon::rectangle(2.0, 0.5);
+        let ground = Polygon::rectangle(4.0, 1.0);
         let manifold = collide_polygon_circle(&ground, &at(0.0, 0.0), &Circle::new(0.5), &at(0.3, 0.95));
         assert!(manifold.normal().abs_diff_eq(Vec2::Y, 1e-6));
         let [point] = manifold.points() else { panic!("expected one point") };
@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn circle_against_box_corner() {
-        let block = Polygon::rectangle(1.0, 1.0);
+        let block = Polygon::rectangle(2.0, 2.0);
         let manifold = collide_polygon_circle(&block, &at(0.0, 0.0), &Circle::new(0.5), &at(1.3, 1.3));
         let diagonal = vec2(1.0, 1.0).normalize();
         assert!(manifold.normal().abs_diff_eq(diagonal, 1e-5));
@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn circle_center_inside_rotated_box() {
-        let block = Polygon::rectangle(1.0, 1.0);
+        let block = Polygon::rectangle(2.0, 2.0);
         let transform = Transform::new(Vec2::ZERO, Rot::from_angle(std::f32::consts::FRAC_PI_2));
         let manifold = collide_polygon_circle(&block, &transform, &Circle::new(0.25), &at(0.0, 0.8));
         assert!(manifold.normal().abs_diff_eq(Vec2::Y, 1e-5));

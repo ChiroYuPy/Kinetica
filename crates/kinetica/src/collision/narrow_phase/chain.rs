@@ -144,7 +144,7 @@ mod tests {
         // The box overlaps the seam at x = 1 and sinks 1 cm: against the second segment alone,
         // the box's side face would be the shallowest axis.
         let next = ChainSegment::new(Segment::new(vec2(1.0, 0.0), vec2(2.0, 0.0)), Some(vec2(0.0, 0.0)), None);
-        let block = Shape::from(Polygon::rectangle(0.5, 0.5));
+        let block = Shape::from(Polygon::rectangle(1.0, 1.0));
         let manifold = collide_chain_segment(&next, &Transform::IDENTITY, &block, &at(0.505, 0.49));
         assert!(manifold.normal().abs_diff_eq(Vec2::Y, 1e-5), "normal {}", manifold.normal());
         // The part of the box above this segment: from x = 1 to 1.005.

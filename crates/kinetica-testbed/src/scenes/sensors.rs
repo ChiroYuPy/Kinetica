@@ -1,7 +1,8 @@
 use std::collections::VecDeque;
 
+use kinetica::SensorEvent;
 use kinetica::prelude::*;
-use kinetica::{Color, SensorEvent};
+use macroquad::color::Color;
 
 use super::{Build, Category, Frame, Labels, Scene, SceneUpdate, add_ground};
 use kinetica_macroquad::DebugRenderer;
@@ -16,31 +17,28 @@ pub const SCENE: Scene = Scene {
     build: Build::Animated(build),
 };
 
-const IDLE_COLOR: Color = Color::rgb(0.5, 0.5, 0.6);
-const OCCUPIED_COLOR: Color = Color::rgb(0.3, 0.9, 0.6);
-const ENTERED_COLOR: Color = Color::rgb(1.0, 1.0, 0.5);
-const VISITOR_COLOR: Color = Color::rgb(0.3, 0.9, 0.6);
+const IDLE_COLOR: Color = Color::new(0.5, 0.5, 0.6, 1.0);
+const OCCUPIED_COLOR: Color = Color::new(0.3, 0.9, 0.6, 1.0);
+const ENTERED_COLOR: Color = Color::new(1.0, 1.0, 0.5, 1.0);
+const VISITOR_COLOR: Color = Color::new(0.3, 0.9, 0.6, 1.0);
 /// How long a sensor flashes after something enters it, in seconds.
 const FLASH_TIME: f32 = 0.15;
 const SPAWN_PERIOD: f32 = 0.35;
 const MAX_BODIES: usize = 40;
 
 fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
-    add_ground(world, 20.0);
+    add_ground(world, 40.0);
 
     let zones = world.add_body(BodyDesc::fixed());
     let mut sensors = Vec::new();
     for center in [vec2(-4.0, 6.0), vec2(4.0, 3.0)] {
-        sensors.push(world.add_collider(zones, ColliderDesc::offset_rectangle(2.5, 1.2, center, 0.0).sensor(true)));
+        sensors.push(world.add_collider(zones, ColliderDesc::rectangle(5.0, 2.4).offset(center).sensor()));
     }
 
     // A kinematic arm sweeping a sensor disc through the rain.
-    let arm = world.add_body(BodyDesc::kinematic().position(vec2(0.0, 4.5)).angular_velocity(0.8));
-    world.add_collider(arm, ColliderDesc::rectangle(3.0, 0.08).sensor(true));
-    sensors.push(world.add_collider(
-        arm,
-        ColliderDesc::new(kinetica::shape::Circle::new(0.8).with_center(vec2(3.5, 0.0))).sensor(true),
-    ));
+    let bar = ColliderDesc::rectangle(6.0, 0.16).sensor();
+    let arm = world.add_body(BodyDesc::kinematic().position(vec2(0.0, 4.5)).angular_velocity(0.8).collider(bar));
+    sensors.push(world.add_collider(arm, ColliderDesc::circle(0.8).offset(vec2(3.5, 0.0)).sensor()));
 
     labels.above(arm, "Sensor on a kinematic arm");
 
@@ -77,10 +75,8 @@ impl SceneUpdate for Zones {
         let i = self.spawned;
         self.spawned += 1;
         let x = ((i * 7) % 17) as f32 - 8.0;
-        let body = world.add_body(BodyDesc::dynamic().position(vec2(x, 13.0)).angular_velocity(1.0));
-        let collider =
-            if i.is_multiple_of(2) { ColliderDesc::circle(0.35) } else { ColliderDesc::rectangle(0.35, 0.35) };
-        world.add_collider(body, collider);
+        let shape = if i.is_multiple_of(2) { ColliderDesc::circle(0.35) } else { ColliderDesc::square(0.7) };
+        let body = world.add_body(BodyDesc::dynamic().position(vec2(x, 13.0)).angular_velocity(1.0).collider(shape));
         self.bodies.push_back(body);
         if self.bodies.len() > MAX_BODIES
             && let Some(oldest) = self.bodies.pop_front()
@@ -98,7 +94,7 @@ impl SceneUpdate for Zones {
             } else {
                 IDLE_COLOR
             };
-            drawer.draw_collider(world, sensor, color.with_alpha(0.5));
+            drawer.draw_collider(world, sensor, Color { a: 0.5, ..color });
             for pair in world.sensor_overlaps(sensor) {
                 drawer.draw_collider(world, pair.visitor, VISITOR_COLOR);
             }
@@ -108,8 +104,7 @@ impl SceneUpdate for Zones {
     fn labels(&self, world: &World, _frame: &Frame, labels: &mut Labels) {
         // The fixed zones; the arm's tip moves too much to carry a label.
         for &sensor in &self.sensors[..2] {
-            let Some(collider) = world.collider(sensor) else { continue };
-            let aabb = collider.aabb();
+            let aabb = world[sensor].aabb();
             let inside = world.sensor_overlaps(sensor).count();
             labels.at(
                 vec2(f32::midpoint(aabb.min.x, aabb.max.x), aabb.max.y + 0.15),

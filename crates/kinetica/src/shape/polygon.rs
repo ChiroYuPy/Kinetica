@@ -3,7 +3,7 @@ use std::fmt;
 
 use super::MassProperties;
 use crate::constants::LINEAR_SLOP;
-use crate::math::{Aabb, Rot, Transform, Vec2, vec2};
+use crate::math::{Aabb, Transform, Vec2, vec2};
 
 /// Maximum number of vertices of a [`Polygon`].
 ///
@@ -48,17 +48,18 @@ impl Polygon {
         Ok(Self::from_hull(hull))
     }
 
-    /// Creates a rectangle centered on the body origin.
+    /// Creates a `width` × `height` rectangle centered on the body origin.
     ///
     /// # Panics
     ///
-    /// Panics if a half extent is not strictly positive and finite.
+    /// Panics if a size is not strictly positive and finite.
     #[must_use]
-    pub fn rectangle(half_width: f32, half_height: f32) -> Self {
+    pub fn rectangle(width: f32, height: f32) -> Self {
         assert!(
-            half_width.is_finite() && half_width > 0.0 && half_height.is_finite() && half_height > 0.0,
-            "rectangle half extents must be positive, got {half_width} x {half_height}"
+            width.is_finite() && width > 0.0 && height.is_finite() && height > 0.0,
+            "rectangle sizes must be positive, got {width} x {height}"
         );
+        let (half_width, half_height) = (0.5 * width, 0.5 * height);
         Self::from_hull(vec![
             vec2(-half_width, -half_height),
             vec2(half_width, -half_height),
@@ -67,24 +68,18 @@ impl Polygon {
         ])
     }
 
-    /// Creates a rectangle centered on `center` and rotated by `angle` radians, both relative to
-    /// the body origin. Useful to build compound bodies, such as an open box from four walls.
-    ///
-    /// # Panics
-    ///
-    /// Panics if a half extent is not strictly positive and finite.
+    /// The same polygon, rotated then moved by `placement`.
     #[must_use]
-    pub fn offset_rectangle(half_width: f32, half_height: f32, center: Vec2, angle: f32) -> Self {
-        let placement = Transform::new(center, Rot::from_angle(angle));
-        let mut rectangle = Self::rectangle(half_width, half_height);
-        for vertex in &mut rectangle.vertices {
+    pub(crate) fn transformed(&self, placement: &Transform) -> Self {
+        let mut polygon = self.clone();
+        for vertex in &mut polygon.vertices {
             *vertex = placement.transform_point(*vertex);
         }
-        for normal in &mut rectangle.normals {
+        for normal in &mut polygon.normals {
             *normal = placement.rotation.rotate(*normal);
         }
-        rectangle.centroid = center;
-        rectangle
+        polygon.centroid = placement.transform_point(polygon.centroid);
+        polygon
     }
 
     /// Creates a regular polygon centered on the body origin, with a vertex on the +X axis.
@@ -271,6 +266,7 @@ fn convex_hull(points: &[Vec2]) -> Vec<Vec2> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::math::Rot;
 
     #[test]
     fn hull_discards_interior_and_collinear_points() {
@@ -295,19 +291,20 @@ mod tests {
 
     #[test]
     fn normals_point_outward() {
-        let polygon = Polygon::rectangle(1.0, 1.0);
+        let polygon = Polygon::rectangle(2.0, 2.0);
         for (vertex, normal) in polygon.vertices().iter().zip(polygon.normals()) {
             assert!((*vertex - polygon.centroid()).dot(*normal) > 0.0);
         }
     }
 
     #[test]
-    fn offset_rectangle_matches_moved_rectangle() {
+    fn transformed_rectangle_matches_moved_rectangle() {
         let center = vec2(3.0, -1.0);
-        let offset = Polygon::offset_rectangle(1.0, 0.5, center, std::f32::consts::FRAC_PI_2);
+        let placement = Transform::new(center, Rot::from_angle(std::f32::consts::FRAC_PI_2));
+        let offset = Polygon::rectangle(2.0, 1.0).transformed(&placement);
         assert!(offset.centroid().abs_diff_eq(center, 1e-6));
         let props = offset.mass_properties(1.0);
-        let reference = Polygon::rectangle(1.0, 0.5).mass_properties(1.0);
+        let reference = Polygon::rectangle(2.0, 1.0).mass_properties(1.0);
         assert!((props.mass - reference.mass).abs() < 1e-5);
         assert!((props.inertia - reference.inertia).abs() < 1e-4);
         // Rotated a quarter turn, the long side is vertical.

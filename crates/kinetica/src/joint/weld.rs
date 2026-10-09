@@ -1,13 +1,12 @@
 //! Weld joint: glues two bodies together, rigidly or elastically.
 
-use super::Spring;
 use super::frame::{
     BiasTerms, JointFrame, apply_angular_impulse, apply_linear_impulse, relative_angle, relative_velocity, wrap_angle,
 };
+use super::{JointBase, Spring};
 use crate::body::{Body, BodyHandle};
 use crate::math::Vec2;
 use crate::solver::{Softness, SolverContext};
-use crate::world::World;
 
 /// Description of a [`WeldJoint`].
 #[derive(Debug, Clone, PartialEq)]
@@ -17,12 +16,8 @@ pub struct WeldJointDesc {
     pub body_a: BodyHandle,
     /// Second body.
     pub body_b: BodyHandle,
-    /// Weld point, in the local frame of body A.
-    pub local_anchor_a: Vec2,
-    /// Weld point, in the local frame of body B.
-    pub local_anchor_b: Vec2,
-    /// Angle of B relative to A kept by the joint.
-    pub reference_angle: f32,
+    /// Weld point, in world space.
+    pub anchor: Vec2,
     /// Makes the weld point elastic instead of rigid.
     pub linear_spring: Option<Spring>,
     /// Makes the relative angle elastic instead of rigid.
@@ -32,33 +27,11 @@ pub struct WeldJointDesc {
 }
 
 impl WeldJointDesc {
-    /// Describes a weld given in each body's local frame.
+    /// Describes a weld at the world point `anchor`, keeping the relative placement the bodies
+    /// have when the joint is added.
     #[must_use]
-    pub fn new(body_a: BodyHandle, body_b: BodyHandle, local_anchor_a: Vec2, local_anchor_b: Vec2) -> Self {
-        Self {
-            body_a,
-            body_b,
-            local_anchor_a,
-            local_anchor_b,
-            reference_angle: 0.0,
-            linear_spring: None,
-            angular_spring: None,
-            collide_connected: false,
-        }
-    }
-
-    /// Describes a weld at a world point, keeping the bodies' current relative placement.
-    ///
-    /// # Panics
-    ///
-    /// Panics if either body was removed from `world`.
-    #[must_use]
-    pub fn at_world_point(world: &World, body_a: BodyHandle, body_b: BodyHandle, point: Vec2) -> Self {
-        let (a, b) = super::bodies_of(world, body_a, body_b);
-        Self {
-            reference_angle: relative_angle(b.rotation(), a.rotation()),
-            ..Self::new(body_a, body_b, a.local_point(point), b.local_point(point))
-        }
+    pub fn new(body_a: BodyHandle, body_b: BodyHandle, anchor: Vec2) -> Self {
+        Self { body_a, body_b, anchor, linear_spring: None, angular_spring: None, collide_connected: false }
     }
 
     /// Makes the weld point elastic.
@@ -75,10 +48,10 @@ impl WeldJointDesc {
         self
     }
 
-    /// Sets whether the two bodies still collide with each other.
+    /// Lets the two bodies keep colliding with each other.
     #[must_use]
-    pub fn collide_connected(mut self, collide: bool) -> Self {
-        self.collide_connected = collide;
+    pub fn collide_connected(mut self) -> Self {
+        self.collide_connected = true;
         self
     }
 }
@@ -87,6 +60,7 @@ impl WeldJointDesc {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct WeldJoint {
+    pub(super) base: JointBase,
     local_anchor_a: Vec2,
     local_anchor_b: Vec2,
     reference_angle: f32,
@@ -102,11 +76,17 @@ pub struct WeldJoint {
 }
 
 impl WeldJoint {
-    pub(crate) fn new(desc: &WeldJointDesc) -> Self {
+    shared_joint_methods!();
+
+    fn base(&self) -> &JointBase {
+        &self.base
+    }
+    pub(super) fn new(desc: &WeldJointDesc, a: &Body, b: &Body) -> Self {
         Self {
-            local_anchor_a: desc.local_anchor_a,
-            local_anchor_b: desc.local_anchor_b,
-            reference_angle: desc.reference_angle,
+            base: JointBase::new(desc.body_a, desc.body_b, desc.collide_connected),
+            local_anchor_a: a.local_point(desc.anchor),
+            local_anchor_b: b.local_point(desc.anchor),
+            reference_angle: relative_angle(b.rotation(), a.rotation()),
             linear_spring: desc.linear_spring,
             angular_spring: desc.angular_spring,
             linear_impulse: Vec2::ZERO,

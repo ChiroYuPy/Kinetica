@@ -1,11 +1,10 @@
 //! The car: a chassis on two sprung wheels driven by motors, with a driver whose head must not
 //! touch the ground.
 
-use kinetica::joint::Motor;
 use kinetica::prelude::*;
 
-const CHASSIS_HALF_LENGTH: f32 = 1.8;
-const CHASSIS_HALF_HEIGHT: f32 = 0.2;
+const CHASSIS_LENGTH: f32 = 3.6;
+const CHASSIS_HEIGHT: f32 = 0.4;
 pub const WHEEL_RADIUS: f32 = 0.5;
 /// The hub needs a collider: a body without one has no rotational inertia and could not
 /// rotate, and the prismatic joint would then stop the whole chassis from rotating too. This
@@ -44,22 +43,22 @@ pub struct Car {
     pub wheels: [BodyHandle; 2],
     /// A sensor: the car crashes when it touches the ground.
     pub head: ColliderHandle,
-    motors: [JointHandle; 2],
+    motors: [JointHandle<RevoluteJoint>; 2],
 }
 
 impl Car {
     pub fn new(world: &mut World, position: Vec2) -> Self {
-        let chassis = world.add_body(BodyDesc::dynamic().position(position));
-        world.add_collider(
-            chassis,
-            ColliderDesc::rectangle(CHASSIS_HALF_LENGTH, CHASSIS_HALF_HEIGHT).density(CHASSIS_DENSITY),
+        // The chassis, and the cabin on it.
+        let chassis = world.add_body(
+            BodyDesc::dynamic()
+                .position(position)
+                .collider(ColliderDesc::rectangle(CHASSIS_LENGTH, CHASSIS_HEIGHT).density(CHASSIS_DENSITY))
+                .collider(ColliderDesc::rectangle(1.4, 0.7).offset(vec2(-0.3, 0.5))),
         );
-        // The cabin, and the driver's head sticking out of it.
-        world.add_collider(chassis, ColliderDesc::offset_rectangle(0.7, 0.35, vec2(-0.3, 0.5), 0.0).density(1.0));
-        let head = kinetica::shape::Circle::new(HEAD_RADIUS).with_center(HEAD_CENTER);
-        let head = world.add_collider(chassis, ColliderDesc::new(head).sensor(true));
+        // The driver's head sticks out of the cabin.
+        let head = world.add_collider(chassis, ColliderDesc::circle(HEAD_RADIUS).offset(HEAD_CENTER).sensor());
 
-        let clearance = AXLE_DROP - SUSPENSION_TRAVEL.end() - WHEEL_RADIUS - CHASSIS_HALF_HEIGHT;
+        let clearance = AXLE_DROP - SUSPENSION_TRAVEL.end() - WHEEL_RADIUS - CHASSIS_HEIGHT / 2.0;
         debug_assert!(clearance > 0.0, "fully compressed, the wheels would hit the chassis");
 
         let mut wheels = Vec::new();
@@ -67,20 +66,15 @@ impl Car {
         for side in [-1.0, 1.0] {
             let axle = position + vec2(side * AXLE_X, -AXLE_DROP);
             // The hub slides vertically in the chassis, pushed down by a spring…
-            let hub = world.add_body(BodyDesc::dynamic().position(axle));
-            world.add_collider(hub, ColliderDesc::circle(HUB_RADIUS).density(5.0));
-            world.add_joint(
-                PrismaticJointDesc::at_world_point(world, chassis, hub, axle, Vec2::Y).limits(SUSPENSION_TRAVEL),
-            );
-            world.add_joint(
-                DistanceJointDesc::between_world_points(world, chassis, hub, axle + vec2(0.0, AXLE_DROP), axle)
-                    .spring(4.0, 0.6),
-            );
+            let hub = world
+                .add_body(BodyDesc::dynamic().position(axle).collider(ColliderDesc::circle(HUB_RADIUS).density(5.0)));
+            world.add_joint(PrismaticJointDesc::new(chassis, hub, axle, Vec2::Y).limits(SUSPENSION_TRAVEL));
+            world.add_joint(DistanceJointDesc::new(chassis, hub, axle + vec2(0.0, AXLE_DROP), axle).spring(4.0, 0.6));
             // …and the wheel turns on the hub.
-            let wheel = world.add_body(BodyDesc::dynamic().position(axle));
-            world.add_collider(wheel, ColliderDesc::circle(WHEEL_RADIUS).friction(1.2));
-            let motor = RevoluteJointDesc::at_world_point(world, hub, wheel, axle).motor(0.0, IDLE_TORQUE);
-            motors.push(world.add_joint(motor));
+            let wheel = world.add_body(
+                BodyDesc::dynamic().position(axle).collider(ColliderDesc::circle(WHEEL_RADIUS).friction(1.2)),
+            );
+            motors.push(world.add_joint(RevoluteJointDesc::new(hub, wheel, axle).motor(0.0, IDLE_TORQUE)));
             wheels.push(wheel);
         }
         Self { chassis, wheels: [wheels[0], wheels[1]], head, motors: [motors[0], motors[1]] }
@@ -94,18 +88,13 @@ impl Car {
         } else {
             Motor { speed: -controls.throttle * DRIVE_SPEED, max_force: DRIVE_TORQUE }
         };
-        for &joint in &self.motors {
-            if let Some(JointKind::Revolute(revolute)) = world.joint_mut(joint).map(kinetica::Joint::kind_mut) {
-                revolute.set_motor(Some(motor));
-            }
+        for joint in self.motors {
+            world[joint].set_motor(Some(motor));
         }
         // In the air, the pedals tilt the car instead: accelerating lifts the nose.
-        if controls.throttle != 0.0
-            && !self.on_ground(world)
-            && let Some(chassis) = world.body_mut(self.chassis)
-        {
-            let torque = controls.throttle * AIR_CONTROL * chassis.inertia();
-            chassis.apply_torque(torque);
+        if controls.throttle != 0.0 && !self.on_ground(world) {
+            let chassis = &mut world[self.chassis];
+            chassis.apply_torque(controls.throttle * AIR_CONTROL * chassis.inertia());
         }
     }
 
@@ -119,18 +108,18 @@ impl Car {
     }
 
     pub fn position(&self, world: &World) -> Vec2 {
-        world.body(self.chassis).map_or(Vec2::ZERO, kinetica::Body::position)
+        world[self.chassis].position()
     }
 
     pub fn speed(&self, world: &World) -> f32 {
-        world.body(self.chassis).map_or(0.0, |chassis| chassis.linear_velocity().length())
+        world[self.chassis].linear_velocity().length()
     }
 
     /// Every body of the car, to tell its colliders apart from the rest.
     pub fn bodies(&self, world: &World) -> Vec<BodyHandle> {
         let mut bodies = vec![self.chassis];
         bodies.extend(self.wheels);
-        bodies.extend(self.motors.iter().filter_map(|&joint| world.joint(joint).map(kinetica::Joint::body_a)));
+        bodies.extend(self.motors.map(|joint| world[joint].body_a()));
         bodies
     }
 }

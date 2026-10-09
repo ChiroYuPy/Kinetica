@@ -73,8 +73,12 @@ impl Default for CollisionLayers {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ColliderDesc {
-    /// Geometry, in the local frame of the body.
+    /// Geometry, before `placement`.
     pub shape: Shape,
+    /// Where the shape sits on the body: rotated by `placement.rotation` around the body
+    /// origin, then moved by `placement.position`. See [`offset`](Self::offset) and
+    /// [`angle`](Self::angle).
+    pub placement: Transform,
     /// Mass per square meter, in kg/m².
     pub density: f32,
     /// Friction coefficient, usually between `0` (ice) and `1` (rubber).
@@ -97,6 +101,7 @@ impl ColliderDesc {
     pub fn new(shape: impl Into<Shape>) -> Self {
         Self {
             shape: shape.into(),
+            placement: Transform::IDENTITY,
             density: 1.0,
             friction: 0.6,
             restitution: 0.0,
@@ -116,24 +121,24 @@ impl ColliderDesc {
         Self::new(Circle::new(radius))
     }
 
-    /// Describes a rectangle centered on the body origin.
+    /// Describes a `width` × `height` rectangle centered on the body origin.
     ///
     /// # Panics
     ///
-    /// Panics if a half extent is not strictly positive and finite.
+    /// Panics if a size is not strictly positive and finite.
     #[must_use]
-    pub fn rectangle(half_width: f32, half_height: f32) -> Self {
-        Self::new(Polygon::rectangle(half_width, half_height))
+    pub fn rectangle(width: f32, height: f32) -> Self {
+        Self::new(Polygon::rectangle(width, height))
     }
 
-    /// Describes a rectangle placed at `center` and rotated by `angle`, relative to the body origin.
+    /// Describes a `size` × `size` square centered on the body origin.
     ///
     /// # Panics
     ///
-    /// Panics if a half extent is not strictly positive and finite.
+    /// Panics if `size` is not strictly positive and finite.
     #[must_use]
-    pub fn offset_rectangle(half_width: f32, half_height: f32, center: Vec2, angle: f32) -> Self {
-        Self::new(Polygon::offset_rectangle(half_width, half_height, center, angle))
+    pub fn square(size: f32) -> Self {
+        Self::rectangle(size, size)
     }
 
     /// Describes a capsule around the segment from `start` to `end`, relative to the body origin.
@@ -146,15 +151,15 @@ impl ColliderDesc {
         Self::new(Capsule::new(start, end, radius))
     }
 
-    /// Describes a vertical capsule centered on the body origin, `2 * (half_length + radius)`
-    /// tall: the usual shape of a character.
+    /// Describes a vertical capsule centered on the body origin, `height` tall from end to end:
+    /// the usual shape of a character.
     ///
     /// # Panics
     ///
-    /// See [`Capsule::new`].
+    /// See [`Capsule::vertical`].
     #[must_use]
-    pub fn vertical_capsule(half_length: f32, radius: f32) -> Self {
-        Self::new(Capsule::vertical(half_length, radius))
+    pub fn vertical_capsule(height: f32, radius: f32) -> Self {
+        Self::new(Capsule::vertical(height, radius))
     }
 
     /// Describes a two-sided segment without thickness, relative to the body origin. It has no
@@ -187,6 +192,31 @@ impl ColliderDesc {
         Polygon::new(points).map(Self::new)
     }
 
+    /// Moves the shape by `offset` from the body origin, for bodies made of several shapes.
+    ///
+    /// ```
+    /// use kinetica::prelude::*;
+    ///
+    /// // A table: a top and two legs.
+    /// let table = BodyDesc::dynamic()
+    ///     .collider(ColliderDesc::rectangle(2.0, 0.1))
+    ///     .collider(ColliderDesc::rectangle(0.1, 0.8).offset(vec2(-0.9, -0.45)))
+    ///     .collider(ColliderDesc::rectangle(0.1, 0.8).offset(vec2(0.9, -0.45)));
+    /// ```
+    #[must_use]
+    pub fn offset(mut self, offset: Vec2) -> Self {
+        self.placement.position = offset;
+        self
+    }
+
+    /// Rotates the shape by `angle` radians around its center (the body origin before
+    /// [`offset`](Self::offset)).
+    #[must_use]
+    pub fn angle(mut self, angle: f32) -> Self {
+        self.placement.rotation = Rot::from_angle(angle);
+        self
+    }
+
     /// Sets the density.
     #[must_use]
     pub fn density(mut self, density: f32) -> Self {
@@ -215,10 +245,10 @@ impl ColliderDesc {
         self
     }
 
-    /// Makes the collider a sensor, or a solid collider again.
+    /// Makes the collider a sensor: it detects overlapping colliders without pushing them.
     #[must_use]
-    pub fn sensor(mut self, sensor: bool) -> Self {
-        self.sensor = sensor;
+    pub fn sensor(mut self) -> Self {
+        self.sensor = true;
         self
     }
 
@@ -238,6 +268,14 @@ impl ColliderDesc {
         self.one_way = Some(direction);
         self
     }
+
+    /// The same description, with the placement applied to the shape.
+    pub(crate) fn into_placed(self) -> Self {
+        if self.placement == Transform::IDENTITY {
+            return self;
+        }
+        Self { shape: self.shape.transformed(&self.placement), placement: Transform::IDENTITY, ..self }
+    }
 }
 
 /// Description of a chain of segments, for terrain and level outlines; see
@@ -253,7 +291,7 @@ impl ColliderDesc {
 /// let mut world = World::new();
 /// let ground = world.add_body(BodyDesc::fixed());
 /// let hills = [vec2(-10.0, 0.0), vec2(-4.0, 0.0), vec2(0.0, 1.5), vec2(4.0, 0.0), vec2(10.0, 0.0)];
-/// world.add_chain(ground, &ChainDesc::new(hills).friction(0.8));
+/// world.add_chain(ground, ChainDesc::new(hills).friction(0.8));
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -284,10 +322,10 @@ impl ChainDesc {
         }
     }
 
-    /// Links the last point back to the first one, or not.
+    /// Links the last point back to the first one.
     #[must_use]
-    pub fn closed(mut self, closed: bool) -> Self {
-        self.closed = closed;
+    pub fn closed(mut self) -> Self {
+        self.closed = true;
         self
     }
 
@@ -330,6 +368,7 @@ pub struct Collider {
 }
 
 impl Collider {
+    /// Builds the collider; `desc` must already be placed, see [`ColliderDesc::into_placed`].
     pub(crate) fn new(body: BodyHandle, desc: ColliderDesc, aabb: Aabb, proxy: ProxyId) -> Self {
         Self {
             body,

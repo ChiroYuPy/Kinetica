@@ -3,7 +3,7 @@
 //! Implement [`DebugDraw`] for your renderer, then call [`World::debug_draw`] every frame.
 
 use crate::body::BodyType;
-use crate::joint::JointKind;
+use crate::joint::Joint;
 use crate::math::{Rot, Transform, Vec2};
 use crate::shape::{MAX_POLYGON_VERTICES, Shape};
 use crate::world::World;
@@ -70,6 +70,52 @@ pub trait DebugDraw {
         }
         self.draw_polygon(&outline, color);
     }
+
+    /// Draws `shape` placed at `transform`, with the primitives above.
+    fn draw_shape(&mut self, shape: &Shape, transform: &Transform, color: Color) {
+        match shape {
+            Shape::Capsule(capsule) => {
+                let (start, end) =
+                    (transform.transform_point(capsule.start()), transform.transform_point(capsule.end()));
+                self.draw_capsule(start, end, capsule.radius(), color);
+            }
+            Shape::Segment(segment) => {
+                self.draw_segment(
+                    transform.transform_point(segment.start()),
+                    transform.transform_point(segment.end()),
+                    color,
+                );
+            }
+            Shape::ChainSegment(chain) => {
+                let segment = chain.segment();
+                let (start, end) =
+                    (transform.transform_point(segment.start()), transform.transform_point(segment.end()));
+                self.draw_segment(start, end, color);
+                let middle = 0.5 * (start + end);
+                self.draw_segment(
+                    middle,
+                    middle + CHAIN_NORMAL_LENGTH * transform.rotation.rotate(segment.normal()),
+                    color,
+                );
+            }
+            Shape::Circle(circle) => {
+                self.draw_circle(
+                    transform.transform_point(circle.center()),
+                    circle.radius(),
+                    transform.rotation,
+                    color,
+                );
+            }
+            Shape::Polygon(polygon) => {
+                let mut world_vertices = [Vec2::ZERO; MAX_POLYGON_VERTICES];
+                let count = polygon.vertices().len();
+                for (world, &local) in world_vertices.iter_mut().zip(polygon.vertices()) {
+                    *world = transform.transform_point(local);
+                }
+                self.draw_polygon(&world_vertices[..count], color);
+            }
+        }
+    }
 }
 
 /// Selects what [`World::debug_draw`] shows.
@@ -111,12 +157,14 @@ const SLEEPING_BRIGHTNESS: f32 = 0.55;
 const SENSOR_OPACITY: f32 = 0.3;
 /// Length of the drawn contact normals, in meters.
 const CONTACT_NORMAL_LENGTH: f32 = 0.3;
+/// Length of the tick showing which side of a chain collides, in meters.
+const CHAIN_NORMAL_LENGTH: f32 = 0.15;
 
 impl World {
     /// Draws the world with the given renderer.
     pub fn debug_draw(&self, drawer: &mut impl DebugDraw, options: &DebugDrawOptions) {
         for (_, collider) in self.colliders() {
-            let Some(body) = self.body(collider.body()) else { continue };
+            let Some(body) = self.get_body(collider.body()) else { continue };
 
             if options.shapes {
                 let mut color = match body.body_type() {
@@ -130,7 +178,7 @@ impl World {
                 if collider.is_sensor() {
                     color = color.with_alpha(SENSOR_OPACITY);
                 }
-                draw_shape(drawer, collider.shape(), body.transform(), color);
+                drawer.draw_shape(collider.shape(), body.transform(), color);
             }
 
             if options.aabbs {
@@ -171,15 +219,15 @@ impl World {
 impl World {
     fn draw_joints(&self, drawer: &mut impl DebugDraw) {
         for (_, joint) in self.joints() {
-            let (Some(a), Some(b)) = (self.body(joint.body_a()), self.body(joint.body_b())) else { continue };
+            let (Some(a), Some(b)) = (self.get_body(joint.body_a()), self.get_body(joint.body_b())) else { continue };
             let (local_anchor_a, local_anchor_b) = joint.local_anchors();
             let anchor_b = b.world_point(local_anchor_b);
-            match joint.kind() {
-                JointKind::Mouse(mouse) => {
+            match joint {
+                Joint::Mouse(mouse) => {
                     drawer.draw_segment(mouse.target(), anchor_b, MOUSE_JOINT_COLOR);
                     drawer.draw_point(mouse.target(), MOUSE_JOINT_COLOR);
                 }
-                JointKind::Distance(_) => {
+                Joint::Distance(_) => {
                     drawer.draw_segment(a.world_point(local_anchor_a), anchor_b, JOINT_COLOR);
                 }
                 _ => {
@@ -195,47 +243,6 @@ impl World {
                     drawer.draw_point(anchor_b, JOINT_COLOR);
                 }
             }
-        }
-    }
-}
-
-/// Length of the tick showing which side of a chain collides, in meters.
-const CHAIN_NORMAL_LENGTH: f32 = 0.15;
-
-fn draw_shape(drawer: &mut impl DebugDraw, shape: &Shape, transform: &Transform, color: Color) {
-    match shape {
-        Shape::Capsule(capsule) => {
-            let (start, end) = (transform.transform_point(capsule.start()), transform.transform_point(capsule.end()));
-            drawer.draw_capsule(start, end, capsule.radius(), color);
-        }
-        Shape::Segment(segment) => {
-            drawer.draw_segment(
-                transform.transform_point(segment.start()),
-                transform.transform_point(segment.end()),
-                color,
-            );
-        }
-        Shape::ChainSegment(chain) => {
-            let segment = chain.segment();
-            let (start, end) = (transform.transform_point(segment.start()), transform.transform_point(segment.end()));
-            drawer.draw_segment(start, end, color);
-            let middle = 0.5 * (start + end);
-            drawer.draw_segment(
-                middle,
-                middle + CHAIN_NORMAL_LENGTH * transform.rotation.rotate(segment.normal()),
-                color,
-            );
-        }
-        Shape::Circle(circle) => {
-            drawer.draw_circle(transform.transform_point(circle.center()), circle.radius(), transform.rotation, color);
-        }
-        Shape::Polygon(polygon) => {
-            let mut world_vertices = [Vec2::ZERO; MAX_POLYGON_VERTICES];
-            let count = polygon.vertices().len();
-            for (world, &local) in world_vertices.iter_mut().zip(polygon.vertices()) {
-                *world = transform.transform_point(local);
-            }
-            drawer.draw_polygon(&world_vertices[..count], color);
         }
     }
 }

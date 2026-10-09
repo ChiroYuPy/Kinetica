@@ -16,10 +16,10 @@
 //! #[macroquad::main("Falling ball")]
 //! async fn main() {
 //!     let mut world = World::new();
-//!     let ground = world.add_body(BodyDesc::fixed());
-//!     world.add_collider(ground, ColliderDesc::rectangle(10.0, 0.5));
-//!     let ball = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 5.0)));
-//!     world.add_collider(ball, ColliderDesc::circle(0.5).restitution(0.6));
+//!     world.add_body(BodyDesc::fixed().collider(ColliderDesc::rectangle(20.0, 1.0)));
+//!     world.add_body(
+//!         BodyDesc::dynamic().position(vec2(0.0, 5.0)).collider(ColliderDesc::circle(0.5).restitution(0.6)),
+//!     );
 //!
 //!     let camera = WorldCamera::new(vec2(0.0, 3.0), 10.0);
 //!     let mut timestep = FixedTimestep::default();
@@ -42,5 +42,5 @@ mod timestep;
 
 pub use camera::WorldCamera;
 pub use grab::MouseGrab;
-pub use render::{DebugRenderer, to_macroquad_color};
+pub use render::DebugRenderer;
 pub use timestep::FixedTimestep;

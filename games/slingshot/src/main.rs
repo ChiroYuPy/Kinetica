@@ -4,19 +4,19 @@ mod game;
 mod level;
 
 use kinetica::prelude::*;
-use kinetica::{Color as PhysicsColor, DebugDraw};
-use kinetica_macroquad::{DebugRenderer, FixedTimestep, WorldCamera, to_macroquad_color};
+use kinetica_macroquad::{DebugRenderer, FixedTimestep, WorldCamera};
 use macroquad::prelude::*;
 
 use crate::game::{Game, PROJECTILE_RADIUS, SLING, State};
 use crate::level::{Material, TARGET_RADIUS};
 
 const SKY: Color = Color::new(0.1, 0.12, 0.17, 1.0);
-const GROUND: PhysicsColor = PhysicsColor::rgb(0.45, 0.35, 0.25);
-const WOOD: PhysicsColor = PhysicsColor::rgb(0.85, 0.6, 0.3);
-const STONE: PhysicsColor = PhysicsColor::rgb(0.6, 0.62, 0.68);
-const TARGET: PhysicsColor = PhysicsColor::rgb(0.4, 0.85, 0.35);
-const PROJECTILE: PhysicsColor = PhysicsColor::rgb(0.9, 0.25, 0.25);
+const GROUND: Color = Color::new(0.45, 0.35, 0.25, 1.0);
+const WOOD: Color = Color::new(0.85, 0.6, 0.3, 1.0);
+const STONE: Color = Color::new(0.6, 0.62, 0.68, 1.0);
+const TARGET: Color = Color::new(0.4, 0.85, 0.35, 1.0);
+const PROJECTILE: Color = Color::new(0.9, 0.25, 0.25, 1.0);
+const MESSAGE: Color = Color::new(1.0, 0.9, 0.5, 1.0);
 const BAND: Color = Color::new(0.55, 0.3, 0.2, 1.0);
 const TRAJECTORY: Color = Color::new(1.0, 1.0, 1.0, 0.5);
 /// The sling can be grabbed this close to its rest position, in meters.
@@ -163,8 +163,7 @@ impl App {
         if let Some(message) = message {
             let size: u16 = 40;
             let width = measure_text(message, None, size, 1.0).width;
-            let color = to_macroquad_color(PhysicsColor::rgb(1.0, 0.9, 0.5));
-            draw_text(message, (screen_width() - width) / 2.0, screen_height() / 3.0, f32::from(size), color);
+            draw_text(message, (screen_width() - width) / 2.0, screen_height() / 3.0, f32::from(size), MESSAGE);
         }
     }
 }

@@ -1,7 +1,6 @@
 //! Dragging bodies with the mouse.
 
 use kinetica::prelude::*;
-use kinetica::{Joint, MouseJointDesc};
 use macroquad::input::{MouseButton, is_mouse_button_down, is_mouse_button_pressed};
 
 /// A grabbed body is pulled with a force of at most this many newtons per kilogram, about a
@@ -13,7 +12,7 @@ const FORCE_PER_KILOGRAM: f32 = 1000.0;
 pub struct MouseGrab {
     /// Fixed body without colliders, the reference of the mouse joint.
     anchor: Option<BodyHandle>,
-    joint: Option<JointHandle>,
+    joint: Option<JointHandle<MouseJoint>>,
 }
 
 impl MouseGrab {
@@ -26,22 +25,20 @@ impl MouseGrab {
             self.grab(world, mouse);
         }
         let Some(joint) = self.joint else { return };
-        if is_mouse_button_down(MouseButton::Left) {
-            if let Some(JointKind::Mouse(mouse_joint)) = world.joint_mut(joint).map(Joint::kind_mut) {
-                mouse_joint.set_target(mouse);
-            } else {
-                // The body was removed meanwhile.
-                self.joint = None;
-            }
-        } else {
+        if !is_mouse_button_down(MouseButton::Left) {
             self.release(world);
+        } else if let Some(joint) = world.get_joint_mut(joint) {
+            joint.set_target(mouse);
+        } else {
+            // The body was removed meanwhile.
+            self.joint = None;
         }
     }
 
     /// The body being dragged, if any.
     #[must_use]
     pub fn grabbed_body(&self, world: &World) -> Option<BodyHandle> {
-        world.joint(self.joint?).map(Joint::body_b)
+        world.get_joint(self.joint?).map(MouseJoint::body_b)
     }
 
     /// Lets go of the dragged body.
@@ -52,20 +49,19 @@ impl MouseGrab {
     }
 
     fn grab(&mut self, world: &mut World, point: Vec2) {
-        let body = world
-            .colliders_at_point(point, &QueryFilter::new().exclude_fixed().exclude_kinematic())
-            .into_iter()
-            .find_map(|collider| world.collider(collider).map(kinetica::Collider::body));
-        let Some(body) = body else { return };
+        let filter = QueryFilter::new().exclude_fixed().exclude_kinematic();
+        let Some(&collider) = world.colliders_at_point(point, filter).first() else { return };
+        let body = world[collider].body();
 
         // The anchor may belong to a previous world.
         let anchor = match self.anchor {
-            Some(anchor) if world.body(anchor).is_some_and(|anchor| anchor.body_type() == BodyType::Fixed) => anchor,
+            Some(anchor) if world.get_body(anchor).is_some_and(|anchor| anchor.body_type() == BodyType::Fixed) => {
+                anchor
+            }
             _ => world.add_body(BodyDesc::fixed()),
         };
         self.anchor = Some(anchor);
-        let mass = world.body(body).map_or(1.0, kinetica::Body::mass);
-        let desc = MouseJointDesc::at_world_point(world, anchor, body, point).max_force(FORCE_PER_KILOGRAM * mass);
-        self.joint = Some(world.add_joint(desc));
+        let max_force = FORCE_PER_KILOGRAM * world[body].mass();
+        self.joint = Some(world.add_joint(MouseJointDesc::new(anchor, body, point).max_force(max_force)));
     }
 }

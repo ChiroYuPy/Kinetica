@@ -15,7 +15,7 @@ pub const SCENE: Scene = Scene {
 };
 
 fn build(world: &mut World, labels: &mut Labels) {
-    add_ground(world, 40.0);
+    add_ground(world, 80.0);
 
     // Stairs going down to the right: the outline of eight steps, from the left wall's foot.
     let stairs = world.add_body(BodyDesc::fixed());
@@ -28,7 +28,7 @@ fn build(world: &mut World, labels: &mut Labels) {
     outline.push(vec2(-0.5, 0.0));
     // Consecutive points must differ: each step's left edge starts where the previous one ends.
     outline.dedup();
-    world.add_chain(stairs, &ChainDesc::new(outline));
+    world.add_chain(stairs, ChainDesc::new(outline));
     labels.at(vec2(-1.5, 1.0), "Stairs: a single chain collider");
     labels.at(vec2(-3.0, 10.2), "10 capsules, 9 revolute joints with limits\n(knees and elbows bend one way only)");
 
@@ -41,23 +41,22 @@ fn build(world: &mut World, labels: &mut Labels) {
 /// Adds a ragdoll standing with its feet at `feet`.
 fn add_ragdoll(world: &mut World, feet: Vec2) {
     let mut part = |center: Vec2, collider: ColliderDesc| {
-        let body = world.add_body(BodyDesc::dynamic().position(feet + center).angular_damping(0.5));
-        world.add_collider(body, collider.friction(0.6));
-        body
+        world
+            .add_body(BodyDesc::dynamic().position(feet + center).angular_damping(0.5).collider(collider.friction(0.6)))
     };
-    // Capsules spanning from joint to joint: half length + radius = half the limb length.
-    let torso = part(vec2(0.0, 1.3), ColliderDesc::vertical_capsule(0.15, 0.15));
+    // Capsules spanning from joint to joint: as tall as the limb.
+    let torso = part(vec2(0.0, 1.3), ColliderDesc::vertical_capsule(0.6, 0.15));
     let head = part(vec2(0.0, 1.82), ColliderDesc::circle(0.15));
     let limbs = [-1.0_f32, 1.0].map(|side| {
-        let upper_arm = part(vec2(0.22 * side, 1.4), ColliderDesc::vertical_capsule(0.1, 0.05));
-        let lower_arm = part(vec2(0.22 * side, 1.1), ColliderDesc::vertical_capsule(0.105, 0.045));
-        let upper_leg = part(vec2(0.09 * side, 0.75), ColliderDesc::vertical_capsule(0.18, 0.07));
-        let lower_leg = part(vec2(0.09 * side, 0.25), ColliderDesc::vertical_capsule(0.19, 0.06));
+        let upper_arm = part(vec2(0.22 * side, 1.4), ColliderDesc::vertical_capsule(0.3, 0.05));
+        let lower_arm = part(vec2(0.22 * side, 1.1), ColliderDesc::vertical_capsule(0.3, 0.045));
+        let upper_leg = part(vec2(0.09 * side, 0.75), ColliderDesc::vertical_capsule(0.5, 0.07));
+        let lower_leg = part(vec2(0.09 * side, 0.25), ColliderDesc::vertical_capsule(0.5, 0.06));
         (side, upper_arm, lower_arm, upper_leg, lower_leg)
     });
 
     let mut hinge = |a: BodyHandle, b: BodyHandle, point: Vec2, limits: std::ops::RangeInclusive<f32>| {
-        world.add_joint(RevoluteJointDesc::at_world_point(world, a, b, feet + point).limits(limits));
+        world.add_joint(RevoluteJointDesc::new(a, b, feet + point).limits(limits));
     };
     hinge(torso, head, vec2(0.0, 1.65), -0.5..=0.5);
     for (side, upper_arm, lower_arm, upper_leg, lower_leg) in limbs {

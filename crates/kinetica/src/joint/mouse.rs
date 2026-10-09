@@ -1,11 +1,10 @@
 //! Mouse joint: pulls a point of a body towards a target, like dragging it with the mouse.
 
-use super::Spring;
 use super::frame::{JointFrame, SymmetricMatrix};
+use super::{JointBase, Spring};
 use crate::body::{Body, BodyHandle};
 use crate::math::Vec2;
 use crate::solver::{Softness, SolverContext};
-use crate::world::World;
 
 /// Description of a [`MouseJoint`].
 #[derive(Debug, Clone, PartialEq)]
@@ -15,10 +14,8 @@ pub struct MouseJointDesc {
     pub body_a: BodyHandle,
     /// The dragged body.
     pub body_b: BodyHandle,
-    /// World point the anchor is pulled towards.
-    pub target: Vec2,
-    /// Dragged point, in the local frame of body B.
-    pub local_anchor_b: Vec2,
+    /// World point of body B that is dragged, and the initial target.
+    pub anchor: Vec2,
     /// Stiffness of the pull.
     pub spring: Spring,
     /// Strongest force the joint may apply, in N.
@@ -26,22 +23,16 @@ pub struct MouseJointDesc {
 }
 
 impl MouseJointDesc {
-    /// Describes dragging `body` by the world point `point`, which is also the initial target.
+    /// Describes dragging `body` by the world point `anchor`, which is also the initial target.
     /// `reference` is any body (typically fixed) and is not affected.
     ///
     /// The default pull is a 5 Hz spring with a damping ratio of 0.7 and no force limit.
-    ///
-    /// # Panics
-    ///
-    /// Panics if either body was removed from `world`.
     #[must_use]
-    pub fn at_world_point(world: &World, reference: BodyHandle, body: BodyHandle, point: Vec2) -> Self {
-        let (_, dragged) = super::bodies_of(world, reference, body);
+    pub fn new(reference: BodyHandle, body: BodyHandle, anchor: Vec2) -> Self {
         Self {
             body_a: reference,
             body_b: body,
-            target: point,
-            local_anchor_b: dragged.local_point(point),
+            anchor,
             spring: Spring { hertz: 5.0, damping_ratio: 0.7 },
             max_force: f32::INFINITY,
         }
@@ -66,6 +57,7 @@ impl MouseJointDesc {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MouseJoint {
+    pub(super) base: JointBase,
     target: Vec2,
     local_anchor_b: Vec2,
     spring: Spring,
@@ -78,10 +70,17 @@ pub struct MouseJoint {
 }
 
 impl MouseJoint {
-    pub(crate) fn new(desc: &MouseJointDesc) -> Self {
+    shared_joint_methods!();
+
+    fn base(&self) -> &JointBase {
+        &self.base
+    }
+    pub(super) fn new(desc: &MouseJointDesc, _reference: &Body, b: &Body) -> Self {
         Self {
-            target: desc.target,
-            local_anchor_b: desc.local_anchor_b,
+            // The reference body is not really connected.
+            base: JointBase::new(desc.body_a, desc.body_b, true),
+            target: desc.anchor,
+            local_anchor_b: b.local_point(desc.anchor),
             spring: desc.spring,
             max_force: desc.max_force,
             linear_impulse: Vec2::ZERO,

@@ -377,8 +377,8 @@ mod tests {
 
     #[test]
     fn box_resting_on_box() {
-        let ground = Polygon::rectangle(1.0, 1.0);
-        let block = Polygon::rectangle(0.5, 0.5);
+        let ground = Polygon::rectangle(2.0, 2.0);
+        let block = Polygon::rectangle(1.0, 1.0);
         let manifold = collide_polygons(&ground, &at(0.0, 0.0), &block, &at(0.0, 1.4));
 
         assert!(manifold.normal().abs_diff_eq(Vec2::Y, 1e-6));
@@ -394,8 +394,8 @@ mod tests {
 
     #[test]
     fn normal_points_from_a_to_b_whichever_is_the_reference() {
-        let small = Polygon::rectangle(0.5, 0.5);
-        let large = Polygon::rectangle(1.0, 1.0);
+        let small = Polygon::rectangle(1.0, 1.0);
+        let large = Polygon::rectangle(2.0, 2.0);
         // The small box is on top; whichever box provides the reference face, the normal must
         // point from A to B.
         let manifold = collide_polygons(&small, &at(0.0, 1.4), &large, &at(0.0, 0.0));
@@ -405,14 +405,14 @@ mod tests {
 
     #[test]
     fn separated_boxes_do_not_touch() {
-        let block = Polygon::rectangle(0.5, 0.5);
+        let block = Polygon::rectangle(1.0, 1.0);
         assert!(collide_polygons(&block, &at(0.0, 0.0), &block, &at(1.5, 0.2)).is_empty());
     }
 
     #[test]
     fn diamond_corner_on_box_gives_one_point() {
-        let ground = Polygon::rectangle(2.0, 0.5);
-        let diamond = Polygon::rectangle(0.5, 0.5);
+        let ground = Polygon::rectangle(4.0, 1.0);
+        let diamond = Polygon::rectangle(1.0, 1.0);
         let corner_depth = 0.02;
         let half_diagonal = 0.5 * std::f32::consts::SQRT_2;
         let transform = Transform::new(vec2(0.0, 0.5 + half_diagonal - corner_depth), Rot::from_angle(FRAC_PI_4));
@@ -426,8 +426,8 @@ mod tests {
 
     #[test]
     fn feature_ids_are_stable_while_sliding() {
-        let ground = Polygon::rectangle(5.0, 0.5);
-        let block = Polygon::rectangle(0.5, 0.5);
+        let ground = Polygon::rectangle(10.0, 1.0);
+        let block = Polygon::rectangle(1.0, 1.0);
         let ids = |x: f32| -> Vec<u32> {
             collide_polygons(&ground, &at(0.0, 0.0), &block, &at(x, 0.99))
                 .points()
@@ -450,7 +450,7 @@ mod rounded_tests {
     }
 
     fn ground() -> Rounded {
-        Rounded::polygon(&Polygon::rectangle(5.0, 0.5), &at(0.0, -0.5))
+        Rounded::polygon(&Polygon::rectangle(10.0, 1.0), &at(0.0, -0.5))
     }
 
     #[test]
@@ -468,7 +468,7 @@ mod rounded_tests {
 
     #[test]
     fn standing_capsule_rests_on_one_point() {
-        let capsule = Rounded::capsule(&Capsule::vertical(0.5, 0.25), &at(0.3, 0.75));
+        let capsule = Rounded::capsule(&Capsule::vertical(1.5, 0.25), &at(0.3, 0.75));
         let manifold = collide_rounded(&ground(), &capsule);
         let [point] = manifold.points() else { panic!("expected one point, got {manifold:?}") };
         assert!(point.separation().abs() < 1e-5);
@@ -491,7 +491,7 @@ mod rounded_tests {
     #[test]
     fn segment_and_box() {
         let segment = Rounded::two_sided(vec2(-2.0, 0.0), vec2(2.0, 0.0), 0.0);
-        let block = Rounded::polygon(&Polygon::rectangle(0.5, 0.5), &at(0.5, 0.49));
+        let block = Rounded::polygon(&Polygon::rectangle(1.0, 1.0), &at(0.5, 0.49));
         let manifold = collide_rounded(&segment, &block);
         assert!(manifold.normal().abs_diff_eq(Vec2::Y, 1e-6));
         assert_eq!(manifold.points().len(), 2);

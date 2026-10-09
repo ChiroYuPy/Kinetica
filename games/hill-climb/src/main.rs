@@ -6,20 +6,20 @@ mod game;
 mod level;
 
 use kinetica::shape::Shape;
-use kinetica::{Color as PhysicsColor, DebugDraw};
 use kinetica_macroquad::{DebugRenderer, FixedTimestep, WorldCamera};
 use macroquad::prelude::*;
 
 use crate::car::{Controls, HEAD_CENTER, HEAD_RADIUS, WHEEL_RADIUS};
 use crate::game::{FULL_TANK, Game, State};
-use crate::level::{COIN_RADIUS, FUEL_HALF_SIZE, TRACK_LENGTH};
+use crate::level::{COIN_RADIUS, FUEL_SIZE, TRACK_LENGTH};
 
 const SKY: Color = Color::new(0.45, 0.65, 0.85, 1.0);
 const HILLS: Color = Color::new(0.35, 0.55, 0.3, 1.0);
 const GRASS: Color = Color::new(0.5, 0.75, 0.35, 1.0);
 const DIRT: Color = Color::new(0.4, 0.3, 0.2, 1.0);
 const BODYWORK: Color = Color::new(0.85, 0.2, 0.2, 1.0);
-const BODYWORK_EDGE: PhysicsColor = PhysicsColor::rgb(0.5, 0.1, 0.1);
+const BODYWORK_EDGE: Color = Color::new(0.5, 0.1, 0.1, 1.0);
+const STRUT: Color = Color::new(0.3, 0.3, 0.3, 1.0);
 const TIRE: Color = Color::new(0.15, 0.15, 0.17, 1.0);
 const RIM: Color = Color::new(0.75, 0.75, 0.8, 1.0);
 const SKIN: Color = Color::new(0.95, 0.8, 0.65, 1.0);
@@ -130,17 +130,16 @@ impl App {
         let world = &self.game.world;
         let time = self.game.time;
         for &coin in &self.game.level.coins {
-            let Some(center) = world.body(coin).map(kinetica::Body::position) else { continue };
+            let center = world[coin].position();
             let width = COIN_RADIUS * (3.0 * time + center.x).cos().abs().max(0.15);
             draw_ellipse(center.x, center.y, width, COIN_RADIUS, 0.0, COIN);
         }
         for &can in &self.game.level.fuel_cans {
-            let Some(center) = world.body(can).map(kinetica::Body::position) else { continue };
-            let size = 2.0 * FUEL_HALF_SIZE;
-            draw_rectangle(center.x - FUEL_HALF_SIZE, center.y - FUEL_HALF_SIZE, size, size, FUEL);
-            draw_rectangle(center.x - 0.1, center.y + FUEL_HALF_SIZE, 0.2, 0.12, FUEL);
-            // A white stripe across the can.
-            draw_rectangle(center.x - FUEL_HALF_SIZE, center.y - 0.06, size, 0.12, WHITE);
+            let corner = world[can].position() - Vec2::splat(FUEL_SIZE / 2.0);
+            draw_rectangle(corner.x, corner.y, FUEL_SIZE, FUEL_SIZE, FUEL);
+            // The cap, and a white stripe across the can.
+            draw_rectangle(corner.x + FUEL_SIZE / 2.0 - 0.1, corner.y + FUEL_SIZE, 0.2, 0.12, FUEL);
+            draw_rectangle(corner.x, corner.y + FUEL_SIZE / 2.0 - 0.06, FUEL_SIZE, 0.12, WHITE);
         }
     }
 
@@ -149,11 +148,11 @@ impl App {
         let car = &self.game.car;
         let mut renderer = DebugRenderer::new(&self.camera);
         // Suspension struts, behind everything.
-        let Some(chassis) = world.body(car.chassis) else { return };
+        let chassis = &world[car.chassis];
         for &wheel in &car.wheels {
-            let Some(wheel) = world.body(wheel) else { continue };
-            let top = chassis.world_point(chassis.local_point(wheel.position()) * vec2(1.0, 0.0));
-            renderer.draw_segment(top, wheel.position(), PhysicsColor::rgb(0.3, 0.3, 0.3));
+            let wheel = world[wheel].position();
+            let top = chassis.world_point(chassis.local_point(wheel) * vec2(1.0, 0.0));
+            renderer.draw_segment(top, wheel, STRUT);
         }
         // The driver, then the bodywork over them.
         let head = chassis.world_point(HEAD_CENTER);
@@ -164,8 +163,7 @@ impl App {
         draw_circle(helmet.x, helmet.y, HEAD_RADIUS * 0.85, HELMET);
         // Solid bodywork, with a darker outline.
         for &collider in chassis.colliders() {
-            let Some(collider) = world.collider(collider) else { continue };
-            if let Shape::Polygon(polygon) = collider.shape() {
+            if let Shape::Polygon(polygon) = world[collider].shape() {
                 let vertices: Vec<Vec2> = polygon.vertices().iter().map(|&v| chassis.world_point(v)).collect();
                 for pair in vertices[1..].windows(2) {
                     draw_triangle(vertices[0], pair[0], pair[1], BODYWORK);
@@ -177,7 +175,7 @@ impl App {
         }
         // Wheels with spokes, so they visibly turn.
         for &wheel in &car.wheels {
-            let Some(wheel) = world.body(wheel) else { continue };
+            let wheel = &world[wheel];
             let center = wheel.position();
             draw_circle(center.x, center.y, WHEEL_RADIUS, TIRE);
             draw_circle(center.x, center.y, WHEEL_RADIUS * 0.55, RIM);

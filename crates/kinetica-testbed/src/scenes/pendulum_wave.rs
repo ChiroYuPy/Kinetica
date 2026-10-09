@@ -28,9 +28,8 @@ fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
         let pivot_position = vec2((i as f32 - (COUNT - 1) as f32 / 2.0) * 1.2, 8.0);
         let pivot = world.add_body(BodyDesc::fixed().position(pivot_position));
         let bob_position = pivot_position + length * vec2(START_ANGLE.sin(), -START_ANGLE.cos());
-        let bob = world.add_body(BodyDesc::dynamic().position(bob_position));
-        world.add_collider(bob, ColliderDesc::circle(0.2));
-        world.add_joint(DistanceJointDesc::between_world_points(world, pivot, bob, pivot_position, bob_position));
+        let bob = world.add_body(BodyDesc::dynamic().position(bob_position).collider(ColliderDesc::circle(0.2)));
+        world.add_joint(DistanceJointDesc::new(pivot, bob, pivot_position, bob_position));
     }
     labels.at(vec2(0.0, 8.3), "Length L = g (T / 2 pi)², for 25 to 39 swings in 60 s");
     Box::new(CycleClock)

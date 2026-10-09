@@ -20,23 +20,23 @@ const SHOT_PERIOD: f32 = 0.5;
 const MAX_BALLS: usize = 40;
 
 fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
-    add_ground(world, 20.0);
+    add_ground(world, 40.0);
     let level = world.add_body(BodyDesc::fixed());
-    for (center, half_width, angle) in [
-        (vec2(-4.0, 3.0), 2.5, 0.0),
-        (vec2(0.5, 5.0), 2.0, 0.0),
-        (vec2(-3.0, 7.5), 2.0, 0.2),
-        (vec2(1.0, 9.5), 3.0, 0.0),
+    for (center, width, angle) in [
+        (vec2(-4.0, 3.0), 5.0, 0.0),
+        (vec2(0.5, 5.0), 4.0, 0.0),
+        (vec2(-3.0, 7.5), 4.0, 0.2),
+        (vec2(1.0, 9.5), 6.0, 0.0),
     ] {
-        world.add_collider(level, ColliderDesc::offset_rectangle(half_width, 0.1, center, angle).one_way(Vec2::Y));
+        world.add_collider(level, ColliderDesc::rectangle(width, 0.2).offset(center).angle(angle).one_way(Vec2::Y));
     }
     labels.at(vec2(-4.0, 2.2), "Blocks from above only");
 
     // A wall that only blocks things coming from its left.
-    world.add_collider(level, ColliderDesc::offset_rectangle(0.1, 2.5, vec2(6.5, 2.5), 0.0).one_way(-Vec2::X));
+    world.add_collider(level, ColliderDesc::rectangle(0.2, 5.0).offset(vec2(6.5, 2.5)).one_way(-Vec2::X));
     labels.at(vec2(6.5, 5.6), "Blocks from the left only");
     for x in [-10.0, 10.0] {
-        world.add_collider(level, ColliderDesc::offset_rectangle(0.5, 10.0, vec2(x, 10.0), 0.0));
+        world.add_collider(level, ColliderDesc::rectangle(1.0, 20.0).offset(vec2(x, 10.0)));
     }
 
     Box::new(Launcher { balls: VecDeque::new(), shots: 0 })
@@ -56,8 +56,11 @@ impl SceneUpdate for Launcher {
         self.shots += 1;
         let position = vec2(-6.0 + 9.0 * scatter, 0.5);
         let velocity = vec2(1.0 - 2.0 * scatter, 10.0 + 4.0 * scatter);
-        let ball = world.add_body(BodyDesc::dynamic().position(position).linear_velocity(velocity));
-        world.add_collider(ball, ColliderDesc::circle(0.3).friction(0.6));
+        let ball = BodyDesc::dynamic()
+            .position(position)
+            .linear_velocity(velocity)
+            .collider(ColliderDesc::circle(0.3).friction(0.6));
+        let ball = world.add_body(ball);
         self.balls.push_back(ball);
         if self.balls.len() > MAX_BALLS
             && let Some(oldest) = self.balls.pop_front()

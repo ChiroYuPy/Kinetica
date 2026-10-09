@@ -1,7 +1,7 @@
 //! Cloth made of particles linked by ropes, and the scene showing it.
 
 use kinetica::prelude::*;
-use kinetica::{Color, DebugDraw};
+use macroquad::color::Color;
 
 use super::{Build, Category, Frame, Labels, Scene, SceneUpdate, add_ground};
 use kinetica_macroquad::DebugRenderer;
@@ -18,8 +18,8 @@ pub const SCENE: Scene = Scene {
 
 /// Particles are heavy for their size, so the cloth is not crushed by what lands on it.
 const PARTICLE_DENSITY: f32 = 20.0;
-const CURTAIN_COLOR: Color = Color::rgb(0.85, 0.35, 0.45);
-const HAMMOCK_COLOR: Color = Color::rgb(0.35, 0.7, 0.9);
+const CURTAIN_COLOR: Color = Color::new(0.85, 0.35, 0.45, 1.0);
+const HAMMOCK_COLOR: Color = Color::new(0.35, 0.7, 0.9, 1.0);
 const DROP_PERIOD: f32 = 1.5;
 const MAX_DROPS: usize = 8;
 
@@ -32,9 +32,9 @@ pub struct Cloth {
     /// Row by row, the first row at the top.
     particles: Vec<BodyHandle>,
     /// Links between a particle and its right neighbor, row by row; `None` once torn.
-    horizontal: Vec<Option<JointHandle>>,
+    horizontal: Vec<Option<JointHandle<DistanceJoint>>>,
     /// Links between a particle and the one below it, row by row.
-    vertical: Vec<Option<JointHandle>>,
+    vertical: Vec<Option<JointHandle<DistanceJoint>>>,
     color: Color,
 }
 
@@ -55,12 +55,8 @@ impl Cloth {
             for column in 0..columns {
                 let position = top_left + spacing * vec2(column as f32, -(row as f32));
                 let desc = if pinned(column, row) { BodyDesc::fixed() } else { BodyDesc::dynamic() };
-                let particle = world.add_body(desc.position(position).linear_damping(0.1));
-                world.add_collider(
-                    particle,
-                    ColliderDesc::circle(0.3 * spacing).density(PARTICLE_DENSITY).friction(0.3),
-                );
-                particles.push(particle);
+                let ball = ColliderDesc::circle(0.3 * spacing).density(PARTICLE_DENSITY).friction(0.3);
+                particles.push(world.add_body(desc.position(position).linear_damping(0.1).collider(ball)));
             }
         }
         let mut cloth = Self {
@@ -76,11 +72,11 @@ impl Cloth {
             for column in 0..columns {
                 if column + 1 < columns {
                     let link = cloth.link(world, (column, row), (column + 1, row));
-                    cloth.horizontal.push(link);
+                    cloth.horizontal.push(Some(link));
                 }
                 if row + 1 < rows {
                     let link = cloth.link(world, (column, row), (column, row + 1));
-                    cloth.vertical.push(link);
+                    cloth.vertical.push(Some(link));
                 }
             }
         }
@@ -92,13 +88,10 @@ impl Cloth {
     }
 
     /// A rope: the particles may get closer, never further than the link length.
-    fn link(&self, world: &mut World, a: (usize, usize), b: (usize, usize)) -> Option<JointHandle> {
+    fn link(&self, world: &mut World, a: (usize, usize), b: (usize, usize)) -> JointHandle<DistanceJoint> {
         let (a, b) = (self.particle(a.0, a.1), self.particle(b.0, b.1));
-        let (position_a, position_b) = (world.body(a)?.position(), world.body(b)?.position());
-        let rope = DistanceJointDesc::between_world_points(world, a, b, position_a, position_b)
-            .spring(0.0, 0.0)
-            .limits(0.0..=self.link_length);
-        Some(world.add_joint(rope))
+        let rope = DistanceJointDesc::new(a, b, world[a].position(), world[b].position()).rope(self.link_length);
+        world.add_joint(rope)
     }
 
     pub fn particles(&self) -> &[BodyHandle] {
@@ -113,10 +106,10 @@ impl Cloth {
     /// Breaks the links that pulled harder than `max_force` (in newtons) during the last step.
     /// Links to pinned particles are reinforced and never break.
     pub fn tear(&mut self, world: &mut World, max_force: f32) {
-        let is_pinned = |body| world.body(body).is_some_and(|body| body.body_type() == BodyType::Fixed);
+        let is_pinned = |body: BodyHandle| world[body].body_type() == BodyType::Fixed;
         let mut torn = Vec::new();
         for link in self.horizontal.iter_mut().chain(&mut self.vertical) {
-            if let Some(joint) = link.and_then(|joint| world.joint(joint))
+            if let Some(joint) = link.map(|joint| &world[joint])
                 && !is_pinned(joint.body_a())
                 && !is_pinned(joint.body_b())
                 && joint.constraint_force().length() > max_force
@@ -133,9 +126,9 @@ impl Cloth {
     pub fn cut(&mut self, world: &mut World, point: Vec2, radius: f32) {
         let mut cut = Vec::new();
         for link in self.horizontal.iter_mut().chain(&mut self.vertical) {
-            let Some(joint) = link.and_then(|joint| world.joint(joint)) else { continue };
-            let (Some(a), Some(b)) = (world.body(joint.body_a()), world.body(joint.body_b())) else { continue };
-            if distance_to_segment(point, a.position(), b.position()) < radius {
+            let Some(joint) = link.map(|joint| &world[joint]) else { continue };
+            let (a, b) = (world[joint.body_a()].position(), world[joint.body_b()].position());
+            if distance_to_segment(point, a, b) < radius {
                 cut.extend(link.take());
             }
         }
@@ -146,7 +139,7 @@ impl Cloth {
 
     /// Fills every cell whose four sides are still linked.
     pub fn draw(&self, world: &World, drawer: &mut DebugRenderer) {
-        let position = |column, row| world.body(self.particle(column, row)).map(kinetica::Body::position);
+        let position = |column, row| world[self.particle(column, row)].position();
         for row in 0..self.rows - 1 {
             for column in 0..self.columns - 1 {
                 let top = self.horizontal[row * (self.columns - 1) + column];
@@ -162,16 +155,14 @@ impl Cloth {
                     position(column + 1, row + 1),
                     position(column + 1, row),
                 ];
-                if let [Some(a), Some(b), Some(c), Some(d)] = corners {
-                    drawer.draw_polygon(&[a, b, c, d], self.color);
-                }
+                drawer.draw_polygon(&corners, self.color);
             }
         }
     }
 }
 
 fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
-    add_ground(world, 30.0);
+    add_ground(world, 60.0);
     let curtain = Cloth::new(
         world,
         vec2(-10.5, 13.0),
@@ -199,21 +190,17 @@ impl SceneUpdate for ClothDemo {
         // Gusts of wind blowing the curtain to the right.
         let wind = 5.0 + 3.0 * (0.7 * frame.time).sin() + 1.5 * (2.3 * frame.time).sin();
         for &particle in self.curtain.particles() {
-            if let Some(body) = world.body_mut(particle) {
-                let force = vec2(wind * body.mass(), 0.0);
-                body.apply_force(force);
-            }
+            let body = &mut world[particle];
+            body.apply_force(vec2(wind * body.mass(), 0.0));
         }
 
         if frame.time >= self.next_drop && self.drops.len() < MAX_DROPS {
             self.next_drop += DROP_PERIOD;
             let i = self.drops.len();
             let x = 4.0 + 4.0 * (i as f32 * 0.618_034).fract();
-            let body = world.add_body(BodyDesc::dynamic().position(vec2(x, 12.0)).angular_velocity(1.0));
-            let collider =
-                if i.is_multiple_of(2) { ColliderDesc::circle(0.5) } else { ColliderDesc::rectangle(0.45, 0.45) };
-            world.add_collider(body, collider.density(2.0));
-            self.drops.push(body);
+            let shape = if i.is_multiple_of(2) { ColliderDesc::circle(0.5) } else { ColliderDesc::square(0.9) };
+            let drop = BodyDesc::dynamic().position(vec2(x, 12.0)).angular_velocity(1.0).collider(shape.density(2.0));
+            self.drops.push(world.add_body(drop));
         }
     }
 

@@ -1,5 +1,6 @@
+use kinetica::CollisionLayers;
 use kinetica::prelude::*;
-use kinetica::{CollisionLayers, Color};
+use macroquad::color::Color;
 
 use super::{Build, Category, Frame, Labels, Scene, SceneUpdate};
 use kinetica_macroquad::DebugRenderer;
@@ -20,18 +21,21 @@ const RED: u32 = 1 << 1;
 const GREEN: u32 = 1 << 2;
 const BLUE: u32 = 1 << 3;
 
-const COLORS: [(u32, Color); 3] =
-    [(RED, Color::rgb(0.95, 0.35, 0.35)), (GREEN, Color::rgb(0.4, 0.9, 0.45)), (BLUE, Color::rgb(0.4, 0.6, 1.0))];
+const COLORS: [(u32, Color); 3] = [
+    (RED, Color::new(0.95, 0.35, 0.35, 1.0)),
+    (GREEN, Color::new(0.4, 0.9, 0.45, 1.0)),
+    (BLUE, Color::new(0.4, 0.6, 1.0, 1.0)),
+];
 const BALL_COUNT: usize = 150;
 const SPAWN_PERIOD: f32 = 0.08;
 
 fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
     let frame = world.add_body(BodyDesc::fixed());
     let solid = CollisionLayers::new(WORLD, u32::MAX);
-    for (half_width, half_height, center) in
-        [(6.5, 0.25, vec2(0.0, -0.25)), (0.25, 6.0, vec2(-6.25, 6.0)), (0.25, 6.0, vec2(6.25, 6.0))]
+    for (width, height, center) in
+        [(13.0, 0.5, vec2(0.0, -0.25)), (0.5, 12.0, vec2(-6.25, 6.0)), (0.5, 12.0, vec2(6.25, 6.0))]
     {
-        world.add_collider(frame, ColliderDesc::offset_rectangle(half_width, half_height, center, 0.0).layers(solid));
+        world.add_collider(frame, ColliderDesc::rectangle(width, height).offset(center).layers(solid));
     }
 
     // Each shelf belongs to the world layer but only collides with one color.
@@ -39,8 +43,10 @@ fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
     for (i, &(layer, color)) in COLORS[..2].iter().enumerate() {
         let y = 7.0 - 3.5 * i as f32;
         let angle = if i % 2 == 0 { -0.08 } else { 0.08 };
-        let shelf =
-            ColliderDesc::offset_rectangle(6.0, 0.12, vec2(0.0, y), angle).layers(CollisionLayers::new(WORLD, layer));
+        let shelf = ColliderDesc::rectangle(12.0, 0.24)
+            .offset(vec2(0.0, y))
+            .angle(angle)
+            .layers(CollisionLayers::new(WORLD, layer));
         shelves.push((world.add_collider(frame, shelf), color));
     }
     labels.at(vec2(0.0, 7.6), "Red shelf: collides with red only");
@@ -65,11 +71,8 @@ impl SceneUpdate for Sorter {
         let (layer, color) = COLORS[i % COLORS.len()];
         // Golden ratio steps scatter the balls evenly across the width, never twice at one spot.
         let x = 10.0 * (i as f32 * 0.618_034).fract() - 5.0;
-        let ball = world.add_body(BodyDesc::dynamic().position(vec2(x, 11.5)));
-        world.add_collider(
-            ball,
-            ColliderDesc::circle(0.22).restitution(0.2).layers(CollisionLayers::new(layer, layer | WORLD)),
-        );
+        let shape = ColliderDesc::circle(0.22).restitution(0.2).layers(CollisionLayers::new(layer, layer | WORLD));
+        let ball = world.add_body(BodyDesc::dynamic().position(vec2(x, 11.5)).collider(shape));
         self.balls.push((ball, color));
     }
 
@@ -100,7 +103,7 @@ mod tests {
         let floors = [(RED, 7.0 - 0.6, 12.0), (GREEN, 3.5 - 0.6, 7.0 - 0.6), (BLUE, 0.0, 3.5 - 0.6)];
         for (_, body) in world.bodies() {
             let Some(&collider) = body.colliders().first() else { continue };
-            let layers = world.collider(collider).unwrap().layers();
+            let layers = world[collider].layers();
             let Some(&(_, low, high)) = floors.iter().find(|(layer, ..)| layers.memberships == *layer) else {
                 continue;
             };

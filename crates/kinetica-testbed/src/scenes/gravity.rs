@@ -1,6 +1,7 @@
+use kinetica::DEFAULT_GRAVITY;
 use kinetica::prelude::*;
-use kinetica::{Color, DEFAULT_GRAVITY, DebugDraw};
 use kinetica_macroquad::DebugRenderer;
+use macroquad::color::Color;
 use macroquad::input::KeyCode;
 
 use super::{Build, Category, Frame, Labels, Scene, SceneUpdate};
@@ -9,41 +10,40 @@ pub const SCENE: Scene = Scene {
     name: "Gravity and damping",
     category: Category::Bodies,
     description: "Arrow keys point the world's gravity in a new direction. Each body can scale gravity for \
-                  itself (0 floats, negative rises), slow down with damping (like air drag), or never rotate.",
+                  itself (0 floats, negative rises), slow down with damping (like air drag), or have its rotation locked.",
     camera_center: vec2(0.0, 0.0),
     view_height: 13.0,
     build: Build::Animated(build),
 };
 
-const HALF_WIDTH: f32 = 8.0;
-const HALF_HEIGHT: f32 = 5.0;
-const ARROW_COLOR: Color = Color::rgb(1.0, 0.9, 0.3);
-const SPECIAL_COLOR: Color = Color::rgb(0.4, 0.85, 1.0);
+/// Inside size of the box.
+const WIDTH: f32 = 16.0;
+const HEIGHT: f32 = 10.0;
+const ARROW_COLOR: Color = Color::new(1.0, 0.9, 0.3, 1.0);
+const SPECIAL_COLOR: Color = Color::new(0.4, 0.85, 1.0, 1.0);
 
 fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
     // A closed box, so nothing escapes whichever way gravity points.
     let walls = world.add_body(BodyDesc::fixed());
-    for (center, half_width, half_height) in [
-        (vec2(0.0, -HALF_HEIGHT), HALF_WIDTH, 0.25),
-        (vec2(0.0, HALF_HEIGHT), HALF_WIDTH, 0.25),
-        (vec2(-HALF_WIDTH, 0.0), 0.25, HALF_HEIGHT),
-        (vec2(HALF_WIDTH, 0.0), 0.25, HALF_HEIGHT),
+    for (center, width, height) in [
+        (vec2(0.0, -HEIGHT / 2.0), WIDTH, 0.5),
+        (vec2(0.0, HEIGHT / 2.0), WIDTH, 0.5),
+        (vec2(-WIDTH / 2.0, 0.0), 0.5, HEIGHT),
+        (vec2(WIDTH / 2.0, 0.0), 0.5, HEIGHT),
     ] {
-        world.add_collider(walls, ColliderDesc::offset_rectangle(half_width, half_height, center, 0.0));
+        world.add_collider(walls, ColliderDesc::rectangle(width, height).offset(center));
     }
 
     // Ordinary bodies.
     for i in 0..12 {
         let position = vec2(-6.5 + 1.2 * (i % 6) as f32, -3.5 + 1.2 * (i / 6) as f32);
-        let body = world.add_body(BodyDesc::dynamic().position(position));
-        let collider = if i % 2 == 0 { ColliderDesc::circle(0.4) } else { ColliderDesc::rectangle(0.4, 0.4) };
-        world.add_collider(body, collider);
+        let shape = if i % 2 == 0 { ColliderDesc::circle(0.4) } else { ColliderDesc::square(0.8) };
+        world.add_body(BodyDesc::dynamic().position(position).collider(shape));
     }
 
     let mut special = Vec::new();
     let mut add_special = |world: &mut World, desc: BodyDesc, collider: ColliderDesc, text: &str| {
-        let body = world.add_body(desc);
-        world.add_collider(body, collider);
+        let body = world.add_body(desc.collider(collider));
         labels.above(body, text);
         special.push(body);
     };
@@ -62,14 +62,14 @@ fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
     add_special(
         world,
         BodyDesc::dynamic().position(vec2(-2.0, 3.0)).linear_damping(3.0).angular_damping(3.0),
-        ColliderDesc::rectangle(0.5, 0.5),
+        ColliderDesc::square(1.0),
         "damping 3",
     );
     add_special(
         world,
-        BodyDesc::dynamic().position(vec2(5.5, 3.0)).fixed_rotation(true),
-        ColliderDesc::rectangle(0.9, 0.3),
-        "fixed rotation",
+        BodyDesc::dynamic().position(vec2(5.5, 3.0)).lock_rotation(),
+        ColliderDesc::rectangle(1.8, 0.6),
+        "rotation locked",
     );
 
     Box::new(GravityDemo { special })
@@ -105,6 +105,6 @@ impl SceneUpdate for GravityDemo {
 
     fn labels(&self, world: &World, _frame: &Frame, labels: &mut Labels) {
         let gravity = world.gravity();
-        labels.at(vec2(0.0, HALF_HEIGHT + 1.0), format!("gravity ({:.1}, {:.1}) m/s²", gravity.x, gravity.y));
+        labels.at(vec2(0.0, HEIGHT / 2.0 + 1.0), format!("gravity ({:.1}, {:.1}) m/s²", gravity.x, gravity.y));
     }
 }

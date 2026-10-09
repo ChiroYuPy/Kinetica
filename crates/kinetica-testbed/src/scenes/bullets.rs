@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use kinetica::prelude::*;
-use kinetica::{Color, DebugDraw};
+use macroquad::color::Color;
 
 use super::{Build, Category, Frame, Labels, Scene, SceneUpdate, add_ground};
 use kinetica_macroquad::DebugRenderer;
@@ -21,20 +21,23 @@ const CANNON: Vec2 = vec2(-10.0, 2.0);
 const SPEED: f32 = 150.0;
 const FIRE_PERIOD: f32 = 0.5;
 const MAX_BALLS: usize = 12;
-const BULLET_COLOR: Color = Color::rgb(0.95, 0.3, 0.3);
+const BULLET_COLOR: Color = Color::new(0.95, 0.3, 0.3, 1.0);
 
 fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
-    add_ground(world, 20.0);
-    let wall = world.add_body(BodyDesc::fixed().position(vec2(8.0, 3.0)));
-    world.add_collider(wall, ColliderDesc::rectangle(0.05, 3.0));
+    add_ground(world, 40.0);
+    world.add_body(BodyDesc::fixed().position(vec2(8.0, 3.0)).collider(ColliderDesc::rectangle(0.1, 6.0)));
 
     // Thin plates hanging from hinges: they swing when hit, then fall back into place.
     for x in [-2.0, 1.0, 4.0] {
         let hinge = vec2(x, 4.0);
         let support = world.add_body(BodyDesc::fixed().position(hinge));
-        let plate = world.add_body(BodyDesc::dynamic().position(hinge - vec2(0.0, 1.5)).angular_damping(0.5));
-        world.add_collider(plate, ColliderDesc::rectangle(0.04, 1.5).density(5.0));
-        world.add_joint(RevoluteJointDesc::at_world_point(world, support, plate, hinge));
+        let plate = world.add_body(
+            BodyDesc::dynamic()
+                .position(hinge - vec2(0.0, 1.5))
+                .angular_damping(0.5)
+                .collider(ColliderDesc::rectangle(0.08, 3.0).density(5.0)),
+        );
+        world.add_joint(RevoluteJointDesc::new(support, plate, hinge));
     }
     labels.at(vec2(6.8, 6.4), "Thin fixed wall:\nstops every ball");
     labels.at(vec2(1.0, 4.4), "Thin moving plates: only bullets (red) hit them");
@@ -57,8 +60,8 @@ impl SceneUpdate for Cannon {
         let bullet = self.shots % 2 == 1;
         self.shots += 1;
         let ball =
-            world.add_body(BodyDesc::dynamic().position(CANNON).linear_velocity(vec2(SPEED, 1.0)).bullet(bullet));
-        world.add_collider(ball, ColliderDesc::circle(0.12));
+            BodyDesc::dynamic().position(CANNON).linear_velocity(vec2(SPEED, 1.0)).collider(ColliderDesc::circle(0.12));
+        let ball = world.add_body(if bullet { ball.bullet() } else { ball });
         self.balls.push_back((ball, bullet));
         if self.balls.len() > MAX_BALLS
             && let Some((oldest, _)) = self.balls.pop_front()
@@ -70,7 +73,7 @@ impl SceneUpdate for Cannon {
     fn draw(&self, world: &World, _frame: &Frame, drawer: &mut DebugRenderer) {
         drawer.draw_polygon(
             &[CANNON + vec2(-0.8, -0.3), CANNON + vec2(0.0, -0.2), CANNON + vec2(0.0, 0.2), CANNON + vec2(-0.8, 0.3)],
-            Color::rgb(0.7, 0.7, 0.75),
+            Color::new(0.7, 0.7, 0.75, 1.0),
         );
         for &(ball, bullet) in &self.balls {
             if bullet {

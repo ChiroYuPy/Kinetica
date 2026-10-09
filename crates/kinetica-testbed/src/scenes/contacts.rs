@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::f32::consts::TAU;
 
 use kinetica::prelude::*;
-use kinetica::{Color, DebugDraw};
 use kinetica_macroquad::DebugRenderer;
+use macroquad::color::Color;
 
 use super::{Build, Category, Frame, Labels, Scene, SceneUpdate};
 
@@ -25,18 +25,17 @@ const LENGTH_PER_NEWTON: f32 = 0.03;
 const MIN_NORMAL_LENGTH: f32 = 0.1;
 const FLASH_TIME: f32 = 0.3;
 
-const TOUCHING_COLOR: Color = Color::rgb(0.95, 0.25, 0.25);
-const SPECULATIVE_COLOR: Color = Color::rgb(0.95, 0.85, 0.25);
-const NORMAL_COLOR: Color = Color::rgb(0.35, 0.85, 0.45);
-const FLASH_COLOR: Color = Color::rgb(1.0, 1.0, 0.6);
+const TOUCHING_COLOR: Color = Color::new(0.95, 0.25, 0.25, 1.0);
+const SPECULATIVE_COLOR: Color = Color::new(0.95, 0.85, 0.25, 1.0);
+const NORMAL_COLOR: Color = Color::new(0.35, 0.85, 0.45, 1.0);
+const FLASH_COLOR: Color = Color::new(1.0, 1.0, 0.6, 1.0);
 
 fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
     // A stack on a short ground.
-    let ground = world.add_body(BodyDesc::fixed().position(vec2(-4.0, -0.25)));
-    world.add_collider(ground, ColliderDesc::rectangle(2.0, 0.25));
+    world.add_body(BodyDesc::fixed().position(vec2(-4.0, -0.25)).collider(ColliderDesc::rectangle(4.0, 0.5)));
     for level in 0..3 {
-        let block = world.add_body(BodyDesc::dynamic().position(vec2(-4.0, 0.5 + level as f32)));
-        world.add_collider(block, ColliderDesc::rectangle(0.5, 0.5));
+        world
+            .add_body(BodyDesc::dynamic().position(vec2(-4.0, 0.5 + level as f32)).collider(ColliderDesc::square(1.0)));
     }
     labels.at(vec2(-4.0, 4.0), "Contact forces");
 
@@ -45,23 +44,22 @@ fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
         for i in 0..count {
             let angle = TAU * i as f32 / count as f32 + 0.3 * ring as f32;
             let position = RING_CENTER + radius * Vec2::from_angle(angle);
-            let body = world.add_body(BodyDesc::dynamic().position(position).angle(angle).gravity_scale(0.0));
-            let collider = match (i + ring) % 4 {
+            let shape = match (i + ring) % 4 {
                 0 => ColliderDesc::circle(0.4),
-                1 => ColliderDesc::rectangle(0.5, 0.28),
+                1 => ColliderDesc::rectangle(1.0, 0.56),
                 2 => ColliderDesc::regular_polygon(3, 0.5),
                 _ => ColliderDesc::regular_polygon(6, 0.4),
             };
-            world.add_collider(body, collider);
+            world.add_body(BodyDesc::dynamic().position(position).angle(angle).gravity_scale(0.0).collider(shape));
         }
     }
 
     // A bar sweeping both rings: its body origin is the pivot, the shape is off-center.
-    let bar = world.add_body(BodyDesc::kinematic().position(RING_CENTER).angular_velocity(0.35));
-    world.add_collider(bar, ColliderDesc::offset_rectangle(2.2, 0.1, vec2(3.0, 0.0), 0.0));
+    let bar = ColliderDesc::rectangle(4.4, 0.2).offset(vec2(3.0, 0.0));
+    world.add_body(BodyDesc::kinematic().position(RING_CENTER).angular_velocity(0.35).collider(bar));
     // A ball orbiting the other way, through the outer ring.
-    let orbiter = world.add_body(BodyDesc::kinematic().position(RING_CENTER).angular_velocity(-0.5));
-    world.add_collider(orbiter, ColliderDesc::new(kinetica::shape::Circle::new(0.6).with_center(vec2(-4.2, 0.0))));
+    let ball = ColliderDesc::circle(0.6).offset(vec2(-4.2, 0.0));
+    world.add_body(BodyDesc::kinematic().position(RING_CENTER).angular_velocity(-0.5).collider(ball));
 
     Box::new(ContactDemo { flashes: BTreeMap::new(), started: 0, stopped: 0, time: 0.0 })
 }
@@ -79,13 +77,13 @@ impl SceneUpdate for ContactDemo {
         // The events of the previous step.
         for event in world.collision_events() {
             match event {
-                CollisionEvent::Started(pair) => {
+                CollisionEvent::Started { pair, .. } => {
                     self.started += 1;
                     for body in [pair.body_a, pair.body_b] {
                         self.flashes.insert(body, frame.time);
                     }
                 }
-                CollisionEvent::Stopped(_) => self.stopped += 1,
+                CollisionEvent::Stopped { .. } => self.stopped += 1,
             }
         }
         self.time = frame.time;
@@ -94,8 +92,8 @@ impl SceneUpdate for ContactDemo {
     fn draw(&self, world: &World, _frame: &Frame, drawer: &mut DebugRenderer) {
         for (&body, &time) in &self.flashes {
             let age = self.time - time;
-            if age < FLASH_TIME && world.body(body).is_some_and(|body| body.body_type() == BodyType::Dynamic) {
-                drawer.draw_body(world, body, FLASH_COLOR.with_alpha(1.0 - age / FLASH_TIME));
+            if age < FLASH_TIME && world[body].body_type() == BodyType::Dynamic {
+                drawer.draw_body(world, body, Color { a: 1.0 - age / FLASH_TIME, ..FLASH_COLOR });
             }
         }
 

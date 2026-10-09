@@ -35,6 +35,13 @@ impl Transform {
     }
 }
 
+impl From<Vec2> for Transform {
+    /// A placement at `position`, without rotation.
+    fn from(position: Vec2) -> Self {
+        Self::new(position, Rot::IDENTITY)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use glam::vec2;

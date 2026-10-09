@@ -5,11 +5,10 @@ use std::ops::RangeInclusive;
 use super::frame::{
     BiasTerms, JointFrame, SymmetricMatrix, apply_impulses, inverse_or_zero, relative_angle, wrap_angle,
 };
-use super::{Motor, validated_range};
+use super::{JointBase, Motor, validated_range};
 use crate::body::{Body, BodyHandle};
 use crate::math::{Vec2, vec2};
 use crate::solver::SolverContext;
-use crate::world::World;
 
 /// Description of a [`PrismaticJoint`].
 #[derive(Debug, Clone, PartialEq)]
@@ -19,14 +18,10 @@ pub struct PrismaticJointDesc {
     pub body_a: BodyHandle,
     /// Second body.
     pub body_b: BodyHandle,
-    /// Origin of the slide, in the local frame of body A.
-    pub local_anchor_a: Vec2,
-    /// Point of body B sliding along the axis, in its local frame.
-    pub local_anchor_b: Vec2,
-    /// Direction of the slide, in the local frame of body A.
-    pub local_axis_a: Vec2,
-    /// Angle of B relative to A, kept constant by the joint.
-    pub reference_angle: f32,
+    /// Origin of the slide, in world space.
+    pub anchor: Vec2,
+    /// Direction of the slide, in world space.
+    pub axis: Vec2,
     /// Allowed range of the translation along the axis, in meters.
     pub limits: Option<RangeInclusive<f32>>,
     /// Drives the translation.
@@ -36,48 +31,31 @@ pub struct PrismaticJointDesc {
 }
 
 impl PrismaticJointDesc {
-    /// Describes a slider given in each body's local frame.
+    /// Describes a slider through the world point `anchor`, along the world direction `axis`.
+    /// The translation is zero, and the relative angle kept, in the placement the bodies have
+    /// when the joint is added.
     ///
     /// # Panics
     ///
-    /// Panics if `local_axis_a` is zero.
+    /// Panics if `axis` is zero.
     #[must_use]
-    pub fn new(
-        body_a: BodyHandle,
-        body_b: BodyHandle,
-        local_anchor_a: Vec2,
-        local_anchor_b: Vec2,
-        local_axis_a: Vec2,
-    ) -> Self {
+    pub fn new(body_a: BodyHandle, body_b: BodyHandle, anchor: Vec2, axis: Vec2) -> Self {
         Self {
             body_a,
             body_b,
-            local_anchor_a,
-            local_anchor_b,
-            local_axis_a: local_axis_a.try_normalize().expect("the slide axis must not be zero"),
-            reference_angle: 0.0,
+            anchor,
+            axis: axis.try_normalize().expect("the slide axis must not be zero"),
             limits: None,
             motor: None,
             collide_connected: false,
         }
     }
 
-    /// Describes a slider along `axis` (world direction) through a world point, starting at
-    /// translation zero.
+    /// Restricts the translation to `translations`, in meters.
     ///
     /// # Panics
     ///
-    /// Panics if either body was removed from `world`, or if `axis` is zero.
-    #[must_use]
-    pub fn at_world_point(world: &World, body_a: BodyHandle, body_b: BodyHandle, point: Vec2, axis: Vec2) -> Self {
-        let (a, b) = super::bodies_of(world, body_a, body_b);
-        Self {
-            reference_angle: relative_angle(b.rotation(), a.rotation()),
-            ..Self::new(body_a, body_b, a.local_point(point), b.local_point(point), a.local_vector(axis))
-        }
-    }
-
-    /// Restricts the translation to `translations`, in meters.
+    /// Panics when the joint is added if the range is empty.
     #[must_use]
     pub fn limits(mut self, translations: RangeInclusive<f32>) -> Self {
         self.limits = Some(translations);
@@ -91,10 +69,10 @@ impl PrismaticJointDesc {
         self
     }
 
-    /// Sets whether the two bodies still collide with each other.
+    /// Lets the two bodies keep colliding with each other.
     #[must_use]
-    pub fn collide_connected(mut self, collide: bool) -> Self {
-        self.collide_connected = collide;
+    pub fn collide_connected(mut self) -> Self {
+        self.collide_connected = true;
         self
     }
 }
@@ -103,6 +81,7 @@ impl PrismaticJointDesc {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PrismaticJoint {
+    pub(super) base: JointBase,
     local_anchor_a: Vec2,
     local_anchor_b: Vec2,
     local_axis_a: Vec2,
@@ -122,12 +101,18 @@ pub struct PrismaticJoint {
 }
 
 impl PrismaticJoint {
-    pub(crate) fn new(desc: &PrismaticJointDesc) -> Self {
+    shared_joint_methods!();
+
+    fn base(&self) -> &JointBase {
+        &self.base
+    }
+    pub(super) fn new(desc: &PrismaticJointDesc, a: &Body, b: &Body) -> Self {
         Self {
-            local_anchor_a: desc.local_anchor_a,
-            local_anchor_b: desc.local_anchor_b,
-            local_axis_a: desc.local_axis_a,
-            reference_angle: desc.reference_angle,
+            base: JointBase::new(desc.body_a, desc.body_b, desc.collide_connected),
+            local_anchor_a: a.local_point(desc.anchor),
+            local_anchor_b: b.local_point(desc.anchor),
+            local_axis_a: a.local_vector(desc.axis),
+            reference_angle: relative_angle(b.rotation(), a.rotation()),
             limits: desc.limits.clone().map(validated_range),
             motor: desc.motor,
             impulse: Vec2::ZERO,

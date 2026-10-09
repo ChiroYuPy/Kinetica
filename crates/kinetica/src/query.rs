@@ -19,7 +19,7 @@ use crate::world::World;
 /// # let mut world = World::new();
 /// # let player = world.add_body(BodyDesc::dynamic());
 /// let filter = QueryFilter::new().exclude_body(player).exclude_dynamic();
-/// let ground_below = world.cast_ray(vec2(0.0, 0.0), vec2(0.0, -2.0), &filter);
+/// let ground_below = world.cast_ray(vec2(0.0, 0.0), vec2(0.0, -2.0), filter);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -109,7 +109,7 @@ impl QueryFilter {
         {
             return false;
         }
-        match world.body(collider.body()).map(crate::Body::body_type) {
+        match world.get_body(collider.body()).map(crate::Body::body_type) {
             Some(BodyType::Fixed) => !self.skip_fixed,
             Some(BodyType::Kinematic) => !self.skip_kinematic,
             Some(BodyType::Dynamic) => !self.skip_dynamic,
@@ -156,7 +156,7 @@ impl World {
     ///
     /// Colliders containing `origin` are not hit.
     #[must_use]
-    pub fn cast_ray(&self, origin: Vec2, translation: Vec2, filter: &QueryFilter) -> Option<RayHit> {
+    pub fn cast_ray(&self, origin: Vec2, translation: Vec2, filter: QueryFilter) -> Option<RayHit> {
         let mut closest: Option<RayHit> = None;
         self.broad_phase().ray_cast(origin, translation, 1.0, |handle, max_fraction| {
             let Some(hit) = self.ray_hit(handle, origin, translation, max_fraction, filter) else {
@@ -174,7 +174,7 @@ impl World {
 
     /// Casts a ray from `origin` to `origin + translation` and returns every hit, nearest first.
     #[must_use]
-    pub fn cast_ray_all(&self, origin: Vec2, translation: Vec2, filter: &QueryFilter) -> Vec<RayHit> {
+    pub fn cast_ray_all(&self, origin: Vec2, translation: Vec2, filter: QueryFilter) -> Vec<RayHit> {
         let mut hits = Vec::new();
         self.broad_phase().ray_cast(origin, translation, 1.0, |handle, max_fraction| {
             hits.extend(self.ray_hit(handle, origin, translation, max_fraction, filter));
@@ -184,16 +184,26 @@ impl World {
         hits
     }
 
-    /// Moves `shape` from `transform` along `translation`, without rotating it, and returns the
-    /// first collider it touches.
+    /// Moves `shape` from `start` along `translation`, without rotating it, and returns the
+    /// first collider it touches. `start` is a [`Transform`], or just a position.
+    ///
+    /// ```
+    /// use kinetica::prelude::*;
+    /// use kinetica::shape::Circle;
+    ///
+    /// # let world = World::new();
+    /// // Would a ball of radius 0.5 dropped from (0, 10) land within 20 m?
+    /// let landing = world.cast_shape(Circle::new(0.5), vec2(0.0, 10.0), vec2(0.0, -20.0), QueryFilter::new());
+    /// ```
     #[must_use]
     pub fn cast_shape(
         &self,
-        shape: &Shape,
-        transform: &Transform,
+        shape: impl Into<Shape>,
+        start: impl Into<Transform>,
         translation: Vec2,
-        filter: &QueryFilter,
+        filter: QueryFilter,
     ) -> Option<ShapeHit> {
+        let (shape, transform) = (&shape.into(), &start.into());
         let end = Transform::new(transform.position + translation, transform.rotation);
         let swept = shape.compute_aabb(transform).union(&shape.compute_aabb(&end));
 
@@ -225,7 +235,7 @@ impl World {
 
     /// Colliders containing the world point `point`.
     #[must_use]
-    pub fn colliders_at_point(&self, point: Vec2, filter: &QueryFilter) -> Vec<ColliderHandle> {
+    pub fn colliders_at_point(&self, point: Vec2, filter: QueryFilter) -> Vec<ColliderHandle> {
         self.collect_candidates(&Aabb::new(point, point), filter, |collider, body_transform| {
             collider.shape().contains_point(body_transform, point)
         })
@@ -237,18 +247,20 @@ impl World {
     /// not reach into the box. Use [`colliders_overlapping`](Self::colliders_overlapping) for
     /// an exact test.
     #[must_use]
-    pub fn colliders_in_aabb(&self, aabb: &Aabb, filter: &QueryFilter) -> Vec<ColliderHandle> {
+    pub fn colliders_in_aabb(&self, aabb: &Aabb, filter: QueryFilter) -> Vec<ColliderHandle> {
         self.collect_candidates(aabb, filter, |collider, _| collider.aabb().overlaps(aabb))
     }
 
-    /// Colliders overlapping `shape` placed at `transform`. Merely touching does not count.
+    /// Colliders overlapping `shape` placed at `placement`, a [`Transform`] or just a position.
+    /// Merely touching does not count.
     #[must_use]
     pub fn colliders_overlapping(
         &self,
-        shape: &Shape,
-        transform: &Transform,
-        filter: &QueryFilter,
+        shape: impl Into<Shape>,
+        placement: impl Into<Transform>,
+        filter: QueryFilter,
     ) -> Vec<ColliderHandle> {
+        let (shape, transform) = (&shape.into(), &placement.into());
         self.collect_candidates(&shape.compute_aabb(transform), filter, |collider, body_transform| {
             separation_lower_bound(collider.shape(), body_transform, shape, transform) < 0.0
         })
@@ -258,7 +270,7 @@ impl World {
     fn collect_candidates(
         &self,
         aabb: &Aabb,
-        filter: &QueryFilter,
+        filter: QueryFilter,
         mut keep: impl FnMut(&Collider, &Transform) -> bool,
     ) -> Vec<ColliderHandle> {
         let mut found = Vec::new();
@@ -280,7 +292,7 @@ impl World {
         origin: Vec2,
         translation: Vec2,
         max_fraction: f32,
-        filter: &QueryFilter,
+        filter: QueryFilter,
     ) -> Option<RayHit> {
         let (collider, body_transform) = self.collider_and_body_transform(handle)?;
         if !filter.accepts(self, collider) {
@@ -297,8 +309,8 @@ impl World {
     }
 
     fn collider_and_body_transform(&self, handle: ColliderHandle) -> Option<(&Collider, &Transform)> {
-        let collider = self.collider(handle)?;
-        let body = self.body(collider.body())?;
+        let collider = self.get_collider(handle)?;
+        let body = self.get_body(collider.body())?;
         Some((collider, body.transform()))
     }
 }

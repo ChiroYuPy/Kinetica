@@ -14,11 +14,24 @@ struct Scene {
 /// A ball dropped from above a thin fixed ground.
 fn ball_above_ground() -> Scene {
     let mut world = World::new();
-    let ground = world.add_body(BodyDesc::fixed());
-    world.add_collider(ground, ColliderDesc::rectangle(5.0, 0.1));
-    let ball = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 1.0)));
-    world.add_collider(ball, ColliderDesc::circle(0.25));
+    let ground = world.add_body(BodyDesc::fixed().collider(ColliderDesc::rectangle(10.0, 0.2)));
+    let ball = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 1.0)).collider(ColliderDesc::circle(0.25)));
     Scene { world, ground, ball }
+}
+
+#[test]
+fn landing_reports_the_impact_speed() {
+    let Scene { mut world, ball, .. } = ball_above_ground();
+    for _ in 0..120 {
+        let falling_speed = -world[ball].linear_velocity().y;
+        world.step(DT);
+        if let Some(CollisionEvent::Started { impact_speed, .. }) = world.collision_events().first() {
+            // Contacts start slightly before touching, during the last step of the fall.
+            assert!((impact_speed - falling_speed).abs() < 0.2, "impact at {impact_speed}, falling at {falling_speed}");
+            return;
+        }
+    }
+    panic!("the ball never landed");
 }
 
 #[test]
@@ -28,7 +41,7 @@ fn ball_lands_then_leaves_the_ground() {
     let mut record_events = |world: &World| {
         for event in world.collision_events() {
             assert!(event.pair().involves_body(ground) && event.pair().involves_body(ball));
-            history.push(matches!(event, CollisionEvent::Started(_)));
+            history.push(matches!(event, CollisionEvent::Started { .. }));
         }
     };
 
@@ -36,7 +49,7 @@ fn ball_lands_then_leaves_the_ground() {
         world.step(DT);
         record_events(&world);
     }
-    world.body_mut(ball).unwrap().set_linear_velocity(vec2(0.0, 5.0));
+    world[ball].set_linear_velocity(vec2(0.0, 5.0));
     for _ in 0..30 {
         world.step(DT);
         record_events(&world);
@@ -59,8 +72,7 @@ fn contact_normal_points_from_a_to_b() {
 #[test]
 fn body_contacts_lists_only_that_body() {
     let Scene { mut world, ground, ball } = ball_above_ground();
-    let far_away = world.add_body(BodyDesc::dynamic().position(vec2(50.0, 0.0)));
-    world.add_collider(far_away, ColliderDesc::circle(0.25));
+    let far_away = world.add_body(BodyDesc::dynamic().position(vec2(50.0, 0.0)).collider(ColliderDesc::circle(0.25)));
 
     step_until_contact(&mut world);
     assert_eq!(world.body_contacts(ball).count(), 1);
@@ -71,9 +83,9 @@ fn body_contacts_lists_only_that_body() {
 #[test]
 fn colliders_of_the_same_body_never_touch() {
     let mut world = World::new();
-    let body = world.add_body(BodyDesc::dynamic().gravity_scale(0.0));
-    world.add_collider(body, ColliderDesc::circle(1.0));
-    world.add_collider(body, ColliderDesc::rectangle(1.0, 1.0));
+    world.add_body(
+        BodyDesc::dynamic().gravity_scale(0.0).collider(ColliderDesc::circle(1.0)).collider(ColliderDesc::square(2.0)),
+    );
 
     for _ in 0..3 {
         world.step(DT);
@@ -89,8 +101,7 @@ fn only_pairs_with_a_dynamic_body_make_contacts() {
             let mut world = World::new();
             world.set_gravity(Vec2::ZERO);
             for body_type in [first, second] {
-                let body = world.add_body(BodyDesc::new(body_type));
-                world.add_collider(body, ColliderDesc::circle(1.0));
+                world.add_body(BodyDesc::new(body_type).collider(ColliderDesc::circle(1.0)));
             }
             world.step(DT);
             world.step(DT);
@@ -116,10 +127,9 @@ fn removing_a_body_removes_its_contacts_silently() {
 fn removing_a_collider_keeps_other_contacts() {
     let mut world = World::new();
     world.set_gravity(Vec2::ZERO);
-    let probe = world.add_body(BodyDesc::dynamic());
-    world.add_collider(probe, ColliderDesc::circle(1.0));
+    world.add_body(BodyDesc::dynamic().collider(ColliderDesc::circle(1.0)));
     let target = world.add_body(BodyDesc::fixed());
-    let left = world.add_collider(target, ColliderDesc::rectangle(0.5, 0.5));
+    let left = world.add_collider(target, ColliderDesc::square(1.0));
     world.add_collider(target, ColliderDesc::circle(0.5));
 
     world.step(DT);
@@ -138,8 +148,7 @@ fn many_bodies_find_exactly_the_overlapping_pairs() {
     // A row of circles of radius 0.5 spaced by 0.9: each overlaps only its neighbours.
     let count = 30;
     for i in 0..count {
-        let body = world.add_body(BodyDesc::dynamic().position(vec2(i as f32 * 0.9, 0.0)));
-        world.add_collider(body, ColliderDesc::circle(0.5));
+        world.add_body(BodyDesc::dynamic().position(vec2(i as f32 * 0.9, 0.0)).collider(ColliderDesc::circle(0.5)));
     }
     world.step(DT);
     world.step(DT);

@@ -11,8 +11,8 @@ pub const MAX_PULL: f32 = 2.5;
 /// Launch speed per meter of pull, in m/s.
 const LAUNCH_SPEED_PER_METER: f32 = 9.0;
 pub const PROJECTILE_RADIUS: f32 = 0.3;
-/// A target whose speed changes this much in one step was hit hard enough to pop.
-const POP_SPEED_CHANGE: f32 = 2.0;
+/// A target hit at this speed, in m/s, pops.
+const POP_IMPACT_SPEED: f32 = 2.0;
 const TIME_STEP: f32 = 1.0 / 60.0;
 /// Below this speed, in m/s, everything counts as settled.
 const SETTLED_SPEED: f32 = 0.1;
@@ -40,15 +40,12 @@ pub struct Game {
     pub state: State,
     /// Positions where targets popped recently, with their age, for a small effect.
     pub pops: Vec<(Vec2, f32)>,
-    /// Each target's velocity at the previous step.
-    target_velocities: Vec<Vec2>,
 }
 
 impl Game {
     pub fn new(level_index: usize) -> Self {
         let mut world = World::new();
         let level = level::build(&mut world, level_index);
-        let target_velocities = vec![Vec2::ZERO; level.targets.len()];
         let shots_left = level.shots;
         Self {
             world,
@@ -59,7 +56,6 @@ impl Game {
             score: 0,
             state: State::Playing,
             pops: Vec::new(),
-            target_velocities,
         }
     }
 
@@ -91,14 +87,13 @@ impl Game {
             return;
         }
         self.shots_left -= 1;
-        let desc = BodyDesc::dynamic()
+        let projectile = BodyDesc::dynamic()
             .position(Self::pulled_position(pull_point))
             .linear_velocity(Self::launch_velocity(pull_point))
             .angular_damping(1.0)
-            .bullet(true);
-        let projectile = self.world.add_body(desc);
-        self.world.add_collider(projectile, ColliderDesc::circle(PROJECTILE_RADIUS).density(4.0).friction(0.6));
-        self.projectiles.push(projectile);
+            .bullet()
+            .collider(ColliderDesc::circle(PROJECTILE_RADIUS).density(4.0).friction(0.6));
+        self.projectiles.push(self.world.add_body(projectile));
     }
 
     pub fn step(&mut self) {
@@ -113,25 +108,26 @@ impl Game {
 
     /// Targets hit hard, or fallen off the world, pop.
     fn pop_hit_targets(&mut self) {
-        let mut index = 0;
-        while index < self.level.targets.len() {
-            let target = self.level.targets[index];
-            let (position, velocity) = self
-                .world
-                .body(target)
-                .map_or((Vec2::ZERO, Vec2::ZERO), |body| (body.position(), body.linear_velocity()));
-            let hit = (velocity - self.target_velocities[index]).length() > POP_SPEED_CHANGE;
-            if hit || position.y < -5.0 {
-                self.pops.push((position, 0.0));
-                self.world.remove_body(target);
-                self.level.targets.swap_remove(index);
-                self.target_velocities.swap_remove(index);
-                self.score += POINTS_PER_TARGET;
-            } else {
-                self.target_velocities[index] = velocity;
-                index += 1;
+        let hard_hits: Vec<ContactPair> = self
+            .world
+            .collision_events()
+            .iter()
+            .filter_map(|event| match event {
+                CollisionEvent::Started { pair, impact_speed } if *impact_speed > POP_IMPACT_SPEED => Some(*pair),
+                _ => None,
+            })
+            .collect();
+        let Self { world, level, pops, score, .. } = self;
+        level.targets.retain(|&target| {
+            let position = world[target].position();
+            let popped = hard_hits.iter().any(|pair| pair.involves_body(target)) || position.y < -5.0;
+            if popped {
+                pops.push((position, 0.0));
+                world.remove_body(target);
+                *score += POINTS_PER_TARGET;
             }
-        }
+            !popped
+        });
     }
 
     fn update_state(&mut self) {

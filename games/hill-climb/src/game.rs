@@ -134,7 +134,7 @@ mod tests {
     /// parallel to the ground ahead.
     fn autopilot(game: &Game) -> Controls {
         let world = &game.world;
-        let chassis = world.body(game.car.chassis).unwrap();
+        let chassis = &world[game.car.chassis];
         if game.car.on_ground(world) {
             return Controls { throttle: 1.0 };
         }
@@ -168,7 +168,7 @@ mod tests {
         let world = &game.world;
         assert!(game.car.on_ground(world), "the wheels should touch the ground");
         assert_eq!(game.state, State::Driving);
-        let chassis = world.body(game.car.chassis).unwrap();
+        let chassis = &world[game.car.chassis];
         assert!(
             chassis.angle().abs() < 0.02 && chassis.linear_velocity().length() < 0.05,
             "the car should stand still"
@@ -214,7 +214,7 @@ mod tests {
         // Turn the whole car upside down around its chassis, a little above the ground.
         let pivot = game.car.position(&game.world);
         for body in game.car.bodies(&game.world) {
-            let body = game.world.body_mut(body).unwrap();
+            let body = &mut game.world[body];
             let offset = body.position() - pivot;
             body.set_position(pivot + vec2(0.0, 1.0) - offset);
             body.set_angle(body.angle() + std::f32::consts::PI);

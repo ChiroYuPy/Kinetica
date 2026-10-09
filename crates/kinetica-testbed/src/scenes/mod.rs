@@ -201,12 +201,11 @@ impl Label {
         match self.anchor {
             Anchor::Point(point) => Some(point),
             Anchor::Above(body) => {
-                let body = world.body(body)?;
+                let body = world.get_body(body)?;
                 let top = body
                     .colliders()
                     .iter()
-                    .filter_map(|&collider| world.collider(collider))
-                    .map(|collider| collider.aabb().max.y)
+                    .map(|&collider| world[collider].aabb().max.y)
                     .fold(body.position().y, f32::max);
                 Some(vec2(body.position().x, top + 0.15))
             }
@@ -234,11 +233,9 @@ impl Labels {
     }
 }
 
-/// Adds a wide fixed ground whose top surface is at `y = 0`.
-fn add_ground(world: &mut World, half_width: f32) -> BodyHandle {
-    let ground = world.add_body(BodyDesc::fixed().position(vec2(0.0, -0.5)));
-    world.add_collider(ground, ColliderDesc::rectangle(half_width, 0.5));
-    ground
+/// Adds a fixed ground `width` wide, centered on `x = 0`, whose top surface is at `y = 0`.
+fn add_ground(world: &mut World, width: f32) -> BodyHandle {
+    world.add_body(BodyDesc::fixed().position(vec2(0.0, -0.5)).collider(ColliderDesc::rectangle(width, 1.0)))
 }
 
 impl Scene {

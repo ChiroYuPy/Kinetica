@@ -1,5 +1,5 @@
 use kinetica::prelude::*;
-use kinetica::{Color, DebugDraw};
+use macroquad::color::Color;
 use macroquad::input::KeyCode;
 
 use super::cloth::Cloth;
@@ -25,8 +25,8 @@ const BAR_MASS: f32 = 400.0;
 /// Force a link can bear, in newtons. Intact, the curtain pulls at most about 400 N on a link.
 const STRENGTH: f32 = 700.0;
 const CUT_RADIUS: f32 = 0.15;
-const CUT_COLOR: Color = Color::rgb(0.95, 0.95, 0.95);
-const BAR_COLOR: Color = Color::rgb(0.45, 0.45, 0.5);
+const CUT_COLOR: Color = Color::new(0.95, 0.95, 0.95, 1.0);
+const BAR_COLOR: Color = Color::new(0.45, 0.45, 0.5, 1.0);
 
 fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
     labels.at(vec2(0.0, TOP_LEFT.y + 0.4), "Hold Shift and move the mouse across the curtain to cut it");
@@ -34,21 +34,24 @@ fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
 }
 
 fn build_curtain(world: &mut World) -> Tearing {
-    add_ground(world, 20.0);
-    let curtain =
-        Cloth::new(world, TOP_LEFT, (COLUMNS, ROWS), (SPACING, 1.0), |_, row| row == 0, Color::rgb(0.9, 0.75, 0.35));
+    add_ground(world, 40.0);
+    let curtain = Cloth::new(
+        world,
+        TOP_LEFT,
+        (COLUMNS, ROWS),
+        (SPACING, 1.0),
+        |_, row| row == 0,
+        Color::new(0.9, 0.75, 0.35, 1.0),
+    );
 
     // A heavy bar hinged to every particle of the hem spreads its weight over the whole width.
     let hem_y = TOP_LEFT.y - SPACING * (ROWS - 1) as f32;
-    let half_width = SPACING * (COLUMNS - 1) as f32 / 2.0;
-    let center = vec2(TOP_LEFT.x + half_width, hem_y - 0.2);
-    let bar = world.add_body(BodyDesc::dynamic().position(center));
-    let half_height = 0.15;
-    let density = BAR_MASS / (4.0 * half_width * half_height);
-    world.add_collider(bar, ColliderDesc::rectangle(half_width, half_height).density(density));
+    let (width, height) = (SPACING * (COLUMNS - 1) as f32, 0.3);
+    let center = vec2(TOP_LEFT.x + width / 2.0, hem_y - 0.2);
+    let shape = ColliderDesc::rectangle(width, height).density(BAR_MASS / (width * height));
+    let bar = world.add_body(BodyDesc::dynamic().position(center).collider(shape));
     for &particle in curtain.bottom_row() {
-        let point = world.body(particle).map_or(center, kinetica::Body::position);
-        world.add_joint(RevoluteJointDesc::at_world_point(world, bar, particle, point));
+        world.add_joint(RevoluteJointDesc::new(bar, particle, world[particle].position()));
     }
     Tearing { curtain, bar, cutting: false, links: world.joint_count() }
 }
@@ -96,7 +99,7 @@ mod tests {
     }
 
     fn bar_height(world: &World, scene: &Tearing) -> f32 {
-        world.body(scene.bar).unwrap().position().y
+        world[scene.bar].position().y
     }
 
     #[test]

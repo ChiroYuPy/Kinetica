@@ -8,8 +8,8 @@ const SECOND: usize = 60;
 
 fn world_with_ground() -> (World, BodyHandle) {
     let mut world = World::new();
-    let ground = world.add_body(BodyDesc::fixed().position(vec2(0.0, -0.5)));
-    world.add_collider(ground, ColliderDesc::rectangle(50.0, 0.5));
+    let ground =
+        world.add_body(BodyDesc::fixed().position(vec2(0.0, -0.5)).collider(ColliderDesc::rectangle(100.0, 1.0)));
     (world, ground)
 }
 
@@ -20,7 +20,7 @@ fn run(world: &mut World, steps: usize) {
 }
 
 fn position(world: &World, body: BodyHandle) -> Vec2 {
-    world.body(body).unwrap().position()
+    world[body].position()
 }
 
 // --- Layers ---
@@ -32,14 +32,12 @@ const BLUE: u32 = 1 << 2;
 #[test]
 fn layers_choose_what_collides() {
     let (mut world, ground) = world_with_ground();
-    let ground_collider = world.body(ground).unwrap().colliders()[0];
-    world.collider_mut(ground_collider).unwrap().set_layers(CollisionLayers::new(GROUND, u32::MAX));
+    let ground_collider = world[ground].colliders()[0];
+    world[ground_collider].set_layers(CollisionLayers::new(GROUND, u32::MAX));
 
     // Red boxes collide with the ground and red boxes, blue ones with the ground only.
     let add = |world: &mut World, y: f32, layers: CollisionLayers| {
-        let body = world.add_body(BodyDesc::dynamic().position(vec2(0.0, y)));
-        world.add_collider(body, ColliderDesc::rectangle(0.5, 0.5).layers(layers));
-        body
+        world.add_body(BodyDesc::dynamic().position(vec2(0.0, y)).collider(ColliderDesc::square(1.0).layers(layers)))
     };
     let red = CollisionLayers::new(RED, GROUND | RED);
     let blue = CollisionLayers::new(BLUE, GROUND);
@@ -58,20 +56,20 @@ fn layers_choose_what_collides() {
 fn changing_layers_takes_effect_at_the_next_step() {
     let (mut world, _) = world_with_ground();
     let block = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 0.5)));
-    let collider = world.add_collider(block, ColliderDesc::rectangle(0.5, 0.5));
+    let collider = world.add_collider(block, ColliderDesc::square(1.0));
     run(&mut world, SECOND);
     assert_eq!(world.body_contacts(block).count(), 1);
 
-    world.collider_mut(collider).unwrap().set_layers(CollisionLayers::NONE);
-    world.body_mut(block).unwrap().wake_up();
+    world[collider].set_layers(CollisionLayers::NONE);
+    world[block].wake_up();
     world.step(DT);
-    assert!(world.collision_events().iter().any(|event| matches!(event, CollisionEvent::Stopped(_))));
+    assert!(world.collision_events().iter().any(|event| matches!(event, CollisionEvent::Stopped { .. })));
     run(&mut world, SECOND);
     assert!(position(&world, block).y < -1.0, "the box should fall through the ground");
 
-    world.collider_mut(collider).unwrap().set_layers(CollisionLayers::ALL);
+    world[collider].set_layers(CollisionLayers::ALL);
     let fall = position(&world, block).y;
-    world.body_mut(block).unwrap().set_position(vec2(0.0, 2.0));
+    world[block].set_position(vec2(0.0, 2.0));
     run(&mut world, 2 * SECOND);
     assert!((position(&world, block).y - 0.5).abs() < 0.02, "collides again after falling {fall}");
 }
@@ -79,9 +77,8 @@ fn changing_layers_takes_effect_at_the_next_step() {
 #[test]
 fn queries_filter_by_layer() {
     let mut world = World::new();
-    let body = world.add_body(BodyDesc::fixed());
-    world.add_collider(body, ColliderDesc::circle(1.0).layers(CollisionLayers::new(RED, u32::MAX)));
-    let hit = |filter: QueryFilter| world.cast_ray(vec2(-5.0, 0.0), vec2(10.0, 0.0), &filter).is_some();
+    world.add_body(BodyDesc::fixed().collider(ColliderDesc::circle(1.0).layers(CollisionLayers::new(RED, u32::MAX))));
+    let hit = |filter: QueryFilter| world.cast_ray(vec2(-5.0, 0.0), vec2(10.0, 0.0), filter).is_some();
     assert!(hit(QueryFilter::new()));
     assert!(hit(QueryFilter::new().layers(RED | BLUE)));
     assert!(!hit(QueryFilter::new().layers(BLUE)));
@@ -90,16 +87,14 @@ fn queries_filter_by_layer() {
 // --- Sensors ---
 
 fn add_ball(world: &mut World, position: Vec2) -> BodyHandle {
-    let ball = world.add_body(BodyDesc::dynamic().position(position));
-    world.add_collider(ball, ColliderDesc::circle(0.25));
-    ball
+    world.add_body(BodyDesc::dynamic().position(position).collider(ColliderDesc::circle(0.25)))
 }
 
 #[test]
 fn sensor_reports_entering_and_exiting_without_pushing() {
     let mut world = World::new();
     let zone = world.add_body(BodyDesc::fixed());
-    let sensor = world.add_collider(zone, ColliderDesc::rectangle(2.0, 1.0).sensor(true));
+    let sensor = world.add_collider(zone, ColliderDesc::rectangle(4.0, 2.0).sensor());
     let ball = add_ball(&mut world, vec2(0.0, 3.0));
 
     let mut events = Vec::new();
@@ -112,24 +107,22 @@ fn sensor_reports_entering_and_exiting_without_pushing() {
         }
     }
 
-    let pair =
-        SensorPair { sensor, sensor_body: zone, visitor: world.body(ball).unwrap().colliders()[0], visitor_body: ball };
+    let pair = SensorPair { sensor, sensor_body: zone, visitor: world[ball].colliders()[0], visitor_body: ball };
     assert_eq!(events, [SensorEvent::Entered(pair), SensorEvent::Exited(pair)]);
     assert!(inside_steps > 5);
     assert_eq!(world.contacts().count(), 0, "sensors make no contacts");
     // Free fall for one second: v = g t.
-    let speed = world.body(ball).unwrap().linear_velocity().y;
+    let speed = world[ball].linear_velocity().y;
     assert!((speed + 9.81).abs() < 0.01, "the sensor slowed the ball down: {speed}");
 }
 
 #[test]
 fn sensors_have_no_mass() {
     let mut world = World::new();
-    let body = world.add_body(BodyDesc::dynamic());
-    world.add_collider(body, ColliderDesc::circle(0.5));
-    let mass = world.body(body).unwrap().mass();
-    world.add_collider(body, ColliderDesc::offset_rectangle(2.0, 2.0, vec2(3.0, 0.0), 0.0).sensor(true));
-    let body = world.body(body).unwrap();
+    let body = world.add_body(BodyDesc::dynamic().collider(ColliderDesc::circle(0.5)));
+    let mass = world[body].mass();
+    world.add_collider(body, ColliderDesc::square(4.0).offset(vec2(3.0, 0.0)).sensor());
+    let body = &world[body];
     assert!((body.mass() - mass).abs() < f32::EPSILON);
     assert_eq!(body.local_center_of_mass(), Vec2::ZERO);
 }
@@ -138,10 +131,9 @@ fn sensors_have_no_mass() {
 fn sensors_ignore_their_own_body_and_fixed_bodies_when_fixed() {
     let (mut world, _) = world_with_ground();
     let zone = world.add_body(BodyDesc::fixed());
-    let fixed_sensor = world.add_collider(zone, ColliderDesc::rectangle(1.0, 1.0).sensor(true));
-    let player = world.add_body(BodyDesc::dynamic().position(vec2(5.0, 0.5)));
-    world.add_collider(player, ColliderDesc::rectangle(0.5, 0.5));
-    let feet = world.add_collider(player, ColliderDesc::offset_rectangle(0.4, 0.1, vec2(0.0, -0.5), 0.0).sensor(true));
+    let fixed_sensor = world.add_collider(zone, ColliderDesc::square(2.0).sensor());
+    let player = world.add_body(BodyDesc::dynamic().position(vec2(5.0, 0.5)).collider(ColliderDesc::square(1.0)));
+    let feet = world.add_collider(player, ColliderDesc::rectangle(0.8, 0.2).offset(vec2(0.0, -0.5)).sensor());
     run(&mut world, 10);
 
     assert_eq!(world.sensor_overlaps(fixed_sensor).count(), 0, "a fixed sensor ignores the fixed ground");
@@ -153,20 +145,19 @@ fn sensors_ignore_their_own_body_and_fixed_bodies_when_fixed() {
 #[test]
 fn queries_skip_sensors_unless_asked() {
     let mut world = World::new();
-    let zone = world.add_body(BodyDesc::fixed());
-    world.add_collider(zone, ColliderDesc::circle(1.0).sensor(true));
-    assert_eq!(world.colliders_at_point(Vec2::ZERO, &QueryFilter::new()), []);
-    assert_eq!(world.colliders_at_point(Vec2::ZERO, &QueryFilter::new().include_sensors()).len(), 1);
+    world.add_body(BodyDesc::fixed().collider(ColliderDesc::circle(1.0).sensor()));
+    assert_eq!(world.colliders_at_point(Vec2::ZERO, QueryFilter::new()), []);
+    assert_eq!(world.colliders_at_point(Vec2::ZERO, QueryFilter::new().include_sensors()).len(), 1);
 }
 
 #[test]
 fn sleeping_visitor_stays_inside_without_events() {
     let (mut world, _) = world_with_ground();
     let zone = world.add_body(BodyDesc::fixed());
-    let sensor = world.add_collider(zone, ColliderDesc::rectangle(2.0, 2.0).sensor(true));
+    let sensor = world.add_collider(zone, ColliderDesc::square(4.0).sensor());
     let ball = add_ball(&mut world, vec2(0.0, 1.0));
     run(&mut world, 3 * SECOND);
-    assert!(world.body(ball).unwrap().is_sleeping());
+    assert!(world[ball].is_sleeping());
     assert_eq!(world.sensor_overlaps(sensor).count(), 1);
     assert_eq!(world.sensor_events(), []);
 }
@@ -175,14 +166,13 @@ fn sleeping_visitor_stays_inside_without_events() {
 
 /// A thin platform at y = 3 that only blocks from above.
 fn add_platform(world: &mut World) {
-    let platform = world.add_body(BodyDesc::fixed().position(vec2(0.0, 3.0)));
-    world.add_collider(platform, ColliderDesc::rectangle(2.0, 0.1).one_way(Vec2::Y));
+    world.add_body(
+        BodyDesc::fixed().position(vec2(0.0, 3.0)).collider(ColliderDesc::rectangle(4.0, 0.2).one_way(Vec2::Y)),
+    );
 }
 
 fn add_box(world: &mut World, desc: BodyDesc) -> BodyHandle {
-    let block = world.add_body(desc);
-    world.add_collider(block, ColliderDesc::rectangle(0.3, 0.3));
-    block
+    world.add_body(desc.collider(ColliderDesc::square(0.6)))
 }
 
 #[test]

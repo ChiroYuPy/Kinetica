@@ -20,13 +20,12 @@ const DROP_PERIOD: f32 = 2.5;
 const MAX_BALLS: usize = 4;
 
 fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
-    add_ground(world, 20.0);
+    add_ground(world, 40.0);
     let stacks = STACK_XS.map(|x| {
         (0..6)
             .map(|level| {
-                let block = world.add_body(BodyDesc::dynamic().position(vec2(x, 0.4 + 0.8 * level as f32)));
-                world.add_collider(block, ColliderDesc::rectangle(0.6, 0.4));
-                block
+                let position = vec2(x, 0.4 + 0.8 * level as f32);
+                world.add_body(BodyDesc::dynamic().position(position).collider(ColliderDesc::rectangle(1.2, 0.8)))
             })
             .collect()
     });
@@ -51,9 +50,8 @@ impl SceneUpdate for Dropper {
         // Visit the stacks in a scattered order.
         self.next_stack = (self.next_stack + 2) % STACK_XS.len();
 
-        let ball = world.add_body(BodyDesc::dynamic().position(vec2(x, 12.0)));
-        world.add_collider(ball, ColliderDesc::circle(0.35).density(3.0));
-        self.balls.push_back(ball);
+        let ball = BodyDesc::dynamic().position(vec2(x, 12.0)).collider(ColliderDesc::circle(0.35).density(3.0));
+        self.balls.push_back(world.add_body(ball));
         if self.balls.len() > MAX_BALLS
             && let Some(oldest) = self.balls.pop_front()
         {
@@ -63,7 +61,7 @@ impl SceneUpdate for Dropper {
 
     fn labels(&self, world: &World, _frame: &Frame, labels: &mut Labels) {
         for (x, stack) in STACK_XS.into_iter().zip(&self.stacks) {
-            let asleep = stack.iter().filter_map(|&block| world.body(block)).all(kinetica::Body::is_sleeping);
+            let asleep = stack.iter().all(|&block| world[block].is_sleeping());
             labels.at(vec2(x, 5.4), if asleep { "asleep" } else { "awake" });
         }
     }

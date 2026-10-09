@@ -6,11 +6,19 @@ A 2D rigid-body physics engine for games, written in Rust.
 use kinetica::prelude::*;
 
 let mut world = World::new();
-let ball = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 10.0)));
-world.add_collider(ball, ColliderDesc::circle(0.5).restitution(0.5));
+world.add_body(BodyDesc::fixed().collider(ColliderDesc::rectangle(20.0, 1.0)));
+let ball = world.add_body(
+    BodyDesc::dynamic().position(vec2(0.0, 10.0)).collider(ColliderDesc::circle(0.5).restitution(0.5)),
+);
 
-world.step(1.0 / 60.0);
+for _ in 0..60 {
+    world.step(1.0 / 60.0);
+}
+println!("The ball is at {}", world[ball].position());
 ```
+
+Sizes are full sizes (`rectangle(20.0, 1.0)` is 20 m wide), joint anchors are world points, and
+indexing the world with a handle reaches the body, collider or joint.
 
 ## Workspace
 

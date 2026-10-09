@@ -10,8 +10,8 @@ pub enum Material {
 }
 
 impl Material {
-    fn collider(self, half_width: f32, half_height: f32) -> ColliderDesc {
-        let desc = ColliderDesc::rectangle(half_width, half_height);
+    fn collider(self, width: f32, height: f32) -> ColliderDesc {
+        let desc = ColliderDesc::rectangle(width, height);
         match self {
             Self::Wood => desc.density(0.6).friction(0.7),
             Self::Stone => desc.density(2.4).friction(0.8),
@@ -34,6 +34,9 @@ pub const LEVEL_COUNT: usize = 3;
 /// Radius of the targets.
 pub const TARGET_RADIUS: f32 = 0.35;
 
+/// Thickness of posts and beams.
+const THICKNESS: f32 = 0.24;
+
 /// Builds level `index` into an empty world.
 pub fn build(world: &mut World, index: usize) -> Level {
     let mut builder = Builder { world, level: Level::default() };
@@ -53,30 +56,29 @@ struct Builder<'a> {
 
 impl Builder<'_> {
     fn ground(&mut self) {
-        let ground = self.world.add_body(BodyDesc::fixed());
-        self.world.add_collider(ground, ColliderDesc::offset_rectangle(40.0, 1.0, vec2(15.0, -1.0), 0.0).friction(0.9));
-        self.level.ground = Some(ground);
+        let ground =
+            BodyDesc::fixed().position(vec2(15.0, -1.0)).collider(ColliderDesc::rectangle(80.0, 2.0).friction(0.9));
+        self.level.ground = Some(self.world.add_body(ground));
     }
 
-    fn block(&mut self, material: Material, center: Vec2, half_width: f32, half_height: f32) {
-        let body = self.world.add_body(BodyDesc::dynamic().position(center));
-        self.world.add_collider(body, material.collider(half_width, half_height));
+    fn block(&mut self, material: Material, center: Vec2, width: f32, height: f32) {
+        let body = self.world.add_body(BodyDesc::dynamic().position(center).collider(material.collider(width, height)));
         self.level.blocks.push((body, material));
     }
 
     /// A vertical post standing on `floor`.
     fn post(&mut self, material: Material, x: f32, floor: f32, height: f32) {
-        self.block(material, vec2(x, floor + height / 2.0), 0.12, height / 2.0);
+        self.block(material, vec2(x, floor + height / 2.0), THICKNESS, height);
     }
 
     /// A horizontal beam lying on `floor`.
     fn beam(&mut self, material: Material, x: f32, floor: f32, width: f32) {
-        self.block(material, vec2(x, floor + 0.12), width / 2.0, 0.12);
+        self.block(material, vec2(x, floor + THICKNESS / 2.0), width, THICKNESS);
     }
 
     fn target(&mut self, x: f32, floor: f32) {
-        let body = self.world.add_body(BodyDesc::dynamic().position(vec2(x, floor + TARGET_RADIUS)));
-        self.world.add_collider(body, ColliderDesc::circle(TARGET_RADIUS).density(0.8).friction(0.8));
+        let ball = ColliderDesc::circle(TARGET_RADIUS).density(0.8).friction(0.8);
+        let body = self.world.add_body(BodyDesc::dynamic().position(vec2(x, floor + TARGET_RADIUS)).collider(ball));
         self.level.targets.push(body);
     }
 
@@ -86,7 +88,7 @@ impl Builder<'_> {
         self.post(material, x + 0.9, floor, 1.6);
         self.beam(material, x, floor + 1.6, 2.3);
         self.target(x, floor);
-        floor + 1.84
+        floor + 1.6 + THICKNESS
     }
 
     /// One hut with a target on its roof.
@@ -112,7 +114,7 @@ impl Builder<'_> {
         let floor = self.hut(Material::Wood, 15.0, floor);
         self.hut(Material::Wood, 15.0, floor);
         for x in [11.5, 18.5] {
-            self.block(Material::Stone, vec2(x, 0.5), 0.5, 0.5);
+            self.block(Material::Stone, vec2(x, 0.5), 1.0, 1.0);
             self.target(x, 1.0);
         }
         self.level.shots = 5;

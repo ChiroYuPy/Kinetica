@@ -7,8 +7,7 @@ const SECOND: usize = 60;
 
 fn world_with_ground() -> World {
     let mut world = World::new();
-    let ground = world.add_body(BodyDesc::fixed().position(vec2(0.0, -0.5)));
-    world.add_collider(ground, ColliderDesc::rectangle(50.0, 0.5));
+    world.add_body(BodyDesc::fixed().position(vec2(0.0, -0.5)).collider(ColliderDesc::rectangle(100.0, 1.0)));
     world
 }
 
@@ -19,18 +18,35 @@ fn run(world: &mut World, steps: usize) {
 }
 
 fn add_box(world: &mut World, position: Vec2) -> BodyHandle {
-    let block = world.add_body(BodyDesc::dynamic().position(position));
-    world.add_collider(block, ColliderDesc::rectangle(0.5, 0.5));
-    block
+    world.add_body(BodyDesc::dynamic().position(position).collider(ColliderDesc::square(1.0)))
 }
 
 fn is_sleeping(world: &World, body: BodyHandle) -> bool {
-    world.body(body).unwrap().is_sleeping()
+    world[body].is_sleeping()
 }
 
 /// A stack of boxes standing on the ground at `x`, bottom first.
 fn add_stack(world: &mut World, x: f32, height: usize) -> Vec<BodyHandle> {
     (0..height).map(|i| add_box(world, vec2(x, 0.5 + i as f32))).collect()
+}
+
+#[test]
+fn setting_unchanged_values_does_not_wake_a_body() {
+    let mut world = world_with_ground();
+    let block = add_box(&mut world, vec2(0.0, 0.5));
+    run(&mut world, 2 * SECOND);
+    assert!(is_sleeping(&world, block));
+
+    let body = &mut world[block];
+    let (position, velocity) = (body.position(), body.linear_velocity());
+    body.set_position(position);
+    body.set_linear_velocity(velocity);
+    body.set_angular_velocity(body.angular_velocity());
+    body.set_gravity_scale(1.0);
+    assert!(body.is_sleeping(), "unchanged values woke the body");
+
+    body.set_linear_velocity(vec2(1.0, 0.0));
+    assert!(!body.is_sleeping());
 }
 
 #[test]
@@ -41,7 +57,7 @@ fn resting_box_falls_asleep() {
     assert!(!is_sleeping(&world, block), "asleep while still falling");
 
     run(&mut world, 2 * SECOND);
-    let body = world.body(block).unwrap();
+    let body = &world[block];
     assert!(body.is_sleeping());
     assert_eq!(body.linear_velocity(), Vec2::ZERO);
 }
@@ -66,9 +82,9 @@ fn sleeping_bodies_do_not_move() {
     let mut world = world_with_ground();
     let stack = add_stack(&mut world, 0.0, 3);
     run(&mut world, 3 * SECOND);
-    let before: Vec<_> = stack.iter().map(|&block| *world.body(block).unwrap().transform()).collect();
+    let before: Vec<_> = stack.iter().map(|&block| *world[block].transform()).collect();
     run(&mut world, 3 * SECOND);
-    let after: Vec<_> = stack.iter().map(|&block| *world.body(block).unwrap().transform()).collect();
+    let after: Vec<_> = stack.iter().map(|&block| *world[block].transform()).collect();
     assert_eq!(before, after);
 }
 
@@ -100,7 +116,7 @@ fn islands_sleep_and_wake_independently() {
     let right = add_stack(&mut world, 5.0, 2);
     run(&mut world, 3 * SECOND);
 
-    world.body_mut(left[0]).unwrap().apply_linear_impulse(vec2(0.0, 0.01));
+    world[left[0]].apply_linear_impulse(vec2(0.0, 0.01));
     world.step(DT);
     assert!(left.iter().all(|&block| !is_sleeping(&world, block)), "the touched stack wakes up");
     assert!(right.iter().all(|&block| is_sleeping(&world, block)), "the other stack keeps sleeping");
@@ -116,7 +132,7 @@ fn removing_the_support_wakes_what_rested_on_it() {
     world.remove_body(stack[0]);
     assert!(!is_sleeping(&world, stack[1]));
     run(&mut world, 2 * SECOND);
-    let top = world.body(stack[1]).unwrap();
+    let top = &world[stack[1]];
     assert!((top.position().y - 0.5).abs() < 0.02, "the top box should have fallen to the ground: {}", top.position());
 }
 
@@ -125,11 +141,11 @@ fn joints_link_islands() {
     let mut world = world_with_ground();
     let a = add_box(&mut world, vec2(-2.0, 0.5));
     let b = add_box(&mut world, vec2(2.0, 0.5));
-    world.add_joint(DistanceJointDesc::between_world_points(&world, a, b, vec2(-2.0, 0.5), vec2(2.0, 0.5)));
+    world.add_joint(DistanceJointDesc::new(a, b, vec2(-2.0, 0.5), vec2(2.0, 0.5)));
     run(&mut world, 3 * SECOND);
     assert!(is_sleeping(&world, a) && is_sleeping(&world, b));
 
-    world.body_mut(a).unwrap().apply_linear_impulse(vec2(1.0, 0.0));
+    world[a].apply_linear_impulse(vec2(1.0, 0.0));
     world.step(DT);
     assert!(!is_sleeping(&world, b), "a joined body wakes up with its partner");
 }
@@ -137,25 +153,25 @@ fn joints_link_islands() {
 #[test]
 fn moving_kinematic_body_keeps_its_passengers_awake() {
     let mut world = world_with_ground();
-    let platform = world.add_body(BodyDesc::kinematic().position(vec2(0.0, 2.0)));
-    world.add_collider(platform, ColliderDesc::rectangle(3.0, 0.1));
+    let platform =
+        world.add_body(BodyDesc::kinematic().position(vec2(0.0, 2.0)).collider(ColliderDesc::rectangle(6.0, 0.2)));
     let passenger = add_box(&mut world, vec2(0.0, 2.6));
     run(&mut world, 3 * SECOND);
     assert!(is_sleeping(&world, passenger));
 
-    world.body_mut(platform).unwrap().set_linear_velocity(vec2(0.02, 0.0));
+    world[platform].set_linear_velocity(vec2(0.02, 0.0));
     for _ in 0..3 * SECOND {
         world.step(DT);
         assert!(!is_sleeping(&world, passenger), "the passenger fell asleep on a moving platform");
     }
-    assert!(world.body(passenger).unwrap().position().x > 0.04, "the passenger should ride along");
+    assert!(world[passenger].position().x > 0.04, "the passenger should ride along");
 }
 
 #[test]
 fn bodies_that_cannot_sleep_stay_awake() {
     let mut world = world_with_ground();
-    let block = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 0.5)).can_sleep(false));
-    world.add_collider(block, ColliderDesc::rectangle(0.5, 0.5));
+    let block =
+        world.add_body(BodyDesc::dynamic().position(vec2(0.0, 0.5)).keep_awake().collider(ColliderDesc::square(1.0)));
     run(&mut world, 3 * SECOND);
     assert!(!is_sleeping(&world, block));
 }

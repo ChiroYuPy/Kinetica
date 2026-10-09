@@ -4,7 +4,6 @@ mod game;
 mod level;
 mod player;
 
-use kinetica::{Color as PhysicsColor, DebugDraw};
 use kinetica_macroquad::{DebugRenderer, FixedTimestep, WorldCamera};
 use macroquad::prelude::*;
 
@@ -15,10 +14,10 @@ use crate::player::Input;
 const SKY: Color = Color::new(0.12, 0.15, 0.22, 1.0);
 const GROUND: Color = Color::new(0.25, 0.35, 0.25, 1.0);
 const GROUND_EDGE: Color = Color::new(0.45, 0.65, 0.35, 1.0);
-const PLATFORM: PhysicsColor = PhysicsColor::rgb(0.7, 0.55, 0.35);
-const MOVING_PLATFORM: PhysicsColor = PhysicsColor::rgb(0.45, 0.6, 0.95);
-const CRATE: PhysicsColor = PhysicsColor::rgb(0.8, 0.55, 0.3);
-const PLAYER: PhysicsColor = PhysicsColor::rgb(0.95, 0.45, 0.35);
+const PLATFORM: Color = Color::new(0.7, 0.55, 0.35, 1.0);
+const MOVING_PLATFORM: Color = Color::new(0.45, 0.6, 0.95, 1.0);
+const CRATE: Color = Color::new(0.8, 0.55, 0.3, 1.0);
+const PLAYER: Color = Color::new(0.95, 0.45, 0.35, 1.0);
 const COIN: Color = Color::new(1.0, 0.85, 0.25, 1.0);
 const SPIKES: Color = Color::new(0.8, 0.8, 0.85, 1.0);
 const FLAG: Color = Color::new(0.95, 0.3, 0.3, 1.0);
@@ -91,7 +90,7 @@ impl App {
             draw_line(a.x, a.y, b.x, b.y, 0.08, GROUND_EDGE);
         }
         for &spikes in &level.spikes {
-            let Some(aabb) = world.collider(spikes).map(kinetica::Collider::aabb) else { continue };
+            let aabb = world[spikes].aabb();
             let mut x = aabb.min.x;
             while x + 0.4 <= aabb.max.x + 0.01 {
                 draw_triangle(vec2(x, aabb.min.y), vec2(x + 0.4, aabb.min.y), vec2(x + 0.2, aabb.max.y), SPIKES);
@@ -109,24 +108,24 @@ impl App {
         }
         // Coins spin: their width follows a cosine.
         for &coin in &level.coins {
-            let Some(center) = world.body(coin).map(kinetica::Body::position) else { continue };
+            let center = world[coin].position();
             let width = COIN_RADIUS * (3.0 * game.time + center.x).cos().abs().max(0.15);
             draw_ellipse(center.x, center.y, width, COIN_RADIUS, 0.0, COIN);
         }
-        if let Some(goal) = level.goal.and_then(|goal| world.collider(goal)) {
-            let bottom = vec2(goal.aabb().min.x, goal.aabb().min.y);
+        if let Some(goal) = level.goal {
+            let bottom = world[goal].aabb().min;
             draw_line(bottom.x, bottom.y, bottom.x, bottom.y + 3.0, 0.1, WHITE);
             let top = bottom + vec2(0.0, 3.0);
             draw_triangle(top, top - vec2(0.0, 0.8), top + vec2(1.0, -0.4), FLAG);
         }
         // The body only, not the feet sensor.
-        for &collider in world.body(game.player.body).map_or(&[][..], kinetica::Body::colliders) {
-            if world.collider(collider).is_some_and(|collider| !collider.is_sensor()) {
+        for &collider in world[game.player.body].colliders() {
+            if !world[collider].is_sensor() {
                 renderer.draw_collider(world, collider, PLAYER);
             }
         }
         let eye = game.player.position(world) + vec2(0.12, 0.25);
-        renderer.draw_point(eye, PhysicsColor::rgb(1.0, 1.0, 1.0));
+        renderer.draw_point(eye, WHITE);
 
         set_default_camera();
         self.draw_hud();

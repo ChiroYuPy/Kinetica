@@ -33,13 +33,15 @@ impl Capsule {
         Self { start, end, radius }
     }
 
-    /// A vertical capsule centered on the body origin, `2 * (half_length + radius)` tall.
+    /// A vertical capsule centered on the body origin, `height` tall from end to end.
     ///
     /// # Panics
     ///
-    /// See [`Capsule::new`].
+    /// Panics if `height` is not larger than the diameter; see also [`Capsule::new`].
     #[must_use]
-    pub fn vertical(half_length: f32, radius: f32) -> Self {
+    pub fn vertical(height: f32, radius: f32) -> Self {
+        let half_length = 0.5 * height - radius;
+        assert!(half_length > 0.0, "a capsule {height} tall must have a radius below {}", 0.5 * height);
         Self::new(Vec2::new(0.0, -half_length), Vec2::new(0.0, half_length), radius)
     }
 

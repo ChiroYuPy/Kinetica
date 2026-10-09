@@ -1,5 +1,7 @@
 //! The simulation world: owns every body and collider and advances time.
 
+use std::ops::{Index, IndexMut};
+
 use crate::arena::Arena;
 use crate::body::{Body, BodyDesc, BodyHandle, BodyType};
 use crate::collider::{ChainDesc, Collider, ColliderDesc, ColliderHandle};
@@ -8,7 +10,7 @@ use crate::constants::{DEFAULT_SUBSTEP_COUNT, TIME_TO_SLEEP};
 use crate::contact::{CollisionEvent, Contact, ContactSet, SensorEvent, SensorPair};
 use crate::continuous;
 use crate::island::Islands;
-use crate::joint::{Joint, JointDesc, JointHandle};
+use crate::joint::{Joint, JointDesc, JointHandle, JointType};
 use crate::math::{Vec2, vec2};
 use crate::profile::{StepProfile, Timer};
 use crate::shape::{ChainSegment, Segment};
@@ -19,8 +21,10 @@ pub const DEFAULT_GRAVITY: Vec2 = vec2(0.0, -9.81);
 
 /// A physics world.
 ///
-/// Units are meters, kilograms and seconds, and the Y axis points up. Bodies and colliders are
-/// owned by the world and accessed through handles.
+/// Units are meters, kilograms and seconds, and the Y axis points up. Bodies, colliders and
+/// joints are owned by the world. Adding one returns a handle, and indexing the world with the
+/// handle reaches it: `world[ball].position()`, `world[ball].set_linear_velocity(v)`. Indexing
+/// panics if the object was removed; the `get_*` methods return an `Option` instead.
 ///
 /// Cloning a world copies its whole state, which can be used to save and restore it. With the
 /// `serde` feature, a world can also be serialized, for save files or replays: a deserialized
@@ -28,16 +32,15 @@ pub const DEFAULT_GRAVITY: Vec2 = vec2(0.0, -9.81);
 /// Kinetica, since it is trusted to be consistent.
 ///
 /// ```
-/// use kinetica::{BodyDesc, ColliderDesc, World, vec2};
+/// use kinetica::prelude::*;
 ///
 /// let mut world = World::new();
-/// let ball = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 10.0)));
-/// world.add_collider(ball, ColliderDesc::circle(0.5));
+/// let ball = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 10.0)).collider(ColliderDesc::circle(0.5)));
 ///
 /// for _ in 0..60 {
 ///     world.step(1.0 / 60.0);
 /// }
-/// assert!(world.body(ball).unwrap().position().y < 10.0);
+/// assert!(world[ball].position().y < 10.0);
 /// ```
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -139,9 +142,13 @@ impl World {
         self.continuous_enabled = enabled;
     }
 
-    /// Creates a body and returns its handle.
+    /// Creates a body with its colliders and returns its handle.
     pub fn add_body(&mut self, desc: BodyDesc) -> BodyHandle {
-        BodyHandle(self.bodies.insert(Body::new(desc)))
+        let handle = BodyHandle(self.bodies.insert(Body::new(&desc)));
+        for collider in desc.colliders {
+            self.add_collider(handle, collider);
+        }
+        handle
     }
 
     /// Removes a body with all its colliders and joints, returning the body if it existed.
@@ -159,14 +166,15 @@ impl World {
         Some(body)
     }
 
-    /// Returns the body, or `None` if it was removed.
+    /// Returns the body, or `None` if it was removed. `world[handle]` is shorter when the
+    /// body is known to exist.
     #[must_use]
-    pub fn body(&self, handle: BodyHandle) -> Option<&Body> {
+    pub fn get_body(&self, handle: BodyHandle) -> Option<&Body> {
         self.bodies.get(handle.0)
     }
 
     /// Returns the body for modification, or `None` if it was removed.
-    pub fn body_mut(&mut self, handle: BodyHandle) -> Option<&mut Body> {
+    pub fn get_body_mut(&mut self, handle: BodyHandle) -> Option<&mut Body> {
         self.bodies.get_mut(handle.0)
     }
 
@@ -188,6 +196,7 @@ impl World {
     /// Panics if the body was removed.
     pub fn add_collider(&mut self, body: BodyHandle, desc: ColliderDesc) -> ColliderHandle {
         let owner = self.bodies.get_mut(body.0).expect("cannot add a collider to a removed body");
+        let desc = desc.into_placed();
         let aabb = desc.shape.compute_aabb(owner.transform());
         let broad_phase = &mut self.broad_phase;
         let handle = ColliderHandle(self.colliders.insert_with(|index| {
@@ -210,21 +219,18 @@ impl World {
     ///
     /// Panics if the body was removed, if the chain has fewer than two points (three when
     /// closed), or if two consecutive points are equal.
-    pub fn add_chain(&mut self, body: BodyHandle, desc: &ChainDesc) -> Vec<ColliderHandle> {
-        let points = &desc.points;
+    pub fn add_chain(&mut self, body: BodyHandle, desc: ChainDesc) -> Vec<ColliderHandle> {
+        let ChainDesc { points, closed, friction, restitution, layers } = desc;
         let count = points.len();
-        assert!(count >= if desc.closed { 3 } else { 2 }, "a chain needs more points");
-        let segment_count = if desc.closed { count } else { count - 1 };
+        assert!(count >= if closed { 3 } else { 2 }, "a chain needs more points");
+        let segment_count = if closed { count } else { count - 1 };
         let point = |index: usize| points[index % count];
         (0..segment_count)
             .map(|i| {
-                let previous = (i > 0 || desc.closed).then(|| point(i + count - 1));
-                let next = (i + 2 < count || desc.closed).then(|| point(i + 2));
+                let previous = (i > 0 || closed).then(|| point(i + count - 1));
+                let next = (i + 2 < count || closed).then(|| point(i + 2));
                 let segment = ChainSegment::new(Segment::new(point(i), point(i + 1)), previous, next);
-                let collider = ColliderDesc::new(segment)
-                    .friction(desc.friction)
-                    .restitution(desc.restitution)
-                    .layers(desc.layers);
+                let collider = ColliderDesc::new(segment).friction(friction).restitution(restitution).layers(layers);
                 self.add_collider(body, collider)
             })
             .collect()
@@ -252,14 +258,15 @@ impl World {
         Some(collider)
     }
 
-    /// Returns the collider, or `None` if it was removed.
+    /// Returns the collider, or `None` if it was removed. `world[handle]` is shorter when the
+    /// collider is known to exist.
     #[must_use]
-    pub fn collider(&self, handle: ColliderHandle) -> Option<&Collider> {
+    pub fn get_collider(&self, handle: ColliderHandle) -> Option<&Collider> {
         self.colliders.get(handle.0)
     }
 
     /// Returns the collider for modification, or `None` if it was removed.
-    pub fn collider_mut(&mut self, handle: ColliderHandle) -> Option<&mut Collider> {
+    pub fn get_collider_mut(&mut self, handle: ColliderHandle) -> Option<&mut Collider> {
         self.colliders.get_mut(handle.0)
     }
 
@@ -274,23 +281,26 @@ impl World {
         self.colliders.len()
     }
 
-    /// Connects two bodies with a joint, and wakes them up.
+    /// Connects two bodies with a joint, and wakes them up. The anchors of the description,
+    /// given in world space, are attached to the bodies where they are now.
     ///
-    /// Unless the joint allows it, the two bodies stop colliding with each other.
+    /// Unless the joint allows it, the two bodies stop colliding with each other. The handle
+    /// knows the type of the joint: `world[handle]` is, say, a
+    /// [`RevoluteJoint`](crate::joint::RevoluteJoint).
     ///
     /// # Panics
     ///
-    /// Panics if a body was removed, or if both bodies are the same.
-    pub fn add_joint(&mut self, desc: impl Into<JointDesc>) -> JointHandle {
-        let desc = desc.into();
+    /// Panics if a body was removed, if both bodies are the same, or if the limits of the
+    /// description are an empty range.
+    pub fn add_joint<D: JointDesc>(&mut self, desc: D) -> JointHandle<D::Joint> {
         let (body_a, body_b) = desc.bodies();
         assert_ne!(body_a, body_b, "a joint needs two different bodies");
         let (a, b) = self.bodies.get2_mut(body_a.0, body_b.0).expect("cannot add a joint to a removed body");
-        let joint = Joint::new(&desc, a, b);
+        let joint = desc.create(a, b);
         let collide_connected = joint.collide_connected();
-        let handle = JointHandle(self.joints.insert(joint));
-        a.attach_joint(handle);
-        b.attach_joint(handle);
+        let handle = JointHandle::new(self.joints.insert(joint));
+        a.attach_joint(handle.untyped());
+        b.attach_joint(handle.untyped());
         a.wake_up();
         b.wake_up();
         if !collide_connected {
@@ -302,11 +312,11 @@ impl World {
     /// Removes a joint, returning it if it existed.
     ///
     /// The bodies it connected wake up, and may collide again from the next step.
-    pub fn remove_joint(&mut self, handle: JointHandle) -> Option<Joint> {
+    pub fn remove_joint<J: JointType>(&mut self, handle: JointHandle<J>) -> Option<Joint> {
         let joint = self.joints.remove(handle.0)?;
         for body in [joint.body_a(), joint.body_b()] {
             if let Some(body) = self.bodies.get_mut(body.0) {
-                body.detach_joint(handle);
+                body.detach_joint(handle.untyped());
                 body.wake_up();
             }
         }
@@ -321,27 +331,28 @@ impl World {
         Some(joint)
     }
 
-    /// Returns the joint, or `None` if it was removed.
+    /// Returns the joint, or `None` if it was removed. `world[handle]` is shorter when the
+    /// joint is known to exist.
     #[must_use]
-    pub fn joint(&self, handle: JointHandle) -> Option<&Joint> {
-        self.joints.get(handle.0)
+    pub fn get_joint<J: JointType>(&self, handle: JointHandle<J>) -> Option<&J> {
+        J::from_joint(self.joints.get(handle.0)?)
     }
 
     /// Returns the joint for modification, or `None` if it was removed. Wakes up the bodies
     /// it connects, so they react to the change.
-    pub fn joint_mut(&mut self, handle: JointHandle) -> Option<&mut Joint> {
+    pub fn get_joint_mut<J: JointType>(&mut self, handle: JointHandle<J>) -> Option<&mut J> {
         let joint = self.joints.get_mut(handle.0)?;
         for body in [joint.body_a(), joint.body_b()] {
             if let Some(body) = self.bodies.get_mut(body.0) {
                 body.wake_up();
             }
         }
-        Some(joint)
+        J::from_joint_mut(joint)
     }
 
     /// Iterates over all joints, in a deterministic order.
     pub fn joints(&self) -> impl Iterator<Item = (JointHandle, &Joint)> {
-        self.joints.iter().map(|(index, joint)| (JointHandle(index), joint))
+        self.joints.iter().map(|(index, joint)| (JointHandle::new(index), joint))
     }
 
     /// Number of joints.
@@ -511,5 +522,57 @@ impl World {
 impl Default for World {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Index<BodyHandle> for World {
+    type Output = Body;
+
+    /// # Panics
+    ///
+    /// Panics if the body was removed.
+    fn index(&self, handle: BodyHandle) -> &Body {
+        self.get_body(handle).unwrap_or_else(|| panic!("{handle:?} was removed from the world"))
+    }
+}
+
+impl IndexMut<BodyHandle> for World {
+    fn index_mut(&mut self, handle: BodyHandle) -> &mut Body {
+        self.get_body_mut(handle).unwrap_or_else(|| panic!("{handle:?} was removed from the world"))
+    }
+}
+
+impl Index<ColliderHandle> for World {
+    type Output = Collider;
+
+    /// # Panics
+    ///
+    /// Panics if the collider was removed.
+    fn index(&self, handle: ColliderHandle) -> &Collider {
+        self.get_collider(handle).unwrap_or_else(|| panic!("{handle:?} was removed from the world"))
+    }
+}
+
+impl IndexMut<ColliderHandle> for World {
+    fn index_mut(&mut self, handle: ColliderHandle) -> &mut Collider {
+        self.get_collider_mut(handle).unwrap_or_else(|| panic!("{handle:?} was removed from the world"))
+    }
+}
+
+impl<J: JointType> Index<JointHandle<J>> for World {
+    type Output = J;
+
+    /// # Panics
+    ///
+    /// Panics if the joint was removed.
+    fn index(&self, handle: JointHandle<J>) -> &J {
+        self.get_joint(handle).unwrap_or_else(|| panic!("{handle:?} was removed from the world"))
+    }
+}
+
+impl<J: JointType> IndexMut<JointHandle<J>> for World {
+    /// Wakes up the bodies the joint connects, so they react to the change.
+    fn index_mut(&mut self, handle: JointHandle<J>) -> &mut J {
+        self.get_joint_mut(handle).unwrap_or_else(|| panic!("{handle:?} was removed from the world"))
     }
 }

@@ -1,14 +1,16 @@
 //! Rigid bodies: the moving (or not) things of the simulation.
 
 use crate::arena::{Arena, Index};
-use crate::collider::{Collider, ColliderHandle};
+use crate::collider::{Collider, ColliderDesc, ColliderHandle};
 use crate::constants::{SLEEP_ANGULAR_SPEED, SLEEP_LINEAR_SPEED};
 use crate::joint::JointHandle;
 use crate::math::{Rot, Transform, Vec2};
 
 /// Handle to a [`Body`] stored in a [`World`](crate::World).
 ///
-/// A handle stays valid until its body is removed; afterwards, lookups with it return `None`.
+/// Index the world with it to reach the body: `world[handle]`. A handle stays valid until its
+/// body is removed; afterwards, indexing panics and [`World::get_body`](crate::World::get_body)
+/// returns `None`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BodyHandle(pub(crate) Index);
@@ -27,14 +29,14 @@ pub enum BodyType {
     Dynamic,
 }
 
-/// Description of a body to create, built with chained setters.
+/// Description of a body to create, with its colliders, built with chained setters.
 ///
 /// ```
-/// use kinetica::{BodyDesc, vec2};
+/// use kinetica::prelude::*;
 ///
-/// let desc = BodyDesc::dynamic().position(vec2(0.0, 4.0)).angle(0.3);
+/// let crate_box = BodyDesc::dynamic().position(vec2(0.0, 4.0)).angle(0.3).collider(ColliderDesc::square(1.0));
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BodyDesc {
     /// How the body reacts to forces and contacts.
@@ -54,11 +56,13 @@ pub struct BodyDesc {
     /// Multiplier applied to the world gravity for this body.
     pub gravity_scale: f32,
     /// Prevents the body from rotating, for example for a character.
-    pub fixed_rotation: bool,
+    pub lock_rotation: bool,
     /// Lets the body fall asleep after resting for a while, see [`Body::is_sleeping`].
     pub can_sleep: bool,
     /// Continuous collision against other dynamic bodies too, see [`BodyDesc::bullet`].
     pub bullet: bool,
+    /// Colliders created with the body.
+    pub colliders: Vec<ColliderDesc>,
 }
 
 impl BodyDesc {
@@ -74,9 +78,10 @@ impl BodyDesc {
             linear_damping: 0.0,
             angular_damping: 0.0,
             gravity_scale: 1.0,
-            fixed_rotation: false,
+            lock_rotation: false,
             can_sleep: true,
             bullet: false,
+            colliders: Vec::new(),
         }
     }
 
@@ -147,28 +152,36 @@ impl BodyDesc {
         self
     }
 
-    /// Prevents or allows rotation.
+    /// Prevents the body from rotating, for example for a character.
     #[must_use]
-    pub fn fixed_rotation(mut self, fixed: bool) -> Self {
-        self.fixed_rotation = fixed;
+    pub fn lock_rotation(mut self) -> Self {
+        self.lock_rotation = true;
         self
     }
 
-    /// Allows or prevents falling asleep.
+    /// Prevents the body from falling asleep, see [`Body::is_sleeping`].
     #[must_use]
-    pub fn can_sleep(mut self, can_sleep: bool) -> Self {
-        self.can_sleep = can_sleep;
+    pub fn keep_awake(mut self) -> Self {
+        self.can_sleep = false;
         self
     }
 
-    /// Makes the body a bullet, or a regular body again.
+    /// Makes the body a bullet.
     ///
     /// Fast dynamic bodies never tunnel through fixed and kinematic bodies. Bullets do not
     /// tunnel through other dynamic bodies either, at a higher cost: use it for small fast
     /// projectiles.
     #[must_use]
-    pub fn bullet(mut self, bullet: bool) -> Self {
-        self.bullet = bullet;
+    pub fn bullet(mut self) -> Self {
+        self.bullet = true;
+        self
+    }
+
+    /// Adds a collider, created with the body. Call it several times for a body made of
+    /// several shapes, placed with [`ColliderDesc::offset`].
+    #[must_use]
+    pub fn collider(mut self, collider: ColliderDesc) -> Self {
+        self.colliders.push(collider);
         self
     }
 }
@@ -209,7 +222,7 @@ pub struct Body {
     linear_damping: f32,
     angular_damping: f32,
     gravity_scale: f32,
-    fixed_rotation: bool,
+    lock_rotation: bool,
     can_sleep: bool,
     sleeping: bool,
     /// How long the body has been nearly still, in seconds.
@@ -223,7 +236,8 @@ pub struct Body {
 }
 
 impl Body {
-    pub(crate) fn new(desc: BodyDesc) -> Self {
+    /// Builds the body, without the colliders of `desc`.
+    pub(crate) fn new(desc: &BodyDesc) -> Self {
         let transform = Transform::new(desc.position, desc.rotation);
         let is_fixed = desc.body_type == BodyType::Fixed;
         let mut body = Self {
@@ -244,7 +258,7 @@ impl Body {
             linear_damping: desc.linear_damping,
             angular_damping: desc.angular_damping,
             gravity_scale: desc.gravity_scale,
-            fixed_rotation: desc.fixed_rotation,
+            lock_rotation: desc.lock_rotation,
             can_sleep: desc.can_sleep,
             sleeping: false,
             sleep_time: 0.0,
@@ -343,8 +357,9 @@ impl Body {
     ///
     /// Bodies resting for a while fall asleep, together with everything they touch or are
     /// joined to, and are skipped by the simulation until something wakes them: a contact with
-    /// an awake body, a change made through one of the setters below, or the removal of
-    /// something they touch. Fixed bodies never sleep.
+    /// an awake body, a change made through one of the setters below (setting the current
+    /// value is not a change), or the removal of something they touch. Fixed bodies never
+    /// sleep.
     #[must_use]
     pub fn is_sleeping(&self) -> bool {
         self.sleeping
@@ -410,6 +425,9 @@ impl Body {
 
     /// Teleports the body to a new placement, and wakes it up.
     pub fn set_transform(&mut self, transform: Transform) {
+        if transform == self.transform {
+            return;
+        }
         self.transform = transform;
         self.center = transform.transform_point(self.local_center);
         self.wake_up();
@@ -417,25 +435,29 @@ impl Body {
 
     /// Sets the linear velocity, and wakes the body up. Ignored for fixed bodies.
     pub fn set_linear_velocity(&mut self, velocity: Vec2) {
-        if self.body_type != BodyType::Fixed {
+        if self.body_type != BodyType::Fixed && velocity != self.linear_velocity {
             self.linear_velocity = velocity;
             self.wake_up();
         }
     }
 
     /// Sets the angular velocity, and wakes the body up. Ignored for fixed bodies and bodies
-    /// with fixed rotation.
+    /// with a locked rotation.
+    #[allow(clippy::float_cmp, reason = "only an exactly unchanged value leaves the body asleep")]
     pub fn set_angular_velocity(&mut self, velocity: f32) {
-        if self.body_type != BodyType::Fixed && !self.fixed_rotation {
+        if self.body_type != BodyType::Fixed && !self.lock_rotation && velocity != self.angular_velocity {
             self.angular_velocity = velocity;
             self.wake_up();
         }
     }
 
     /// Sets the gravity multiplier, and wakes the body up.
+    #[allow(clippy::float_cmp, reason = "only an exactly unchanged value leaves the body asleep")]
     pub fn set_gravity_scale(&mut self, scale: f32) {
-        self.gravity_scale = scale;
-        self.wake_up();
+        if scale != self.gravity_scale {
+            self.gravity_scale = scale;
+            self.wake_up();
+        }
     }
 
     /// Allows or prevents falling asleep. Preventing it wakes the body up.
@@ -563,7 +585,7 @@ impl Body {
             }
             self.inverse_mass = 1.0 / self.mass;
 
-            if self.fixed_rotation {
+            if self.lock_rotation {
                 self.inertia = 0.0;
                 self.angular_velocity = 0.0;
             } else if self.inertia > 0.0 {

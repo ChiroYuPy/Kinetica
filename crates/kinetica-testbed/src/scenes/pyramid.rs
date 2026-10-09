@@ -12,18 +12,17 @@ pub const SCENE: Scene = Scene {
 };
 
 const BASE: usize = 20;
-const HALF_SIZE: f32 = 0.5;
+const SIZE: f32 = 1.0;
 
 fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
-    add_ground(world, 40.0);
+    add_ground(world, 80.0);
     let mut top = None;
     for row in 0..BASE {
         let count = BASE - row;
         for column in 0..count {
-            let x = (column as f32 - (count - 1) as f32 / 2.0) * 2.0 * HALF_SIZE * 1.05;
-            let y = HALF_SIZE + row as f32 * 2.0 * HALF_SIZE;
-            let block = world.add_body(BodyDesc::dynamic().position(vec2(x, y)));
-            world.add_collider(block, ColliderDesc::rectangle(HALF_SIZE, HALF_SIZE));
+            let x = (column as f32 - (count - 1) as f32 / 2.0) * SIZE * 1.05;
+            let y = SIZE / 2.0 + row as f32 * SIZE;
+            let block = world.add_body(BodyDesc::dynamic().position(vec2(x, y)).collider(ColliderDesc::square(SIZE)));
             top = Some((block, vec2(x, y)));
         }
     }
@@ -42,9 +41,7 @@ impl SceneUpdate for TopWatch {
     fn update(&mut self, _world: &mut World, _frame: &Frame) {}
 
     fn labels(&self, world: &World, _frame: &Frame, labels: &mut Labels) {
-        if let Some(body) = world.body(self.top) {
-            let drift = 100.0 * body.position().distance(self.start);
-            labels.above(self.top, format!("Top box moved {drift:.1} cm"));
-        }
+        let drift = 100.0 * world[self.top].position().distance(self.start);
+        labels.above(self.top, format!("Top box moved {drift:.1} cm"));
     }
 }

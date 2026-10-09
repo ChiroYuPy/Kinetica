@@ -2,8 +2,12 @@
 //!
 //! A 2D rigid-body physics engine for games.
 //!
-//! Everything lives in a [`World`]: create bodies with a [`BodyDesc`], give them shapes with a
-//! [`ColliderDesc`], then call [`World::step`] at a fixed rate.
+//! Everything lives in a [`World`]: describe bodies with a [`BodyDesc`] and their shapes with a
+//! [`ColliderDesc`], add them, then call [`World::step`] at a fixed rate. Adding a body returns
+//! a handle; index the world with it to read or change the body.
+//!
+//! Sizes are full sizes (a `rectangle(2.0, 1.0)` is 2 m wide), and joint anchors are given in
+//! world space.
 //!
 //! Units are meters, kilograms and seconds; the Y axis points up. Pick sizes close to real
 //! objects (a crate is about 1 m wide) and convert to pixels only when rendering.
@@ -13,13 +17,15 @@
 //!
 //! let mut world = World::new();
 //!
-//! let ground = world.add_body(BodyDesc::fixed());
-//! world.add_collider(ground, ColliderDesc::rectangle(20.0, 0.5));
+//! world.add_body(BodyDesc::fixed().collider(ColliderDesc::rectangle(40.0, 1.0)));
+//! let crate_box = world.add_body(
+//!     BodyDesc::dynamic().position(vec2(0.0, 5.0)).collider(ColliderDesc::square(1.0).density(2.0)),
+//! );
 //!
-//! let crate_body = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 5.0)));
-//! world.add_collider(crate_body, ColliderDesc::rectangle(0.5, 0.5).density(2.0));
-//!
-//! world.step(1.0 / 60.0);
+//! for _ in 0..60 {
+//!     world.step(1.0 / 60.0);
+//! }
+//! println!("The crate fell to {}", world[crate_box].position());
 //! ```
 
 #![warn(missing_docs)]
@@ -46,8 +52,8 @@ pub use collider::{ChainDesc, Collider, ColliderDesc, ColliderHandle, CollisionL
 pub use contact::{CollisionEvent, Contact, ContactPair, SensorEvent, SensorPair};
 pub use debug_draw::{Color, DebugDraw, DebugDrawOptions};
 pub use joint::{
-    DistanceJointDesc, Joint, JointDesc, JointHandle, JointKind, MouseJointDesc, PrismaticJointDesc, RevoluteJointDesc,
-    WeldJointDesc,
+    DistanceJoint, DistanceJointDesc, Joint, JointDesc, JointHandle, JointType, Motor, MouseJoint, MouseJointDesc,
+    PrismaticJoint, PrismaticJointDesc, RevoluteJoint, RevoluteJointDesc, Spring, WeldJoint, WeldJointDesc,
 };
 pub use math::{Vec2, vec2};
 pub use profile::StepProfile;
@@ -59,7 +65,8 @@ pub mod prelude {
     pub use crate::math::{Rot, Transform, Vec2, vec2};
     pub use crate::{
         BodyDesc, BodyHandle, BodyType, ChainDesc, ColliderDesc, ColliderHandle, CollisionEvent, CollisionLayers,
-        DistanceJointDesc, JointHandle, JointKind, MouseJointDesc, PrismaticJointDesc, QueryFilter, RevoluteJointDesc,
-        SensorEvent, WeldJointDesc, World,
+        ContactPair, DistanceJoint, DistanceJointDesc, Joint, JointHandle, Motor, MouseJoint, MouseJointDesc,
+        PrismaticJoint, PrismaticJointDesc, QueryFilter, RevoluteJoint, RevoluteJointDesc, SensorEvent, SensorPair,
+        WeldJoint, WeldJointDesc, World,
     };
 }

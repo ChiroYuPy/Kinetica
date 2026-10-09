@@ -6,8 +6,7 @@ const DT: f32 = 1.0 / 60.0;
 
 fn single_body(desc: BodyDesc) -> (World, BodyHandle) {
     let mut world = World::new();
-    let body = world.add_body(desc);
-    world.add_collider(body, ColliderDesc::rectangle(0.5, 0.5));
+    let body = world.add_body(desc.collider(ColliderDesc::square(1.0)));
     (world, body)
 }
 
@@ -26,7 +25,7 @@ fn free_fall_matches_semi_implicit_euler() {
     let substeps = world.substep_count() as f32;
     let h = DT / substeps;
     let n = steps as f32 * substeps;
-    let body = world.body(body).unwrap();
+    let body = &world[body];
     assert!((body.linear_velocity().y - n * gravity * h).abs() < 1e-3);
     let expected_height = start_height + gravity * h * h * n * (n + 1.0) / 2.0;
     assert!((body.position().y - expected_height).abs() < 1e-3);
@@ -35,14 +34,14 @@ fn free_fall_matches_semi_implicit_euler() {
 #[test]
 fn fixed_body_ignores_everything() {
     let (mut world, body) = single_body(BodyDesc::fixed().linear_velocity(vec2(5.0, 0.0)));
-    let fixed = world.body_mut(body).unwrap();
+    let fixed = &mut world[body];
     fixed.apply_force(vec2(100.0, 100.0));
     fixed.apply_linear_impulse(vec2(100.0, 100.0));
     fixed.set_angular_velocity(3.0);
 
     world.step(DT);
 
-    let fixed = world.body(body).unwrap();
+    let fixed = &world[body];
     assert_eq!(fixed.position(), Vec2::ZERO);
     assert_eq!(fixed.angle(), 0.0);
     assert_eq!(fixed.mass(), 0.0);
@@ -57,7 +56,7 @@ fn kinematic_body_moves_at_constant_velocity() {
         world.step(DT);
     }
 
-    let kinematic = world.body(body).unwrap();
+    let kinematic = &world[body];
     assert_eq!(kinematic.linear_velocity(), velocity, "gravity must not affect kinematic bodies");
     assert!(kinematic.position().abs_diff_eq(velocity, 1e-4));
 }
@@ -66,7 +65,7 @@ fn kinematic_body_moves_at_constant_velocity() {
 fn gravity_scale_zero_floats() {
     let (mut world, body) = single_body(BodyDesc::dynamic().gravity_scale(0.0));
     world.step(DT);
-    assert_eq!(world.body(body).unwrap().linear_velocity(), Vec2::ZERO);
+    assert_eq!(world[body].linear_velocity(), Vec2::ZERO);
 }
 
 #[test]
@@ -74,25 +73,24 @@ fn force_is_cleared_after_step() {
     let mut world = World::new();
     world.set_gravity(Vec2::ZERO);
     let body = world.add_body(BodyDesc::dynamic());
-    world.add_collider(body, ColliderDesc::rectangle(0.5, 0.5)); // 1 kg
+    world.add_collider(body, ColliderDesc::square(1.0)); // 1 kg
 
-    world.body_mut(body).unwrap().apply_force(vec2(60.0, 0.0));
+    world[body].apply_force(vec2(60.0, 0.0));
     world.step(DT);
     world.step(DT);
 
-    assert!((world.body(body).unwrap().linear_velocity().x - 1.0).abs() < 1e-5);
+    assert!((world[body].linear_velocity().x - 1.0).abs() < 1e-5);
 }
 
 #[test]
 fn off_center_impulse_makes_body_spin() {
     let (mut world, body) = single_body(BodyDesc::dynamic());
-    let hit = world.body_mut(body).unwrap();
+    let hit = &mut world[body];
     hit.apply_linear_impulse_at_point(vec2(0.0, 1.0), vec2(0.5, 0.0));
     assert!(hit.angular_velocity() > 0.0, "pushing up on the right side spins counter-clockwise");
 
-    let fixed_rotation = world.add_body(BodyDesc::dynamic().fixed_rotation(true));
-    world.add_collider(fixed_rotation, ColliderDesc::rectangle(0.5, 0.5));
-    let hit = world.body_mut(fixed_rotation).unwrap();
+    let fixed_rotation = world.add_body(BodyDesc::dynamic().lock_rotation().collider(ColliderDesc::square(1.0)));
+    let hit = &mut world[fixed_rotation];
     hit.apply_linear_impulse_at_point(vec2(0.0, 1.0), vec2(0.5, 0.0));
     assert_eq!(hit.angular_velocity(), 0.0);
 }
@@ -109,7 +107,7 @@ fn spinning_body_rotates_around_its_center_of_mass() {
         world.step(DT);
     }
 
-    let body = world.body(body).unwrap();
+    let body = &world[body];
     assert!(body.center_of_mass().abs_diff_eq(vec2(2.0, 0.0), 1e-4));
     assert!((body.position().distance(vec2(2.0, 0.0)) - 2.0).abs() < 1e-4, "the origin orbits the center of mass");
     assert!(body.angle() > 1.0, "the body should have turned");
@@ -122,7 +120,7 @@ fn damping_slows_bodies_down() {
     for _ in 0..60 {
         world.step(DT);
     }
-    let speed = world.body(body).unwrap().linear_velocity().x;
+    let speed = world[body].linear_velocity().x;
     assert!(speed > 0.0 && speed < 4.0, "speed after 1 s with damping 1: {speed}");
 }
 
@@ -132,5 +130,5 @@ fn invalid_time_steps_are_ignored() {
     for dt in [0.0, -1.0, f32::NAN, f32::INFINITY] {
         world.step(dt);
     }
-    assert_eq!(world.body(body).unwrap().linear_velocity(), Vec2::ZERO);
+    assert_eq!(world[body].linear_velocity(), Vec2::ZERO);
 }

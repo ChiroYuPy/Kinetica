@@ -91,32 +91,32 @@ fn awake_world() -> World {
 fn mixed_shape(i: usize, size: f32) -> ColliderDesc {
     match i % 4 {
         0 => ColliderDesc::circle(size),
-        1 => ColliderDesc::rectangle(size, 0.8 * size),
+        1 => ColliderDesc::rectangle(2.0 * size, 1.6 * size),
         2 => ColliderDesc::regular_polygon(3 + i / 4 % 4, 1.1 * size),
         _ => ColliderDesc::capsule(vec2(-0.6 * size, 0.0), vec2(0.6 * size, 0.0), 0.6 * size),
     }
 }
 
-/// A fixed box open at the top, `half_width` wide inside, with its floor at `y = 0`.
-fn add_pit(world: &mut World, half_width: f32, height: f32) {
-    let pit = world.add_body(BodyDesc::fixed());
-    world.add_collider(pit, ColliderDesc::offset_rectangle(half_width + 1.0, 0.5, vec2(0.0, -0.5), 0.0));
-    for side in [-1.0, 1.0] {
-        let center = vec2(side * (half_width + 0.5), height / 2.0);
-        world.add_collider(pit, ColliderDesc::offset_rectangle(0.5, height / 2.0, center, 0.0));
-    }
+/// A fixed box open at the top, `width` wide inside, with its floor at `y = 0`.
+fn add_pit(world: &mut World, width: f32, height: f32) {
+    let wall = |side: f32| ColliderDesc::rectangle(1.0, height).offset(vec2(side * (width + 1.0) / 2.0, height / 2.0));
+    world.add_body(
+        BodyDesc::fixed()
+            .collider(ColliderDesc::rectangle(width + 2.0, 1.0).offset(vec2(0.0, -0.5)))
+            .collider(wall(-1.0))
+            .collider(wall(1.0)),
+    );
 }
 
 fn pyramid() -> World {
     const BASE: usize = 40;
     let mut world = awake_world();
-    add_pit(&mut world, 30.0, 1.0);
+    add_pit(&mut world, 60.0, 1.0);
     for row in 0..BASE {
         let count = BASE - row;
         for column in 0..count {
             let x = (column as f32 - (count - 1) as f32 / 2.0) * 1.05;
-            let body = world.add_body(BodyDesc::dynamic().position(vec2(x, 0.5 + row as f32)));
-            world.add_collider(body, ColliderDesc::rectangle(0.5, 0.5));
+            world.add_body(BodyDesc::dynamic().position(vec2(x, 0.5 + row as f32)).collider(ColliderDesc::square(1.0)));
         }
     }
     world
@@ -124,34 +124,35 @@ fn pyramid() -> World {
 
 fn rain() -> World {
     let mut world = awake_world();
-    add_pit(&mut world, 20.0, 40.0);
+    add_pit(&mut world, 40.0, 40.0);
     let mut random = Random(7);
     for i in 0..2000 {
         let (column, row) = (i % 50, i / 50);
         let position = vec2(-19.6 + 0.8 * column as f32 + random.range(-0.1, 0.1), 2.0 + 0.8 * row as f32);
-        let body = world.add_body(BodyDesc::dynamic().position(position).angle(random.range(0.0, TAU)));
-        world.add_collider(body, mixed_shape(i, 0.25));
+        world.add_body(
+            BodyDesc::dynamic().position(position).angle(random.range(0.0, TAU)).collider(mixed_shape(i, 0.25)),
+        );
     }
     world
 }
 
 fn tumbler() -> World {
-    const HALF_SIZE: f32 = 12.0;
+    const SIZE: f32 = 24.0;
+    const HALF_SIZE: f32 = SIZE / 2.0;
     let mut world = awake_world();
     let drum = world.add_body(BodyDesc::kinematic().angular_velocity(0.25));
-    for (center, half_width, half_height) in [
-        (vec2(0.0, -HALF_SIZE), HALF_SIZE, 0.3),
-        (vec2(0.0, HALF_SIZE), HALF_SIZE, 0.3),
-        (vec2(-HALF_SIZE, 0.0), 0.3, HALF_SIZE),
-        (vec2(HALF_SIZE, 0.0), 0.3, HALF_SIZE),
+    for (center, width, height) in [
+        (vec2(0.0, -HALF_SIZE), SIZE, 0.6),
+        (vec2(0.0, HALF_SIZE), SIZE, 0.6),
+        (vec2(-HALF_SIZE, 0.0), 0.6, SIZE),
+        (vec2(HALF_SIZE, 0.0), 0.6, SIZE),
     ] {
-        world.add_collider(drum, ColliderDesc::offset_rectangle(half_width, half_height, center, 0.0));
+        world.add_collider(drum, ColliderDesc::rectangle(width, height).offset(center));
     }
     for i in 0..1500 {
         let (column, row) = (i % 40, i / 40);
         let position = vec2(-11.0 + 0.55 * column as f32, -11.0 + 0.55 * row as f32);
-        let body = world.add_body(BodyDesc::dynamic().position(position));
-        world.add_collider(body, mixed_shape(i, 0.2));
+        world.add_body(BodyDesc::dynamic().position(position).collider(mixed_shape(i, 0.2)));
     }
     world
 }
@@ -160,9 +161,8 @@ fn cloth() -> World {
     const SIZE: usize = 50;
     const SPACING: f32 = 0.3;
     let mut world = awake_world();
-    add_pit(&mut world, 20.0, 1.0);
-    let ball = world.add_body(BodyDesc::fixed().position(vec2(0.0, 5.0)));
-    world.add_collider(ball, ColliderDesc::circle(3.0));
+    add_pit(&mut world, 40.0, 1.0);
+    world.add_body(BodyDesc::fixed().position(vec2(0.0, 5.0)).collider(ColliderDesc::circle(3.0)));
 
     let top_left = vec2(-SPACING * (SIZE - 1) as f32 / 2.0, 12.0);
     let mut particles = Vec::with_capacity(SIZE * SIZE);
@@ -172,15 +172,12 @@ fn cloth() -> World {
             let position = top_left + SPACING * vec2(column as f32, -0.02 * row as f32);
             let pinned = row == 0 && (column == 0 || column == SIZE - 1);
             let desc = if pinned { BodyDesc::fixed() } else { BodyDesc::dynamic() };
-            let particle = world.add_body(desc.position(position));
-            world.add_collider(particle, ColliderDesc::circle(0.08).density(20.0));
+            let particle = world.add_body(desc.position(position).collider(ColliderDesc::circle(0.08).density(20.0)));
             particles.push((particle, position));
         }
     }
     let mut link = |a: (BodyHandle, Vec2), b: (BodyHandle, Vec2)| {
-        let rope =
-            DistanceJointDesc::between_world_points(&world, a.0, b.0, a.1, b.1).spring(0.0, 0.0).limits(0.0..=SPACING);
-        world.add_joint(rope);
+        world.add_joint(DistanceJointDesc::new(a.0, b.0, a.1, b.1).rope(SPACING));
     };
     for row in 0..SIZE {
         for column in 0..SIZE {
@@ -198,7 +195,7 @@ fn cloth() -> World {
 
 fn ragdolls() -> World {
     let mut world = awake_world();
-    add_pit(&mut world, 15.0, 80.0);
+    add_pit(&mut world, 30.0, 80.0);
     for i in 0..200 {
         let (column, row) = (i % 20, i / 20);
         add_ragdoll(&mut world, vec2(-13.5 + 1.4 * column as f32, 1.0 + 2.5 * row as f32));
@@ -209,21 +206,20 @@ fn ragdolls() -> World {
 /// A ragdoll standing with its feet at `feet`, as in the testbed.
 fn add_ragdoll(world: &mut World, feet: Vec2) {
     let mut part = |center: Vec2, collider: ColliderDesc| {
-        let body = world.add_body(BodyDesc::dynamic().position(feet + center).angular_damping(0.5));
-        world.add_collider(body, collider.friction(0.6));
-        body
+        world
+            .add_body(BodyDesc::dynamic().position(feet + center).angular_damping(0.5).collider(collider.friction(0.6)))
     };
-    let torso = part(vec2(0.0, 1.3), ColliderDesc::vertical_capsule(0.15, 0.15));
+    let torso = part(vec2(0.0, 1.3), ColliderDesc::vertical_capsule(0.6, 0.15));
     let head = part(vec2(0.0, 1.82), ColliderDesc::circle(0.15));
     let limbs = [-1.0_f32, 1.0].map(|side| {
-        let upper_arm = part(vec2(0.22 * side, 1.4), ColliderDesc::vertical_capsule(0.1, 0.05));
-        let lower_arm = part(vec2(0.22 * side, 1.1), ColliderDesc::vertical_capsule(0.105, 0.045));
-        let upper_leg = part(vec2(0.09 * side, 0.75), ColliderDesc::vertical_capsule(0.18, 0.07));
-        let lower_leg = part(vec2(0.09 * side, 0.25), ColliderDesc::vertical_capsule(0.19, 0.06));
+        let upper_arm = part(vec2(0.22 * side, 1.4), ColliderDesc::vertical_capsule(0.3, 0.05));
+        let lower_arm = part(vec2(0.22 * side, 1.1), ColliderDesc::vertical_capsule(0.3, 0.045));
+        let upper_leg = part(vec2(0.09 * side, 0.75), ColliderDesc::vertical_capsule(0.5, 0.07));
+        let lower_leg = part(vec2(0.09 * side, 0.25), ColliderDesc::vertical_capsule(0.5, 0.06));
         (side, upper_arm, lower_arm, upper_leg, lower_leg)
     });
     let mut hinge = |a: BodyHandle, b: BodyHandle, point: Vec2, limits: std::ops::RangeInclusive<f32>| {
-        world.add_joint(RevoluteJointDesc::at_world_point(world, a, b, feet + point).limits(limits));
+        world.add_joint(RevoluteJointDesc::new(a, b, feet + point).limits(limits));
     };
     hinge(torso, head, vec2(0.0, 1.65), -0.5..=0.5);
     for (side, upper_arm, lower_arm, upper_leg, lower_leg) in limbs {
@@ -236,12 +232,15 @@ fn add_ragdoll(world: &mut World, feet: Vec2) {
 
 fn sleeping() -> World {
     let mut world = World::new();
-    add_pit(&mut world, 90.0, 1.0);
+    add_pit(&mut world, 180.0, 1.0);
     for stack in 0..80 {
         let x = -87.0 + 2.2 * stack as f32;
         for level in 0..12 {
-            let body = world.add_body(BodyDesc::dynamic().position(vec2(x, 0.4 + 0.8 * level as f32)));
-            world.add_collider(body, ColliderDesc::rectangle(0.6, 0.4));
+            world.add_body(
+                BodyDesc::dynamic()
+                    .position(vec2(x, 0.4 + 0.8 * level as f32))
+                    .collider(ColliderDesc::rectangle(1.2, 0.8)),
+            );
         }
     }
     world
@@ -253,8 +252,12 @@ fn scattered() -> World {
     let mut random = Random(11);
     for i in 0..2000 {
         let position = vec2(random.range(-50.0, 50.0), random.range(-50.0, 50.0));
-        let body = world.add_body(BodyDesc::fixed().position(position).angle(random.range(0.0, TAU)));
-        world.add_collider(body, mixed_shape(i, random.range(0.2, 0.8)));
+        world.add_body(
+            BodyDesc::fixed()
+                .position(position)
+                .angle(random.range(0.0, TAU))
+                .collider(mixed_shape(i, random.range(0.2, 0.8))),
+        );
     }
     world
 }
@@ -266,7 +269,7 @@ fn queries(world: &mut World) -> u64 {
     for _ in 0..1000 {
         let origin = vec2(random.range(-50.0, 50.0), random.range(-50.0, 50.0));
         let translation = 30.0 * Vec2::from_angle(random.range(0.0, TAU));
-        if let Some(hit) = world.cast_ray(origin, translation, &filter) {
+        if let Some(hit) = world.cast_ray(origin, translation, filter) {
             checksum = checksum.rotate_left(5) ^ u64::from(hit.fraction.to_bits());
         }
     }
@@ -275,7 +278,7 @@ fn queries(world: &mut World) -> u64 {
         let origin = vec2(random.range(-50.0, 50.0), random.range(-50.0, 50.0));
         let translation = 20.0 * Vec2::from_angle(random.range(0.0, TAU));
         let start = Transform::new(origin, Rot::IDENTITY);
-        if let Some(hit) = world.cast_shape(&probe, &start, translation, &filter) {
+        if let Some(hit) = world.cast_shape(probe.clone(), start, translation, filter) {
             checksum = checksum.rotate_left(5) ^ u64::from(hit.fraction.to_bits());
         }
     }

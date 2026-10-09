@@ -21,23 +21,22 @@ const ARCH_OUTER_RADIUS: f32 = 4.0;
 const ARCH_BLOCKS: usize = 11;
 
 fn build(world: &mut World, labels: &mut Labels) {
-    add_ground(world, 40.0);
+    add_ground(world, 80.0);
 
-    for (x, half_width, half_height, levels) in [(-8.5, 0.5, 0.5, 10), (-6.0, 1.0, 0.25, 16), (-3.5, 0.4, 0.4, 10)] {
+    for (x, width, height, levels) in [(-8.5, 1.0, 1.0, 10), (-6.0, 2.0, 0.5, 16), (-3.5, 0.8, 0.8, 10)] {
         for level in 0..levels {
-            let y = half_height * (2 * level + 1) as f32;
-            let block = world.add_body(BodyDesc::dynamic().position(vec2(x, y)));
-            world.add_collider(block, ColliderDesc::rectangle(half_width, half_height));
+            let y = height * (level as f32 + 0.5);
+            world.add_body(BodyDesc::dynamic().position(vec2(x, y)).collider(ColliderDesc::rectangle(width, height)));
         }
     }
     labels.at(vec2(-6.0, 10.6), "Columns");
 
     for level in 0..5 {
-        let block = world.add_body(BodyDesc::dynamic().position(vec2(-1.5, 0.25 + 0.5 * level as f32)));
-        world.add_collider(block, ColliderDesc::rectangle(0.25, 0.25).density(0.25));
+        let light = ColliderDesc::square(0.5).density(0.25);
+        world.add_body(BodyDesc::dynamic().position(vec2(-1.5, 0.25 + 0.5 * level as f32)).collider(light));
     }
-    let heavy = world.add_body(BodyDesc::dynamic().position(vec2(-1.5, 2.75)));
-    world.add_collider(heavy, ColliderDesc::rectangle(0.25, 0.25).density(5.0));
+    let heavy =
+        world.add_body(BodyDesc::dynamic().position(vec2(-1.5, 2.75)).collider(ColliderDesc::square(0.5).density(5.0)));
     labels.above(heavy, "20× heavier\nthan each box\nbelow");
 
     add_arch(world);
@@ -59,9 +58,9 @@ fn add_arch(world: &mut World) {
         // Place the body on the block's center so it rotates naturally around it.
         let center = corners.iter().sum::<Vec2>() / 4.0;
         let local = corners.map(|corner| corner - center);
-        let block = world.add_body(BodyDesc::dynamic().position(ARCH_CENTER + center));
-        world.add_collider(block, ColliderDesc::convex_hull(&local).expect("arch blocks are convex").friction(0.8));
+        let block = ColliderDesc::convex_hull(&local).expect("arch blocks are convex").friction(0.8);
+        world.add_body(BodyDesc::dynamic().position(ARCH_CENTER + center).collider(block));
     }
-    let weight = world.add_body(BodyDesc::dynamic().position(ARCH_CENTER + vec2(0.0, ARCH_OUTER_RADIUS + 0.4)));
-    world.add_collider(weight, ColliderDesc::rectangle(0.6, 0.4).density(3.0));
+    let load = ColliderDesc::rectangle(1.2, 0.8).density(3.0);
+    world.add_body(BodyDesc::dynamic().position(ARCH_CENTER + vec2(0.0, ARCH_OUTER_RADIUS + 0.4)).collider(load));
 }

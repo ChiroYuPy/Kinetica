@@ -5,11 +5,10 @@ use std::ops::RangeInclusive;
 use super::frame::{
     BiasTerms, JointFrame, apply_angular_impulse, apply_linear_impulse, relative_angle, relative_velocity, wrap_angle,
 };
-use super::{Motor, validated_range};
+use super::{JointBase, Motor, validated_range};
 use crate::body::{Body, BodyHandle};
 use crate::math::Vec2;
 use crate::solver::SolverContext;
-use crate::world::World;
 
 /// Description of a [`RevoluteJoint`].
 ///
@@ -18,11 +17,9 @@ use crate::world::World;
 ///
 /// let mut world = World::new();
 /// let ground = world.add_body(BodyDesc::fixed());
-/// let arm = world.add_body(BodyDesc::dynamic().position(vec2(1.0, 0.0)));
-/// world.add_collider(arm, ColliderDesc::rectangle(1.0, 0.1));
+/// let arm = world.add_body(BodyDesc::dynamic().position(vec2(1.0, 0.0)).collider(ColliderDesc::rectangle(2.0, 0.2)));
 ///
-/// let pivot = RevoluteJointDesc::at_world_point(&world, ground, arm, Vec2::ZERO).limits(-1.0..=1.0);
-/// world.add_joint(pivot);
+/// world.add_joint(RevoluteJointDesc::new(ground, arm, Vec2::ZERO).limits(-1.0..=1.0));
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -31,12 +28,8 @@ pub struct RevoluteJointDesc {
     pub body_a: BodyHandle,
     /// Second body.
     pub body_b: BodyHandle,
-    /// Pivot, in the local frame of body A.
-    pub local_anchor_a: Vec2,
-    /// Pivot, in the local frame of body B.
-    pub local_anchor_b: Vec2,
-    /// Angle of B relative to A at which the joint angle is zero.
-    pub reference_angle: f32,
+    /// Pivot, in world space.
+    pub anchor: Vec2,
     /// Allowed range of the joint angle, in radians.
     pub limits: Option<RangeInclusive<f32>>,
     /// Drives the relative rotation.
@@ -46,40 +39,18 @@ pub struct RevoluteJointDesc {
 }
 
 impl RevoluteJointDesc {
-    /// Describes a pivot given in each body's local frame.
+    /// Describes a pivot at the world point `anchor`. The joint angle is zero in the placement
+    /// the bodies have when the joint is added.
     #[must_use]
-    pub fn new(body_a: BodyHandle, body_b: BodyHandle, local_anchor_a: Vec2, local_anchor_b: Vec2) -> Self {
-        Self {
-            body_a,
-            body_b,
-            local_anchor_a,
-            local_anchor_b,
-            reference_angle: 0.0,
-            limits: None,
-            motor: None,
-            collide_connected: false,
-        }
-    }
-
-    /// Describes a pivot at a world point, with the current relative angle as zero.
-    ///
-    /// # Panics
-    ///
-    /// Panics if either body was removed from `world`.
-    #[must_use]
-    pub fn at_world_point(world: &World, body_a: BodyHandle, body_b: BodyHandle, point: Vec2) -> Self {
-        let (a, b) = super::bodies_of(world, body_a, body_b);
-        Self {
-            reference_angle: relative_angle(b.rotation(), a.rotation()),
-            ..Self::new(body_a, body_b, a.local_point(point), b.local_point(point))
-        }
+    pub fn new(body_a: BodyHandle, body_b: BodyHandle, anchor: Vec2) -> Self {
+        Self { body_a, body_b, anchor, limits: None, motor: None, collide_connected: false }
     }
 
     /// Restricts the joint angle to `angles`, in radians.
     ///
     /// # Panics
     ///
-    /// Panics if the range is empty.
+    /// Panics when the joint is added if the range is empty.
     #[must_use]
     pub fn limits(mut self, angles: RangeInclusive<f32>) -> Self {
         self.limits = Some(angles);
@@ -93,10 +64,10 @@ impl RevoluteJointDesc {
         self
     }
 
-    /// Sets whether the two bodies still collide with each other.
+    /// Lets the two bodies keep colliding with each other.
     #[must_use]
-    pub fn collide_connected(mut self, collide: bool) -> Self {
-        self.collide_connected = collide;
+    pub fn collide_connected(mut self) -> Self {
+        self.collide_connected = true;
         self
     }
 }
@@ -106,6 +77,7 @@ impl RevoluteJointDesc {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RevoluteJoint {
+    pub(super) base: JointBase,
     local_anchor_a: Vec2,
     local_anchor_b: Vec2,
     reference_angle: f32,
@@ -122,11 +94,17 @@ pub struct RevoluteJoint {
 }
 
 impl RevoluteJoint {
-    pub(crate) fn new(desc: &RevoluteJointDesc) -> Self {
+    shared_joint_methods!();
+
+    fn base(&self) -> &JointBase {
+        &self.base
+    }
+    pub(super) fn new(desc: &RevoluteJointDesc, a: &Body, b: &Body) -> Self {
         Self {
-            local_anchor_a: desc.local_anchor_a,
-            local_anchor_b: desc.local_anchor_b,
-            reference_angle: desc.reference_angle,
+            base: JointBase::new(desc.body_a, desc.body_b, desc.collide_connected),
+            local_anchor_a: a.local_point(desc.anchor),
+            local_anchor_b: b.local_point(desc.anchor),
+            reference_angle: relative_angle(b.rotation(), a.rotation()),
             limits: desc.limits.clone().map(validated_range),
             motor: desc.motor,
             linear_impulse: Vec2::ZERO,

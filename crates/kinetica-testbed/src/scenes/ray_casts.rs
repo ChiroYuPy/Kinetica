@@ -1,7 +1,7 @@
 use kinetica::math::Rot;
 use kinetica::prelude::*;
-use kinetica::{Color, DebugDraw};
 use kinetica_macroquad::DebugRenderer;
+use macroquad::color::Color;
 
 use super::{Build, Category, Frame, Labels, Scene, SceneUpdate, add_ground};
 
@@ -23,37 +23,36 @@ const LASER_LENGTH: f32 = 60.0;
 const MAX_BOUNCES: usize = 12;
 const SCANNER_HEIGHT: f32 = 11.0;
 
-const LASER_COLOR: Color = Color::rgb(1.0, 0.3, 0.3);
-const NORMAL_COLOR: Color = Color::rgb(0.35, 0.85, 0.45);
-const SCAN_COLOR: Color = Color::rgb(0.6, 0.6, 0.65);
-const SCAN_HIT_COLOR: Color = Color::rgb(1.0, 0.9, 0.3);
-const GLASS_COLOR: Color = Color::rgb(0.4, 0.75, 1.0);
+const LASER_COLOR: Color = Color::new(1.0, 0.3, 0.3, 1.0);
+const NORMAL_COLOR: Color = Color::new(0.35, 0.85, 0.45, 1.0);
+const SCAN_COLOR: Color = Color::new(0.6, 0.6, 0.65, 1.0);
+const SCAN_HIT_COLOR: Color = Color::new(1.0, 0.9, 0.3, 1.0);
+const GLASS_COLOR: Color = Color::new(0.4, 0.75, 1.0, 1.0);
 
 fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
-    add_ground(world, 40.0);
+    add_ground(world, 80.0);
     let solid = CollisionLayers::new(SOLID, SOLID | GLASS);
     let glass = CollisionLayers::new(GLASS, SOLID);
 
     let fixtures = world.add_body(BodyDesc::fixed());
-    for (center, half_length, angle) in [
-        (vec2(-3.0, 9.0), 1.5, -0.3),
-        (vec2(5.0, 8.0), 1.2, 0.6),
-        (vec2(8.5, 3.0), 1.0, 1.3),
-        (vec2(1.0, 4.0), 0.8, 0.0),
+    for (center, length, angle) in [
+        (vec2(-3.0, 9.0), 3.0, -0.3),
+        (vec2(5.0, 8.0), 2.4, 0.6),
+        (vec2(8.5, 3.0), 2.0, 1.3),
+        (vec2(1.0, 4.0), 1.6, 0.0),
     ] {
-        world.add_collider(fixtures, ColliderDesc::offset_rectangle(half_length, 0.12, center, angle).layers(solid));
+        world.add_collider(fixtures, ColliderDesc::rectangle(length, 0.24).offset(center).angle(angle).layers(solid));
     }
     let mut panes = Vec::new();
     for (center, angle) in [(vec2(-5.0, 4.0), 0.2), (vec2(4.0, 5.5), -0.4)] {
-        let pane = ColliderDesc::offset_rectangle(0.08, 1.4, center, angle).layers(glass);
+        let pane = ColliderDesc::rectangle(0.16, 2.8).offset(center).angle(angle).layers(glass);
         panes.push(world.add_collider(fixtures, pane));
     }
     labels.at(vec2(-5.0, 6.0), "Glass: another layer");
 
     for (i, x) in [-6.5_f32, -2.0, 2.5, 6.0].into_iter().enumerate() {
-        let body = world.add_body(BodyDesc::dynamic().position(vec2(x, 1.0)));
-        let collider = if i % 2 == 0 { ColliderDesc::circle(0.7) } else { ColliderDesc::regular_polygon(3 + i, 0.8) };
-        world.add_collider(body, collider.layers(solid));
+        let shape = if i % 2 == 0 { ColliderDesc::circle(0.7) } else { ColliderDesc::regular_polygon(3 + i, 0.8) };
+        world.add_body(BodyDesc::dynamic().position(vec2(x, 1.0)).collider(shape.layers(solid)));
     }
     labels.at(LASER_ORIGIN - vec2(0.0, 0.6), "Laser");
 
@@ -86,7 +85,7 @@ impl SceneUpdate for RayDemo {
         let mut remaining = LASER_LENGTH;
         drawer.draw_circle(LASER_ORIGIN, 0.2, Rot::IDENTITY, LASER_COLOR);
         for _ in 0..=MAX_BOUNCES {
-            let Some(hit) = world.cast_ray(origin, remaining * direction, &filter) else {
+            let Some(hit) = world.cast_ray(origin, remaining * direction, filter) else {
                 drawer.draw_segment(origin, origin + remaining * direction, LASER_COLOR);
                 break;
             };
@@ -101,14 +100,14 @@ impl SceneUpdate for RayDemo {
         // The scanner: every hit along one ray, glass included.
         let (start, translation) = Self::scanner(frame.mouse);
         drawer.draw_segment(start, start + translation, SCAN_COLOR);
-        for hit in world.cast_ray_all(start, translation, &QueryFilter::new()) {
+        for hit in world.cast_ray_all(start, translation, QueryFilter::new()) {
             drawer.draw_point(hit.point, SCAN_HIT_COLOR);
         }
     }
 
     fn labels(&self, world: &World, frame: &Frame, labels: &mut Labels) {
         let (start, translation) = Self::scanner(frame.mouse);
-        let hits = world.cast_ray_all(start, translation, &QueryFilter::new()).len();
+        let hits = world.cast_ray_all(start, translation, QueryFilter::new()).len();
         labels.at(start + vec2(0.0, 0.2), format!("Scanner: {hits} hits"));
     }
 }

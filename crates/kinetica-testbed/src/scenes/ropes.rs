@@ -15,14 +15,13 @@ pub const SCENE: Scene = Scene {
 const BEAD_RADIUS: f32 = 0.08;
 
 fn build(world: &mut World, labels: &mut Labels) {
-    add_ground(world, 20.0);
+    add_ground(world, 40.0);
     let ceiling = world.add_body(BodyDesc::fixed());
-    let rope = |desc: DistanceJointDesc, length: f32| desc.spring(0.0, 0.0).limits(0.0..=length);
+    let rope = |desc: DistanceJointDesc, length: f32| desc.rope(length);
 
     // A rope: beads that may get closer but never further apart, released horizontally.
     let beads = add_beads(world, ceiling, vec2(-9.5, 10.0), vec2(-5.9, 10.0), 20, rope);
-    let crate_body = world.add_body(BodyDesc::dynamic().position(vec2(-5.5, 9.7)));
-    world.add_collider(crate_body, ColliderDesc::rectangle(0.3, 0.3));
+    let crate_body = world.add_body(BodyDesc::dynamic().position(vec2(-5.5, 9.7)).collider(ColliderDesc::square(0.6)));
     tie(world, beads[beads.len() - 1], crate_body, vec2(-5.5, 10.0), rope);
 
     // A chain: small bars hinged end to end, ending with a ball.
@@ -31,15 +30,15 @@ fn build(world: &mut World, labels: &mut Labels) {
     let mut previous = ceiling;
     for i in 0..11 {
         let hinge = start + vec2(link_length * i as f32, 0.0);
-        let link = world.add_body(BodyDesc::dynamic().position(hinge + vec2(link_length / 2.0, 0.0)));
-        world.add_collider(link, ColliderDesc::rectangle(link_length / 2.0, 0.05));
-        world.add_joint(RevoluteJointDesc::at_world_point(world, previous, link, hinge));
+        let bar = ColliderDesc::rectangle(link_length, 0.1);
+        let link = world.add_body(BodyDesc::dynamic().position(hinge + vec2(link_length / 2.0, 0.0)).collider(bar));
+        world.add_joint(RevoluteJointDesc::new(previous, link, hinge));
         previous = link;
     }
     let end = start + vec2(11.0 * link_length, 0.0);
-    let ball = world.add_body(BodyDesc::dynamic().position(end + vec2(0.3, 0.0)));
-    world.add_collider(ball, ColliderDesc::circle(0.3).density(3.0));
-    world.add_joint(RevoluteJointDesc::at_world_point(world, previous, ball, end));
+    let ball = world
+        .add_body(BodyDesc::dynamic().position(end + vec2(0.3, 0.0)).collider(ColliderDesc::circle(0.3).density(3.0)));
+    world.add_joint(RevoluteJointDesc::new(previous, ball, end));
 
     // An elastic band: beads tied by springs between two posts, and a ball dropped on it. The
     // springs are shorter than the gaps, so the band is stretched like a trampoline.
@@ -48,15 +47,14 @@ fn build(world: &mut World, labels: &mut Labels) {
     let band = add_beads(world, ceiling, left, right - vec2(0.25, 0.0), 19, elastic);
     tie(world, band[band.len() - 1], ceiling, right, elastic);
     for post in [left, right] {
-        world.add_collider(ceiling, ColliderDesc::offset_rectangle(0.1, 1.5, post - vec2(0.0, 1.5), 0.0));
+        world.add_collider(ceiling, ColliderDesc::rectangle(0.2, 3.0).offset(post - vec2(0.0, 1.5)));
     }
-    let falling = world.add_body(BodyDesc::dynamic().position(vec2(5.5, 8.0)));
-    world.add_collider(falling, ColliderDesc::circle(0.4).density(2.0));
+    world.add_body(BodyDesc::dynamic().position(vec2(5.5, 8.0)).collider(ColliderDesc::circle(0.4).density(2.0)));
 
     // A rope whirled around: tied to the end of a turning kinematic crank.
     let pivot = vec2(9.5, 8.0);
-    let crank = world.add_body(BodyDesc::kinematic().position(pivot).angular_velocity(3.0));
-    world.add_collider(crank, ColliderDesc::offset_rectangle(0.4, 0.05, vec2(0.4, 0.0), 0.0));
+    let bar = ColliderDesc::rectangle(0.8, 0.1).offset(vec2(0.4, 0.0));
+    let crank = world.add_body(BodyDesc::kinematic().position(pivot).angular_velocity(3.0).collider(bar));
     add_beads(world, crank, pivot + vec2(0.8, 0.0), pivot + vec2(3.3, 0.0), 12, rope);
 
     labels.at(vec2(-7.5, 10.5), "Rope: beads joined by\ndistance joints, slack allowed");
@@ -80,9 +78,9 @@ fn add_beads(
     let mut beads = Vec::with_capacity(count);
     for i in 1..=count {
         let position = start + step * i as f32;
-        let bead = world.add_body(BodyDesc::dynamic().position(position));
-        world.add_collider(bead, ColliderDesc::circle(BEAD_RADIUS).density(5.0));
-        let desc = DistanceJointDesc::between_world_points(world, previous.0, bead, previous.1, position);
+        let ball = ColliderDesc::circle(BEAD_RADIUS).density(5.0);
+        let bead = world.add_body(BodyDesc::dynamic().position(position).collider(ball));
+        let desc = DistanceJointDesc::new(previous.0, bead, previous.1, position);
         world.add_joint(kind(desc, step.length()));
         beads.push(bead);
         previous = (bead, position);
@@ -98,8 +96,8 @@ fn tie(
     point: Vec2,
     kind: impl Fn(DistanceJointDesc, f32) -> DistanceJointDesc,
 ) {
-    let bead_position = world.body(bead).map_or(point, kinetica::Body::position);
-    let desc = DistanceJointDesc::between_world_points(world, bead, body, bead_position, point);
+    let bead_position = world[bead].position();
+    let desc = DistanceJointDesc::new(bead, body, bead_position, point);
     let length = bead_position.distance(point);
     world.add_joint(kind(desc, length));
 }
@@ -128,10 +126,10 @@ mod tests {
 
         // Rope links never get much longer than their length.
         for (_, joint) in world.joints() {
-            if let JointKind::Distance(distance) = joint.kind()
+            if let Joint::Distance(distance) = joint
                 && distance.spring().is_some_and(|spring| spring.hertz == 0.0)
             {
-                let (a, b) = (world.body(joint.body_a()).unwrap(), world.body(joint.body_b()).unwrap());
+                let (a, b) = (&world[joint.body_a()], &world[joint.body_b()]);
                 let (anchor_a, anchor_b) = joint.local_anchors();
                 let length = a.world_point(anchor_a).distance(b.world_point(anchor_b));
                 assert!(length < distance.length() + 0.05, "a rope link stretched to {length}");

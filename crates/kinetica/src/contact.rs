@@ -87,13 +87,33 @@ impl Contact {
 /// start or stop touching.
 ///
 /// Removing a collider or a body does not report `Stopped` for its contacts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// ```
+/// # use kinetica::prelude::*;
+/// # let world = World::new();
+/// for event in world.collision_events() {
+///     if let CollisionEvent::Started { pair, impact_speed } = event
+///         && *impact_speed > 5.0
+///     {
+///         println!("{:?} hit {:?} hard", pair.body_a, pair.body_b);
+///     }
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CollisionEvent {
     /// The colliders started touching during the step.
-    Started(ContactPair),
+    Started {
+        /// The colliders and bodies concerned.
+        pair: ContactPair,
+        /// How fast the colliders were moving towards each other, in m/s: how hard they hit.
+        impact_speed: f32,
+    },
     /// The colliders stopped touching during the step.
-    Stopped(ContactPair),
+    Stopped {
+        /// The colliders and bodies concerned.
+        pair: ContactPair,
+    },
 }
 
 impl CollisionEvent {
@@ -101,7 +121,7 @@ impl CollisionEvent {
     #[must_use]
     pub fn pair(&self) -> &ContactPair {
         match self {
-            Self::Started(pair) | Self::Stopped(pair) => pair,
+            Self::Started { pair, .. } | Self::Stopped { pair } => pair,
         }
     }
 }
@@ -320,8 +340,11 @@ impl ContactSet {
             contact.manifold = manifold;
 
             match (was_touching, contact.is_touching()) {
-                (false, true) => events.push(CollisionEvent::Started(pair)),
-                (true, false) => events.push(CollisionEvent::Stopped(pair)),
+                (false, true) => {
+                    let impact_speed = impact_speed(&contact.manifold, body_a, body_b);
+                    events.push(CollisionEvent::Started { pair, impact_speed });
+                }
+                (true, false) => events.push(CollisionEvent::Stopped { pair }),
                 _ => {}
             }
             keep
@@ -405,6 +428,18 @@ fn should_sense(pair: &ContactPair, bodies: &Arena<Body>) -> bool {
 
 /// Contacts only matter when at least one dynamic body can react to them, and joints may opt
 /// their bodies out of colliding.
+/// The fastest approach speed of the two bodies along the normal, at the contact points.
+fn impact_speed(manifold: &Manifold, a: &Body, b: &Body) -> f32 {
+    manifold
+        .points()
+        .iter()
+        .map(|point| {
+            let relative_velocity = b.velocity_at_point(point.position()) - a.velocity_at_point(point.position());
+            -relative_velocity.dot(manifold.normal())
+        })
+        .fold(0.0, f32::max)
+}
+
 pub(crate) fn should_collide(pair: &ContactPair, bodies: &Arena<Body>, joints: &Arena<Joint>) -> bool {
     if pair.body_a == pair.body_b {
         return false;

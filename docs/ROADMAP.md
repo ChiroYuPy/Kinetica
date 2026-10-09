@@ -6,11 +6,23 @@
 - **Units**: meters, kilograms, seconds. Y axis up. Rendering converts to pixels.
 - **Precision**: `f32` everywhere.
 - **Math**: `glam`, kept on the version macroquad uses so `Vec2` is shared without conversion.
-- **API**: the `World` owns bodies and colliders; users hold copyable handles
-  (`BodyHandle`, `ColliderHandle`) backed by a generational arena. Objects are created from
-  `*Desc` builders.
+- **API**: the `World` owns bodies, colliders and joints; users hold copyable handles backed
+  by a generational arena. `world[handle]` reaches the object and panics if it was removed;
+  `get_body`/`get_collider`/`get_joint` return an `Option`. Objects are created from `*Desc`
+  builders: a `BodyDesc` carries its colliders, so one call creates a whole body. Sizes are
+  full sizes (`rectangle(width, height)`, `vertical_capsule(height, radius)`), and a collider
+  is placed on its body with `offset` and `angle`. On/off settings are argument-free builders
+  (`sensor()`, `bullet()`, `lock_rotation()`, `keep_awake()`, `closed()`).
+- **Joints API**: anchors are world points, attached to the bodies where they are when the
+  joint is added; the joint angle or translation is zero in that placement. `add_joint`
+  returns a typed handle (`JointHandle<RevoluteJoint>`), so `world[motor].set_motor(...)`
+  needs no matching; `Joint` is an enum for joints of any type, and `untyped()` stores
+  handles of different types together.
+- **Setters**: setting a value a body already has does nothing, so game code may set
+  velocities every step without keeping bodies awake.
 - **Events**: queued during `step`, read afterwards with `World::collision_events`. No
-  callbacks. Removing a collider or body does not report `Stopped` for its contacts.
+  callbacks. `Started` carries the impact speed (fastest approach speed along the normal at
+  the contact points). Removing a collider or body does not report `Stopped` for its contacts.
 - **Materials**: combined friction is `sqrt(a * b)`, combined restitution is `max(a, b)`.
 - **Known limit**: simultaneous contacts are solved together, so a row of touching bodies
   shares an impact instead of passing it along (a touching Newton's cradle fails). A small
@@ -97,3 +109,9 @@
       a merge with the sorted contact keys. Queries got 34% faster, ragdolls 12%, the
       tumbler 6%; the solver dominates the rest (graph coloring and SIMD would be next).
       A compact solver body copy was tried and dropped: no measurable gain.
+- [x] **10. API**: the three games were rewritten as one would like to write them, and the
+      engine changed until they compiled: indexing with handles, bodies created with their
+      colliders, full sizes, `offset`/`angle` placement, argument-free flags, world-space
+      joint anchors, typed joint handles, `rope()`, impact speed in collision events, no-op
+      setters that keep bodies asleep, shape queries taking a shape and a position, and
+      macroquad colors in `kinetica-macroquad`.

@@ -32,22 +32,22 @@ fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
         vec2(x, height)
     }));
     ground.push(vec2(14.0, 8.0));
-    world.add_chain(level, &ChainDesc::new(ground).friction(0.7));
+    world.add_chain(level, ChainDesc::new(ground).friction(0.7));
     labels.at(vec2(6.0, -1.3), "Chain: solid on the side of its ticks");
 
     // The display, behind a low wall that keeps the rain out.
     world.add_collider(level, ColliderDesc::segment(vec2(GALLERY_END - 0.5, 0.0), vec2(GALLERY_END - 0.5, 3.0)));
     let gallery = [
         (ColliderDesc::circle(0.5), "circle"),
-        (ColliderDesc::rectangle(0.6, 0.4), "rectangle"),
+        (ColliderDesc::rectangle(1.2, 0.8), "rectangle"),
         (ColliderDesc::regular_polygon(5, 0.55), "regular\npolygon"),
         (hull(&[vec2(-0.6, -0.4), vec2(0.7, -0.4), vec2(0.3, 0.5), vec2(-0.3, 0.6)]), "convex\nhull"),
         (ColliderDesc::capsule(vec2(-0.5, 0.0), vec2(0.5, 0.0), 0.3), "capsule"),
     ];
     for (i, (collider, name)) in gallery.into_iter().enumerate() {
         let bottom = -collider.shape.compute_aabb(&Transform::IDENTITY).min.y;
-        let body = world.add_body(BodyDesc::dynamic().position(vec2(-12.5 + 2.2 * i as f32, bottom)));
-        world.add_collider(body, collider);
+        let body =
+            world.add_body(BodyDesc::dynamic().position(vec2(-12.5 + 2.2 * i as f32, bottom)).collider(collider));
         labels.above(body, name);
     }
 
@@ -59,7 +59,7 @@ fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
             vec2(2.5, 6.0) + radius * Vec2::from_angle(angle)
         })
         .collect();
-    world.add_chain(level, &ChainDesc::new(rock).closed(true));
+    world.add_chain(level, ChainDesc::new(rock).closed());
     labels.at(vec2(2.5, 8.2), "Closed chain");
 
     // A thin two-sided shelf.
@@ -68,7 +68,7 @@ fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
 
     // A bin: down the left side, along the bottom, up the right side, so it faces inward.
     let bin = [vec2(7.0, 6.0), vec2(7.0, 2.5), vec2(11.0, 2.5), vec2(11.0, 6.0)];
-    world.add_chain(level, &ChainDesc::new(bin));
+    world.add_chain(level, ChainDesc::new(bin));
     labels.at(vec2(9.0, 6.6), "Open chain");
 
     Box::new(Rain { bodies: VecDeque::new(), spawned: 0, next_spawn: 0.0 })
@@ -94,17 +94,18 @@ impl SceneUpdate for Rain {
         self.spawned += 1;
 
         let scatter = (i as f32 * 0.618_034).fract();
-        let body = world.add_body(BodyDesc::dynamic().position(vec2(-1.0 + 14.0 * scatter, 15.0)).angle(3.0 * scatter));
-        let size = 0.25 + 0.2 * ((i as f32 * 0.414_214).fract());
-        let collider = match i % 5 {
-            0 => ColliderDesc::capsule(vec2(-size, 0.0), vec2(size, 0.0), 0.5 * size),
-            1 => ColliderDesc::circle(size),
-            2 => ColliderDesc::rectangle(size, 0.7 * size),
-            3 => ColliderDesc::regular_polygon(3 + i % 4, size),
-            _ => hull(&[vec2(-size, -0.5 * size), vec2(size, -0.5 * size), vec2(0.3 * size, 0.8 * size)]),
+        // About `2 * radius` across.
+        let radius = 0.25 + 0.2 * ((i as f32 * 0.414_214).fract());
+        let shape = match i % 5 {
+            0 => ColliderDesc::capsule(vec2(-radius, 0.0), vec2(radius, 0.0), 0.5 * radius),
+            1 => ColliderDesc::circle(radius),
+            2 => ColliderDesc::rectangle(2.0 * radius, 1.4 * radius),
+            3 => ColliderDesc::regular_polygon(3 + i % 4, radius),
+            _ => hull(&[vec2(-radius, -0.5 * radius), vec2(radius, -0.5 * radius), vec2(0.3 * radius, 0.8 * radius)]),
         };
-        world.add_collider(body, collider);
-        self.bodies.push_back(body);
+        let position = vec2(-1.0 + 14.0 * scatter, 15.0);
+        self.bodies
+            .push_back(world.add_body(BodyDesc::dynamic().position(position).angle(3.0 * scatter).collider(shape)));
         if self.bodies.len() > MAX_BODIES
             && let Some(oldest) = self.bodies.pop_front()
         {

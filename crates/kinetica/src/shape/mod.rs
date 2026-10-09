@@ -101,6 +101,24 @@ impl Shape {
         Some(RayIntersection { fraction, normal: transform.rotation.rotate(local_normal) })
     }
 
+    /// The same shape, rotated then moved by `placement`, both in the local frame.
+    #[must_use]
+    pub(crate) fn transformed(&self, placement: &Transform) -> Self {
+        let point = |point: Vec2| placement.transform_point(point);
+        let segment = |segment: &Segment| Segment::new(point(segment.start()), point(segment.end()));
+        match self {
+            Self::Circle(circle) => Circle::new(circle.radius()).with_center(point(circle.center())).into(),
+            Self::Capsule(capsule) => {
+                Capsule::new(point(capsule.start()), point(capsule.end()), capsule.radius()).into()
+            }
+            Self::Polygon(polygon) => polygon.transformed(placement).into(),
+            Self::Segment(original) => segment(original).into(),
+            Self::ChainSegment(chain) => {
+                ChainSegment::new(segment(chain.segment()), chain.previous().map(point), chain.next().map(point)).into()
+            }
+        }
+    }
+
     /// Computes the world-space bounding box of the shape placed at `transform`.
     #[must_use]
     pub fn compute_aabb(&self, transform: &Transform) -> Aabb {

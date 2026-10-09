@@ -24,9 +24,9 @@ fn build(world: &mut World, labels: &mut Labels) {
         let pivot = world.add_body(BodyDesc::fixed().position(pivot_position));
         let angle = if i == 0 { -RELEASE_ANGLE } else { 0.0 };
         let ball_position = pivot_position + STRING * vec2(angle.sin(), -angle.cos());
-        let ball = world.add_body(BodyDesc::dynamic().position(ball_position));
-        world.add_collider(ball, ColliderDesc::circle(RADIUS).restitution(1.0).friction(0.0));
-        world.add_joint(DistanceJointDesc::between_world_points(world, pivot, ball, pivot_position, ball_position));
+        let shape = ColliderDesc::circle(RADIUS).restitution(1.0).friction(0.0);
+        let ball = world.add_body(BodyDesc::dynamic().position(ball_position).collider(shape));
+        world.add_joint(DistanceJointDesc::new(pivot, ball, pivot_position, ball_position));
     }
     labels.at(vec2(0.0, 9.4), "Restitution 1, friction 0, strings are distance joints");
     labels.at(vec2(0.0, 3.2), "A 5 cm gap makes the impacts happen one after the other");

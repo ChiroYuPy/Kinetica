@@ -8,8 +8,7 @@ const SECOND: usize = 60;
 
 fn world_with_ground() -> World {
     let mut world = World::new();
-    let ground = world.add_body(BodyDesc::fixed().position(vec2(0.0, -0.5)));
-    world.add_collider(ground, ColliderDesc::rectangle(50.0, 0.5));
+    world.add_body(BodyDesc::fixed().position(vec2(0.0, -0.5)).collider(ColliderDesc::rectangle(100.0, 1.0)));
     world
 }
 
@@ -20,14 +19,13 @@ fn run(world: &mut World, steps: usize) {
 }
 
 fn body(world: &World, handle: BodyHandle) -> &kinetica::Body {
-    world.body(handle).unwrap()
+    &world[handle]
 }
 
 #[test]
 fn box_comes_to_rest_on_the_ground() {
     let mut world = world_with_ground();
-    let block = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 3.0)));
-    world.add_collider(block, ColliderDesc::rectangle(0.5, 0.5));
+    let block = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 3.0)).collider(ColliderDesc::square(1.0)));
 
     run(&mut world, 3 * SECOND);
 
@@ -42,8 +40,7 @@ fn box_comes_to_rest_on_the_ground() {
 #[test]
 fn circle_comes_to_rest_on_the_ground() {
     let mut world = world_with_ground();
-    let ball = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 2.0)));
-    world.add_collider(ball, ColliderDesc::circle(0.5));
+    let ball = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 2.0)).collider(ColliderDesc::circle(0.5)));
 
     run(&mut world, 3 * SECOND);
 
@@ -58,9 +55,7 @@ fn tall_stack_stays_upright() {
     let height = 10;
     let boxes: Vec<_> = (0..height)
         .map(|i| {
-            let block = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 0.5 + i as f32)));
-            world.add_collider(block, ColliderDesc::rectangle(0.5, 0.5));
-            block
+            world.add_body(BodyDesc::dynamic().position(vec2(0.0, 0.5 + i as f32)).collider(ColliderDesc::square(1.0)))
         })
         .collect();
 
@@ -83,8 +78,8 @@ fn pyramid_stays_standing() {
     for row in 0..base {
         for column in 0..base - row {
             let x = (column as f32 - (base - row - 1) as f32 / 2.0) * 1.05;
-            let block = world.add_body(BodyDesc::dynamic().position(vec2(x, 0.5 + row as f32)));
-            world.add_collider(block, ColliderDesc::rectangle(0.5, 0.5));
+            let block = world
+                .add_body(BodyDesc::dynamic().position(vec2(x, 0.5 + row as f32)).collider(ColliderDesc::square(1.0)));
             top = Some(block);
         }
     }
@@ -99,11 +94,11 @@ fn pyramid_stays_standing() {
 /// A box on a fixed slope of `angle` radians, starting at rest.
 fn box_on_slope(angle: f32, friction: f32) -> (World, BodyHandle) {
     let mut world = World::new();
-    let slope = world.add_body(BodyDesc::fixed().angle(angle));
-    world.add_collider(slope, ColliderDesc::rectangle(20.0, 0.5).friction(friction));
+    world.add_body(BodyDesc::fixed().angle(angle).collider(ColliderDesc::rectangle(40.0, 1.0).friction(friction)));
     let up = Rot::from_angle(angle).rotate(Vec2::Y);
-    let block = world.add_body(BodyDesc::dynamic().position(up * 1.0).angle(angle));
-    world.add_collider(block, ColliderDesc::rectangle(0.5, 0.5).friction(friction));
+    let block = world.add_body(
+        BodyDesc::dynamic().position(up * 1.0).angle(angle).collider(ColliderDesc::square(1.0).friction(friction)),
+    );
     (world, block)
 }
 
@@ -134,8 +129,9 @@ fn frictionless_box_slides_down_with_the_expected_acceleration() {
 fn bouncy_ball_bounces_back_near_its_drop_height() {
     let mut world = world_with_ground();
     let drop_height = 5.0;
-    let ball = world.add_body(BodyDesc::dynamic().position(vec2(0.0, drop_height)));
-    world.add_collider(ball, ColliderDesc::circle(0.5).restitution(1.0));
+    let ball = world.add_body(
+        BodyDesc::dynamic().position(vec2(0.0, drop_height)).collider(ColliderDesc::circle(0.5).restitution(1.0)),
+    );
 
     // Fall for about a second, then track the highest point after the bounce.
     run(&mut world, SECOND + SECOND / 5);
@@ -152,8 +148,8 @@ fn bouncy_ball_bounces_back_near_its_drop_height() {
 #[test]
 fn dead_ball_does_not_bounce() {
     let mut world = world_with_ground();
-    let ball = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 5.0)));
-    world.add_collider(ball, ColliderDesc::circle(0.5).restitution(0.0));
+    let ball = world
+        .add_body(BodyDesc::dynamic().position(vec2(0.0, 5.0)).collider(ColliderDesc::circle(0.5).restitution(0.0)));
 
     let mut highest_after_impact = f32::NEG_INFINITY;
     let mut landed = false;
@@ -171,10 +167,15 @@ fn dead_ball_does_not_bounce() {
 fn elastic_head_on_collision_swaps_velocities() {
     let mut world = World::new();
     world.set_gravity(Vec2::ZERO);
-    let left = world.add_body(BodyDesc::dynamic().position(vec2(-2.0, 0.0)).linear_velocity(vec2(3.0, 0.0)));
-    world.add_collider(left, ColliderDesc::circle(0.5).restitution(1.0).friction(0.0));
-    let right = world.add_body(BodyDesc::dynamic().position(vec2(2.0, 0.0)));
-    world.add_collider(right, ColliderDesc::circle(0.5).restitution(1.0).friction(0.0));
+    let left = world.add_body(
+        BodyDesc::dynamic()
+            .position(vec2(-2.0, 0.0))
+            .linear_velocity(vec2(3.0, 0.0))
+            .collider(ColliderDesc::circle(0.5).restitution(1.0).friction(0.0)),
+    );
+    let right = world.add_body(
+        BodyDesc::dynamic().position(vec2(2.0, 0.0)).collider(ColliderDesc::circle(0.5).restitution(1.0).friction(0.0)),
+    );
 
     run(&mut world, 2 * SECOND);
 
@@ -187,10 +188,18 @@ fn elastic_head_on_collision_swaps_velocities() {
 fn momentum_is_conserved_in_collisions() {
     let mut world = World::new();
     world.set_gravity(Vec2::ZERO);
-    let heavy = world.add_body(BodyDesc::dynamic().position(vec2(-2.0, 0.1)).linear_velocity(vec2(2.0, 0.0)));
-    world.add_collider(heavy, ColliderDesc::rectangle(0.5, 0.5).density(4.0));
-    let light = world.add_body(BodyDesc::dynamic().position(vec2(1.0, 0.0)).linear_velocity(vec2(-1.0, 0.5)));
-    world.add_collider(light, ColliderDesc::circle(0.4).restitution(0.5));
+    world.add_body(
+        BodyDesc::dynamic()
+            .position(vec2(-2.0, 0.1))
+            .linear_velocity(vec2(2.0, 0.0))
+            .collider(ColliderDesc::square(1.0).density(4.0)),
+    );
+    world.add_body(
+        BodyDesc::dynamic()
+            .position(vec2(1.0, 0.0))
+            .linear_velocity(vec2(-1.0, 0.5))
+            .collider(ColliderDesc::circle(0.4).restitution(0.5)),
+    );
 
     let momentum = |world: &World| -> Vec2 { world.bodies().map(|(_, b)| b.mass() * b.linear_velocity()).sum() };
     let before = momentum(&world);
@@ -201,10 +210,8 @@ fn momentum_is_conserved_in_collisions() {
 #[test]
 fn kinematic_platform_carries_a_box() {
     let mut world = World::new();
-    let platform = world.add_body(BodyDesc::kinematic().linear_velocity(vec2(1.0, 0.0)));
-    world.add_collider(platform, ColliderDesc::rectangle(3.0, 0.25));
-    let block = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 0.75)));
-    world.add_collider(block, ColliderDesc::rectangle(0.5, 0.5));
+    world.add_body(BodyDesc::kinematic().linear_velocity(vec2(1.0, 0.0)).collider(ColliderDesc::rectangle(6.0, 0.5)));
+    let block = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 0.75)).collider(ColliderDesc::square(1.0)));
 
     run(&mut world, 2 * SECOND);
 

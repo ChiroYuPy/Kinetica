@@ -3,31 +3,26 @@
 use std::ops::RangeInclusive;
 
 use super::frame::{BiasTerms, JointFrame, apply_linear_impulse, inverse_or_zero, relative_velocity};
-use super::{Spring, validated_range};
+use super::{JointBase, Spring, validated_range};
 use crate::body::{Body, BodyHandle};
 use crate::constants::LINEAR_SLOP;
 use crate::math::Vec2;
 use crate::solver::{Softness, SolverContext};
-use crate::world::World;
 
 /// Description of a [`DistanceJoint`].
 ///
 /// Without a spring the joint is a rigid rod. With a spring, the distance oscillates around
-/// `length`, and stays within `limits` if set. A rope is a spring of zero stiffness limited to
-/// `0..=length`:
+/// `length`, and stays within `limits` if set. A rope is slack up to its length and taut
+/// beyond:
 ///
 /// ```
 /// use kinetica::prelude::*;
 ///
 /// let mut world = World::new();
 /// let ceiling = world.add_body(BodyDesc::fixed().position(vec2(0.0, 5.0)));
-/// let lamp = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 3.0)));
-/// world.add_collider(lamp, ColliderDesc::circle(0.3));
+/// let lamp = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 3.0)).collider(ColliderDesc::circle(0.3)));
 ///
-/// let rope = DistanceJointDesc::between_world_points(&world, ceiling, lamp, vec2(0.0, 5.0), vec2(0.0, 3.0))
-///     .spring(0.0, 0.0)
-///     .limits(0.0..=2.0);
-/// world.add_joint(rope);
+/// world.add_joint(DistanceJointDesc::new(ceiling, lamp, vec2(0.0, 5.0), vec2(0.0, 3.0)).rope(2.0));
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -36,11 +31,11 @@ pub struct DistanceJointDesc {
     pub body_a: BodyHandle,
     /// Second body.
     pub body_b: BodyHandle,
-    /// Attachment point, in the local frame of body A.
-    pub local_anchor_a: Vec2,
-    /// Attachment point, in the local frame of body B.
-    pub local_anchor_b: Vec2,
-    /// Rest length; `None` uses the distance between the anchors when the joint is created.
+    /// Attachment point on body A, in world space.
+    pub anchor_a: Vec2,
+    /// Attachment point on body B, in world space.
+    pub anchor_b: Vec2,
+    /// Rest length; `None` uses the distance between the anchors when the joint is added.
     pub length: Option<f32>,
     /// Makes the joint elastic instead of rigid.
     pub spring: Option<Spring>,
@@ -51,36 +46,10 @@ pub struct DistanceJointDesc {
 }
 
 impl DistanceJointDesc {
-    /// Describes a joint between anchors given in each body's local frame.
+    /// Describes a rigid rod between two world points, keeping their current distance.
     #[must_use]
-    pub fn new(body_a: BodyHandle, body_b: BodyHandle, local_anchor_a: Vec2, local_anchor_b: Vec2) -> Self {
-        Self {
-            body_a,
-            body_b,
-            local_anchor_a,
-            local_anchor_b,
-            length: None,
-            spring: None,
-            limits: None,
-            collide_connected: false,
-        }
-    }
-
-    /// Describes a joint between two world points, keeping their current distance.
-    ///
-    /// # Panics
-    ///
-    /// Panics if either body was removed from `world`.
-    #[must_use]
-    pub fn between_world_points(
-        world: &World,
-        body_a: BodyHandle,
-        body_b: BodyHandle,
-        point_a: Vec2,
-        point_b: Vec2,
-    ) -> Self {
-        let (a, b) = super::bodies_of(world, body_a, body_b);
-        Self::new(body_a, body_b, a.local_point(point_a), b.local_point(point_b))
+    pub fn new(body_a: BodyHandle, body_b: BodyHandle, anchor_a: Vec2, anchor_b: Vec2) -> Self {
+        Self { body_a, body_b, anchor_a, anchor_b, length: None, spring: None, limits: None, collide_connected: false }
     }
 
     /// Sets the rest length.
@@ -91,7 +60,7 @@ impl DistanceJointDesc {
     }
 
     /// Makes the joint a spring of the given frequency (Hz) and damping ratio.
-    /// A frequency of zero exerts no force, which is useful for ropes.
+    /// A frequency of zero exerts no force.
     #[must_use]
     pub fn spring(mut self, hertz: f32, damping_ratio: f32) -> Self {
         self.spring = Some(Spring { hertz, damping_ratio });
@@ -99,16 +68,27 @@ impl DistanceJointDesc {
     }
 
     /// Restricts the distance to `lengths`; only used with a spring.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the joint is added if the range is empty.
     #[must_use]
     pub fn limits(mut self, lengths: RangeInclusive<f32>) -> Self {
         self.limits = Some(lengths);
         self
     }
 
-    /// Sets whether the two bodies still collide with each other.
+    /// Makes the joint a rope: no force while the anchors are closer than `max_length`, and
+    /// they cannot get further apart.
     #[must_use]
-    pub fn collide_connected(mut self, collide: bool) -> Self {
-        self.collide_connected = collide;
+    pub fn rope(self, max_length: f32) -> Self {
+        self.spring(0.0, 0.0).limits(0.0..=max_length)
+    }
+
+    /// Lets the two bodies keep colliding with each other.
+    #[must_use]
+    pub fn collide_connected(mut self) -> Self {
+        self.collide_connected = true;
         self
     }
 }
@@ -117,6 +97,7 @@ impl DistanceJointDesc {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DistanceJoint {
+    pub(super) base: JointBase,
     local_anchor_a: Vec2,
     local_anchor_b: Vec2,
     length: f32,
@@ -133,11 +114,18 @@ pub struct DistanceJoint {
 }
 
 impl DistanceJoint {
-    pub(crate) fn new(desc: &DistanceJointDesc, a: &Body, b: &Body) -> Self {
-        let current_length = a.world_point(desc.local_anchor_a).distance(b.world_point(desc.local_anchor_b));
+    shared_joint_methods!();
+
+    fn base(&self) -> &JointBase {
+        &self.base
+    }
+    pub(super) fn new(desc: &DistanceJointDesc, a: &Body, b: &Body) -> Self {
+        let (local_anchor_a, local_anchor_b) = (a.local_point(desc.anchor_a), b.local_point(desc.anchor_b));
+        let current_length = a.world_point(local_anchor_a).distance(b.world_point(local_anchor_b));
         Self {
-            local_anchor_a: desc.local_anchor_a,
-            local_anchor_b: desc.local_anchor_b,
+            base: JointBase::new(desc.body_a, desc.body_b, desc.collide_connected),
+            local_anchor_a,
+            local_anchor_b,
             length: desc.length.unwrap_or(current_length).max(LINEAR_SLOP),
             spring: desc.spring,
             limits: desc.limits.clone().map(validated_range),

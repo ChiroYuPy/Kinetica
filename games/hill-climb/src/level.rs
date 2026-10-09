@@ -21,7 +21,7 @@ const COIN_SPACING: f32 = 1.2;
 const COINS_PER_ROW: usize = 5;
 const COIN_ROW_SPACING: f32 = 35.0;
 pub const COIN_RADIUS: f32 = 0.3;
-pub const FUEL_HALF_SIZE: f32 = 0.35;
+pub const FUEL_SIZE: f32 = 0.7;
 
 /// Ground height at `x`: a few sine waves, flat at the start and steeper farther on.
 pub fn height(x: f32) -> f32 {
@@ -59,17 +59,13 @@ pub fn build(world: &mut World) -> Level {
     // faces up.
     let mut outline = vec![terrain[0] + vec2(0.0, 10.0)];
     outline.extend(&terrain);
-    world.add_chain(ground, &ChainDesc::new(outline).friction(0.9));
+    world.add_chain(ground, ChainDesc::new(outline).friction(0.9));
 
     let mut fuel_cans = Vec::new();
     let mut x = FIRST_FUEL;
     let mut spacing = FUEL_SPACING;
     while x < TRACK_LENGTH {
-        fuel_cans.push(add_pickup(
-            world,
-            vec2(x, height(x) + 1.0),
-            ColliderDesc::rectangle(FUEL_HALF_SIZE, FUEL_HALF_SIZE),
-        ));
+        fuel_cans.push(add_pickup(world, vec2(x, height(x) + 1.0), ColliderDesc::square(FUEL_SIZE)));
         x += spacing;
         spacing += FUEL_SPACING_GROWTH;
     }
@@ -85,13 +81,11 @@ pub fn build(world: &mut World) -> Level {
     }
 
     let finish_line = world.add_body(BodyDesc::fixed().position(vec2(TRACK_LENGTH, height(TRACK_LENGTH) + 5.0)));
-    let finish = world.add_collider(finish_line, ColliderDesc::rectangle(0.2, 5.0).sensor(true));
+    let finish = world.add_collider(finish_line, ColliderDesc::rectangle(0.4, 10.0).sensor());
     Level { terrain, fuel_cans, coins, finish }
 }
 
 /// A fixed sensor: things pass through it, and the game notices.
 fn add_pickup(world: &mut World, position: Vec2, collider: ColliderDesc) -> BodyHandle {
-    let body = world.add_body(BodyDesc::fixed().position(position));
-    world.add_collider(body, collider.sensor(true));
-    body
+    world.add_body(BodyDesc::fixed().position(position).collider(collider.sensor()))
 }

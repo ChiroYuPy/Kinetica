@@ -131,7 +131,7 @@ mod tests {
         assert!(position(&game).distance(start) < 0.01, "the player slides while idle");
 
         run(&mut game, 30, RIGHT);
-        let speed = game.world.body(game.player.body).unwrap().linear_velocity().x;
+        let speed = game.world[game.player.body].linear_velocity().x;
         assert!((speed - 7.0).abs() < 0.1, "running speed {speed}");
     }
 

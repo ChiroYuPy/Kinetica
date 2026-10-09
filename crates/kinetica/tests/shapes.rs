@@ -15,15 +15,14 @@ fn run(world: &mut World, steps: usize) {
 }
 
 fn body(world: &World, handle: BodyHandle) -> &kinetica::Body {
-    world.body(handle).unwrap()
+    &world[handle]
 }
 
-/// A flat chain from x = -`half_width` to `half_width` at y = 0, made of `segments` pieces.
-fn chain_ground(world: &mut World, half_width: f32, segments: usize) {
+/// A flat chain `width` wide, centered on x = 0 at y = 0, made of `segments` pieces.
+fn chain_ground(world: &mut World, width: f32, segments: usize) {
     let ground = world.add_body(BodyDesc::fixed());
-    let points: Vec<Vec2> =
-        (0..=segments).map(|i| vec2(-half_width + 2.0 * half_width * i as f32 / segments as f32, 0.0)).collect();
-    world.add_chain(ground, &ChainDesc::new(points));
+    let points: Vec<Vec2> = (0..=segments).map(|i| vec2(width * (i as f32 / segments as f32 - 0.5), 0.0)).collect();
+    world.add_chain(ground, ChainDesc::new(points));
 }
 
 // --- Capsule geometry ---
@@ -95,12 +94,18 @@ fn rays_hit_capsules_where_brute_force_does() {
 #[test]
 fn capsule_lying_and_standing_rest_at_the_right_height() {
     let mut world = World::new();
-    let ground = world.add_body(BodyDesc::fixed().position(vec2(0.0, -0.5)));
-    world.add_collider(ground, ColliderDesc::rectangle(20.0, 0.5));
-    let lying = world.add_body(BodyDesc::dynamic().position(vec2(-3.0, 1.0)));
-    world.add_collider(lying, ColliderDesc::capsule(vec2(-1.0, 0.0), vec2(1.0, 0.0), 0.25));
-    let standing = world.add_body(BodyDesc::dynamic().position(vec2(3.0, 1.5)).fixed_rotation(true));
-    world.add_collider(standing, ColliderDesc::vertical_capsule(0.5, 0.25));
+    world.add_body(BodyDesc::fixed().position(vec2(0.0, -0.5)).collider(ColliderDesc::rectangle(40.0, 1.0)));
+    let lying = world.add_body(BodyDesc::dynamic().position(vec2(-3.0, 1.0)).collider(ColliderDesc::capsule(
+        vec2(-1.0, 0.0),
+        vec2(1.0, 0.0),
+        0.25,
+    )));
+    let standing = world.add_body(
+        BodyDesc::dynamic()
+            .position(vec2(3.0, 1.5))
+            .lock_rotation()
+            .collider(ColliderDesc::vertical_capsule(1.5, 0.25)),
+    );
     run(&mut world, 3 * SECOND);
 
     assert!((body(&world, lying).position().y - 0.25).abs() < 0.01, "{}", body(&world, lying).position());
@@ -112,9 +117,10 @@ fn capsule_lying_and_standing_rest_at_the_right_height() {
 #[test]
 fn standing_capsule_tips_over_and_lies_down() {
     let mut world = World::new();
-    chain_ground(&mut world, 10.0, 10);
-    let capsule = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 0.76)).angle(0.05));
-    world.add_collider(capsule, ColliderDesc::vertical_capsule(0.5, 0.25));
+    chain_ground(&mut world, 20.0, 10);
+    let capsule = world.add_body(
+        BodyDesc::dynamic().position(vec2(0.0, 0.76)).angle(0.05).collider(ColliderDesc::vertical_capsule(1.5, 0.25)),
+    );
     run(&mut world, 5 * SECOND);
     let capsule = body(&world, capsule);
     assert!((capsule.angle().abs() - PI / 2.0).abs() < 0.02, "angle {}", capsule.angle());
@@ -124,12 +130,16 @@ fn standing_capsule_tips_over_and_lies_down() {
 #[test]
 fn capsules_stack() {
     let mut world = World::new();
-    chain_ground(&mut world, 10.0, 4);
+    chain_ground(&mut world, 20.0, 4);
     let capsules: Vec<BodyHandle> = (0..5)
         .map(|i| {
-            let capsule = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 0.25 + 0.5 * i as f32)));
-            world.add_collider(capsule, ColliderDesc::capsule(vec2(-1.0, 0.0), vec2(1.0, 0.0), 0.25));
-            capsule
+            world.add_body(
+                BodyDesc::dynamic().position(vec2(0.0, 0.25 + 0.5 * i as f32)).collider(ColliderDesc::capsule(
+                    vec2(-1.0, 0.0),
+                    vec2(1.0, 0.0),
+                    0.25,
+                )),
+            )
         })
         .collect();
     run(&mut world, 4 * SECOND);
@@ -145,18 +155,20 @@ fn capsules_stack() {
 #[test]
 fn segments_collide_on_both_sides() {
     let mut world = World::new();
-    let shelf = world.add_body(BodyDesc::fixed());
-    world.add_collider(shelf, ColliderDesc::segment(vec2(-3.0, 2.0), vec2(3.0, 2.0)));
-    let above = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 4.0)));
-    world.add_collider(above, ColliderDesc::rectangle(0.5, 0.5));
-    let below = world.add_body(BodyDesc::dynamic().position(vec2(1.0, 0.0)).linear_velocity(vec2(0.0, 8.0)));
-    world.add_collider(below, ColliderDesc::circle(0.3));
+    world.add_body(BodyDesc::fixed().collider(ColliderDesc::segment(vec2(-3.0, 2.0), vec2(3.0, 2.0))));
+    let above = world.add_body(BodyDesc::dynamic().position(vec2(0.0, 4.0)).collider(ColliderDesc::square(1.0)));
+    let below = world.add_body(
+        BodyDesc::dynamic()
+            .position(vec2(1.0, 0.0))
+            .linear_velocity(vec2(0.0, 8.0))
+            .collider(ColliderDesc::circle(0.3)),
+    );
     run(&mut world, 2 * SECOND);
 
     assert!((body(&world, above).position().y - 2.5).abs() < 0.01, "{}", body(&world, above).position());
     // The ball bounced off the underside and fell away.
     assert!(body(&world, below).position().y < 1.7);
-    assert_eq!(world.colliders_at_point(vec2(0.0, 2.0), &QueryFilter::new().exclude_dynamic()), []);
+    assert_eq!(world.colliders_at_point(vec2(0.0, 2.0), QueryFilter::new().exclude_dynamic()), []);
 }
 
 // --- Chains ---
@@ -165,9 +177,13 @@ fn segments_collide_on_both_sides() {
 fn box_slides_across_chain_joints_without_catching() {
     let mut world = World::new();
     // Short segments: the box crosses a joint every 0.25 m.
-    chain_ground(&mut world, 20.0, 160);
-    let block = world.add_body(BodyDesc::dynamic().position(vec2(-18.0, 0.25)).linear_velocity(vec2(6.0, 0.0)));
-    world.add_collider(block, ColliderDesc::rectangle(0.25, 0.25).friction(0.0));
+    chain_ground(&mut world, 40.0, 160);
+    let block = world.add_body(
+        BodyDesc::dynamic()
+            .position(vec2(-18.0, 0.25))
+            .linear_velocity(vec2(6.0, 0.0))
+            .collider(ColliderDesc::square(0.5).friction(0.0)),
+    );
     // Let it settle onto the chain first.
     run(&mut world, SECOND / 4);
     for _ in 0..4 * SECOND {
@@ -182,10 +198,14 @@ fn box_slides_across_chain_joints_without_catching() {
 #[test]
 fn chains_are_one_sided() {
     let mut world = World::new();
-    chain_ground(&mut world, 5.0, 5);
+    chain_ground(&mut world, 10.0, 5);
     // Thrown up from below: it passes through, then lands on top.
-    let ball = world.add_body(BodyDesc::dynamic().position(vec2(0.0, -1.0)).linear_velocity(vec2(0.0, 8.0)));
-    world.add_collider(ball, ColliderDesc::circle(0.25));
+    let ball = world.add_body(
+        BodyDesc::dynamic()
+            .position(vec2(0.0, -1.0))
+            .linear_velocity(vec2(0.0, 8.0))
+            .collider(ColliderDesc::circle(0.25)),
+    );
     run(&mut world, 3 * SECOND);
     assert!((body(&world, ball).position().y - 0.25).abs() < 0.01, "{}", body(&world, ball).position());
 }
@@ -196,13 +216,17 @@ fn closed_chain_keeps_balls_inside() {
     let bowl = world.add_body(BodyDesc::fixed());
     // Counter-clockwise: the inside collides.
     let outline: Vec<Vec2> = (0..24).map(|i| 4.0 * Vec2::from_angle(i as f32 / 24.0 * 2.0 * PI)).collect();
-    world.add_chain(bowl, &ChainDesc::new(outline).closed(true).restitution(0.5));
+    world.add_chain(bowl, ChainDesc::new(outline).closed().restitution(0.5));
     let balls: Vec<BodyHandle> = (0..20)
         .map(|i| {
             let position = vec2((i % 5) as f32 - 2.0, (i / 5) as f32 - 1.5);
-            let ball = world.add_body(BodyDesc::dynamic().position(position).linear_velocity(vec2(5.0, 3.0)));
-            world.add_collider(ball, ColliderDesc::circle(0.2));
-            ball
+
+            world.add_body(
+                BodyDesc::dynamic()
+                    .position(position)
+                    .linear_velocity(vec2(5.0, 3.0))
+                    .collider(ColliderDesc::circle(0.2)),
+            )
         })
         .collect();
     run(&mut world, 5 * SECOND);
@@ -223,10 +247,15 @@ fn circle_rolls_over_hills_and_into_the_valley() {
         .collect();
     // The lowest point of the chain, near the valley of the curve at x = -2π.
     let lowest = hills.iter().filter(|point| point.x < 0.0).min_by(|a, b| a.y.total_cmp(&b.y)).unwrap().x;
-    world.add_chain(ground, &ChainDesc::new(hills));
+    world.add_chain(ground, ChainDesc::new(hills));
     // Damped, so it stops rolling back and forth.
-    let ball = world.add_body(BodyDesc::dynamic().position(vec2(-5.0, 2.0)).linear_damping(0.5).angular_damping(0.5));
-    world.add_collider(ball, ColliderDesc::circle(0.3));
+    let ball = world.add_body(
+        BodyDesc::dynamic()
+            .position(vec2(-5.0, 2.0))
+            .linear_damping(0.5)
+            .angular_damping(0.5)
+            .collider(ColliderDesc::circle(0.3)),
+    );
     run(&mut world, 20 * SECOND);
     let x = body(&world, ball).position().x;
     assert!((x - lowest).abs() < 0.05, "the ball rests at x = {x}, not in the valley at {lowest}");
@@ -238,9 +267,9 @@ fn fast_ball_does_not_tunnel_through_a_chain() {
     world.set_gravity(Vec2::ZERO);
     let wall = world.add_body(BodyDesc::fixed());
     // Going up, so it faces -X and blocks things coming from the left.
-    world.add_chain(wall, &ChainDesc::new([vec2(5.0, -3.0), vec2(5.0, 3.0)]));
-    let ball = world.add_body(BodyDesc::dynamic().linear_velocity(vec2(300.0, 0.0)));
-    world.add_collider(ball, ColliderDesc::circle(0.1));
+    world.add_chain(wall, ChainDesc::new([vec2(5.0, -3.0), vec2(5.0, 3.0)]));
+    let ball =
+        world.add_body(BodyDesc::dynamic().linear_velocity(vec2(300.0, 0.0)).collider(ColliderDesc::circle(0.1)));
     run(&mut world, SECOND / 4);
     assert!(body(&world, ball).position().x < 5.0, "{}", body(&world, ball).position());
 }
@@ -248,12 +277,11 @@ fn fast_ball_does_not_tunnel_through_a_chain() {
 #[test]
 fn rays_hit_segments_and_chains_from_both_sides() {
     let mut world = World::new();
-    let walls = world.add_body(BodyDesc::fixed());
-    world.add_collider(walls, ColliderDesc::segment(vec2(2.0, -1.0), vec2(2.0, 1.0)));
-    world.add_chain(walls, &ChainDesc::new([vec2(-2.0, -1.0), vec2(-2.0, 1.0)]));
+    let walls = world.add_body(BodyDesc::fixed().collider(ColliderDesc::segment(vec2(2.0, -1.0), vec2(2.0, 1.0))));
+    world.add_chain(walls, ChainDesc::new([vec2(-2.0, -1.0), vec2(-2.0, 1.0)]));
     let filter = QueryFilter::new();
     for (direction, wall_x) in [(1.0, 2.0), (-1.0, -2.0)] {
-        let hit = world.cast_ray(Vec2::ZERO, vec2(10.0 * direction, 0.0), &filter).unwrap();
+        let hit = world.cast_ray(Vec2::ZERO, vec2(10.0 * direction, 0.0), filter).unwrap();
         assert!((hit.point.x - wall_x).abs() < 1e-5);
         assert!(hit.normal.abs_diff_eq(vec2(-direction, 0.0), 1e-5));
     }
