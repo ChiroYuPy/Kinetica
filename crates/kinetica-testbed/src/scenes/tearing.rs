@@ -1,9 +1,9 @@
 use kinetica::prelude::*;
 use kinetica::{Color, DebugDraw};
-use macroquad::input::{KeyCode, is_key_down};
+use macroquad::input::KeyCode;
 
 use super::cloth::Cloth;
-use super::{Build, Category, Frame, Scene, SceneUpdate, add_ground};
+use super::{Build, Category, Frame, Labels, Scene, SceneUpdate, add_ground};
 use kinetica_macroquad::DebugRenderer;
 
 pub const SCENE: Scene = Scene {
@@ -28,7 +28,7 @@ const CUT_RADIUS: f32 = 0.15;
 const CUT_COLOR: Color = Color::rgb(0.95, 0.95, 0.95);
 const BAR_COLOR: Color = Color::rgb(0.45, 0.45, 0.5);
 
-fn build(world: &mut World) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
     Box::new(build_curtain(world))
 }
 
@@ -60,7 +60,7 @@ struct Tearing {
 
 impl SceneUpdate for Tearing {
     fn update(&mut self, world: &mut World, frame: &Frame) {
-        self.cutting = is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift);
+        self.cutting = frame.is_down(KeyCode::LeftShift) || frame.is_down(KeyCode::RightShift);
         if self.cutting {
             self.curtain.cut(world, frame.mouse, CUT_RADIUS);
         }

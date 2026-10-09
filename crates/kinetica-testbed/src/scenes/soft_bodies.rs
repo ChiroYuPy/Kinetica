@@ -3,7 +3,7 @@ use std::f32::consts::TAU;
 use kinetica::prelude::*;
 use kinetica::{Color, DebugDraw};
 
-use super::{Build, Category, Frame, Scene, SceneUpdate, add_ground};
+use super::{Build, Category, Frame, Labels, Scene, SceneUpdate, add_ground};
 use kinetica_macroquad::DebugRenderer;
 
 pub const SCENE: Scene = Scene {
@@ -75,7 +75,7 @@ impl Blob {
     }
 }
 
-fn build(world: &mut World) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
     add_ground(world, 20.0);
     let level = world.add_body(BodyDesc::fixed());
     // A ramp down to the right, pegs below it, and walls around a pit.
@@ -127,10 +127,10 @@ mod tests {
     fn blobs_squash_on_impact_and_recover() {
         let mut world = World::new();
         let mut scene = Blobs { blobs: Vec::new(), next_spawn: 0.0 };
-        build(&mut world);
+        build(&mut world, &mut Labels::default());
         let mut first_areas = Vec::new();
         for step in 0..20 * 60 {
-            let frame = Frame { time: step as f32 / 60.0, mouse: Vec2::ZERO };
+            let frame = Frame { time: step as f32 / 60.0, ..Frame::default() };
             scene.update(&mut world, &frame);
             world.step(1.0 / 60.0);
             first_areas.push(area(&world, &scene.blobs[0]));

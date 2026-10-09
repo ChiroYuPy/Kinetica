@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use kinetica::prelude::*;
 use kinetica::{Color, SensorEvent};
 
-use super::{Build, Category, Frame, Scene, SceneUpdate, add_ground};
+use super::{Build, Category, Frame, Labels, Scene, SceneUpdate, add_ground};
 use kinetica_macroquad::DebugRenderer;
 
 pub const SCENE: Scene = Scene {
@@ -25,7 +25,7 @@ const FLASH_TIME: f32 = 0.15;
 const SPAWN_PERIOD: f32 = 0.35;
 const MAX_BODIES: usize = 40;
 
-fn build(world: &mut World) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
     add_ground(world, 20.0);
 
     let zones = world.add_body(BodyDesc::fixed());

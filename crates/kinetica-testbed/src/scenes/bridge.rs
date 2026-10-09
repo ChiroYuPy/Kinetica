@@ -1,6 +1,6 @@
 use kinetica::prelude::*;
 
-use super::{Build, Category, Scene, add_ground};
+use super::{Build, Category, Labels, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Bridge",
@@ -15,7 +15,7 @@ const PLANK_COUNT: usize = 40;
 const PLANK_HALF_LENGTH: f32 = 0.25;
 const HEIGHT: f32 = 5.0;
 
-fn build(world: &mut World) {
+fn build(world: &mut World, _labels: &mut Labels) {
     add_ground(world, 40.0);
 
     let span = 2.0 * PLANK_HALF_LENGTH * PLANK_COUNT as f32;

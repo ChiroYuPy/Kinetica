@@ -2,11 +2,11 @@ use std::f32::consts::TAU;
 
 use kinetica::prelude::*;
 
-use super::{Build, Category, Scene};
+use super::{Build, Category, Labels, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Pendulum wave",
-    category: Category::Joints,
+    category: Category::Benchmarks,
     description: "Fifteen pendulums whose periods fit 25, 26… 39 swings in 60 s: they drift in and out of sync.",
     camera_center: vec2(0.0, 5.0),
     view_height: 9.0,
@@ -18,7 +18,7 @@ const FIRST_SWING_COUNT: f32 = 25.0;
 const COUNT: usize = 15;
 const START_ANGLE: f32 = 0.3;
 
-fn build(world: &mut World) {
+fn build(world: &mut World, _labels: &mut Labels) {
     let gravity = -world.gravity().y;
     for i in 0..COUNT {
         // Simple pendulum: period T = 2π√(L/g), so L = g(T/2π)².

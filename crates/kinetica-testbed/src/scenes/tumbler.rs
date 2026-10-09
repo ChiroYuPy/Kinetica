@@ -1,10 +1,10 @@
 use kinetica::prelude::*;
 
-use super::{Build, Category, Scene};
+use super::{Build, Category, Labels, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Tumbler",
-    category: Category::Contacts,
+    category: Category::Benchmarks,
     description: "A slowly rotating kinematic drum full of shapes: many simultaneous contacts.",
     camera_center: vec2(0.0, 0.0),
     view_height: 16.0,
@@ -14,7 +14,7 @@ pub const SCENE: Scene = Scene {
 const HALF_SIZE: f32 = 5.0;
 const WALL: f32 = 0.25;
 
-fn build(world: &mut World) {
+fn build(world: &mut World, _labels: &mut Labels) {
     // One kinematic body made of four wall colliders.
     let drum = world.add_body(BodyDesc::kinematic().angular_velocity(0.3));
     for (center, half_width, half_height) in [

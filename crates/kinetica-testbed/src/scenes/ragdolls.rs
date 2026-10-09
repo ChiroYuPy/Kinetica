@@ -2,7 +2,7 @@ use std::f32::consts::PI;
 
 use kinetica::prelude::*;
 
-use super::{Build, Category, Scene, add_ground};
+use super::{Build, Category, Labels, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Ragdolls",
@@ -14,7 +14,7 @@ pub const SCENE: Scene = Scene {
     build: Build::Static(build),
 };
 
-fn build(world: &mut World) {
+fn build(world: &mut World, _labels: &mut Labels) {
     add_ground(world, 40.0);
 
     // Stairs going down to the right: the outline of eight steps, from the left wall's foot.

@@ -15,6 +15,8 @@ pub enum UiAction {
     TogglePause,
     Step,
     Reset,
+    Save,
+    Restore,
 }
 
 /// What the panel shows, and the display options it edits in place.
@@ -25,6 +27,8 @@ pub struct PanelState<'a> {
     pub stats: Stats,
     pub draw_options: &'a mut DebugDrawOptions,
     pub settings: &'a mut SimulationSettings,
+    /// Size of the saved world, in bytes, if there is one.
+    pub snapshot_size: Option<usize>,
 }
 
 /// World options that survive scene changes.
@@ -32,11 +36,12 @@ pub struct PanelState<'a> {
 pub struct SimulationSettings {
     pub sleeping: bool,
     pub continuous: bool,
+    pub labels: bool,
 }
 
 impl Default for SimulationSettings {
     fn default() -> Self {
-        Self { sleeping: true, continuous: true }
+        Self { sleeping: true, continuous: true, labels: true }
     }
 }
 
@@ -66,6 +71,18 @@ pub fn side_panel(ctx: &egui::Context, state: &mut PanelState) -> Option<UiActio
             }
             if ui.button("Reset").on_hover_text("R").clicked() {
                 action = Some(UiAction::Reset);
+            }
+        });
+        ui.horizontal(|ui| {
+            if ui.button("Save").on_hover_text("F5: serialize the world to JSON").clicked() {
+                action = Some(UiAction::Save);
+            }
+            let restore = ui.add_enabled(state.snapshot_size.is_some(), egui::Button::new("Restore"));
+            if restore.on_hover_text("F9: load the saved world back").clicked() {
+                action = Some(UiAction::Restore);
+            }
+            if let Some(size) = state.snapshot_size {
+                ui.label(egui::RichText::new(format!("{:.0} kB", size as f32 / 1000.0)).weak());
             }
         });
         ui.label(format!("Time: {:.1} s", state.time));
@@ -99,6 +116,7 @@ pub fn side_panel(ctx: &egui::Context, state: &mut PanelState) -> Option<UiActio
         ui.separator();
 
         ui.label("Show");
+        ui.checkbox(&mut state.settings.labels, "Labels");
         let options = &mut *state.draw_options;
         ui.checkbox(&mut options.shapes, "Shapes");
         ui.checkbox(&mut options.joints, "Joints");

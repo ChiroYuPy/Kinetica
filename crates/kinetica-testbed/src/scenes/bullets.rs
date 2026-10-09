@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use kinetica::prelude::*;
 use kinetica::{Color, DebugDraw};
 
-use super::{Build, Category, Frame, Scene, SceneUpdate, add_ground};
+use super::{Build, Category, Frame, Labels, Scene, SceneUpdate, add_ground};
 use kinetica_macroquad::DebugRenderer;
 
 pub const SCENE: Scene = Scene {
@@ -23,7 +23,7 @@ const FIRE_PERIOD: f32 = 0.5;
 const MAX_BALLS: usize = 12;
 const BULLET_COLOR: Color = Color::rgb(0.95, 0.3, 0.3);
 
-fn build(world: &mut World) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
     add_ground(world, 20.0);
     let wall = world.add_body(BodyDesc::fixed().position(vec2(8.0, 3.0)));
     world.add_collider(wall, ColliderDesc::rectangle(0.05, 3.0));
@@ -84,9 +84,9 @@ mod tests {
     #[test]
     fn nothing_passes_the_wall() {
         let mut world = World::new();
-        let mut scene = build(&mut world);
+        let mut scene = build(&mut world, &mut Labels::default());
         for step in 0..10 * 60 {
-            let frame = Frame { time: step as f32 / 60.0, mouse: Vec2::ZERO };
+            let frame = Frame { time: step as f32 / 60.0, ..Frame::default() };
             scene.update(&mut world, &frame);
             world.step(1.0 / 60.0);
             for (_, body) in world.bodies().filter(|(_, body)| body.body_type() == BodyType::Dynamic) {

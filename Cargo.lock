@@ -488,6 +488,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e17592d60ebacc7d5e169f4663c5f84f9161cc90328abcfe8456f41e4dfcb284"
 
 [[package]]
+name = "hill-climb"
+version = "0.1.0"
+dependencies = [
+ "kinetica",
+ "kinetica-macroquad",
+ "macroquad",
+]
+
+[[package]]
 name = "icu_collections"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -695,6 +704,7 @@ dependencies = [
  "kinetica",
  "kinetica-macroquad",
  "macroquad",
+ "serde_json",
 ]
 
 [[package]]

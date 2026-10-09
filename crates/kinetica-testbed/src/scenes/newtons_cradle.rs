@@ -1,10 +1,10 @@
 use kinetica::prelude::*;
 
-use super::{Build, Category, Scene};
+use super::{Build, Category, Labels, Scene};
 
 pub const SCENE: Scene = Scene {
     name: "Newton's cradle",
-    category: Category::Joints,
+    category: Category::Benchmarks,
     description: "Five bouncy, frictionless balls on strings, 5 cm apart. The first one is released.",
     camera_center: vec2(0.0, 5.5),
     view_height: 11.0,
@@ -18,7 +18,7 @@ const RELEASE_ANGLE: f32 = 1.0;
 /// balls when they touch. A small gap makes the impacts happen one after the other.
 const GAP: f32 = 0.05;
 
-fn build(world: &mut World) {
+fn build(world: &mut World, _labels: &mut Labels) {
     for i in 0..5 {
         let pivot_position = vec2((i as f32 - 2.0) * (2.0 * RADIUS + GAP), 9.0);
         let pivot = world.add_body(BodyDesc::fixed().position(pivot_position));

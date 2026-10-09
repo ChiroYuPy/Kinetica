@@ -1,6 +1,6 @@
 use kinetica::prelude::*;
 
-use super::{Build, Category, Scene, add_ground};
+use super::{Build, Category, Labels, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Ropes",
@@ -14,7 +14,7 @@ pub const SCENE: Scene = Scene {
 
 const BEAD_RADIUS: f32 = 0.08;
 
-fn build(world: &mut World) {
+fn build(world: &mut World, _labels: &mut Labels) {
     add_ground(world, 20.0);
     let ceiling = world.add_body(BodyDesc::fixed());
     let rope = |desc: DistanceJointDesc, length: f32| desc.spring(0.0, 0.0).limits(0.0..=length);
@@ -106,7 +106,7 @@ mod tests {
     #[test]
     fn ropes_stay_together() {
         let mut world = World::new();
-        build(&mut world);
+        build(&mut world, &mut Labels::default());
         for _ in 0..20 * 60 {
             world.step(1.0 / 60.0);
             for (_, body) in world.bodies() {

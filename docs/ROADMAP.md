@@ -84,3 +84,7 @@
       terrain, ragdolls and stairs use them.
 - [x] **7. Games**: `kinetica-macroquad` glue crate, `slingshot` and `platformer` games,
       WASM builds of the games and the testbed, optional `serde` feature.
+- [x] **8. Teaching testbed**: one scene per engine concept, in learning order (bodies, shapes
+      and collisions, each joint type, structures built from joints, game features, queries,
+      stability benchmarks), with labels written in the world and save/restore through serde.
+      Full gameplay moved to games: the car became `hill-climb`.

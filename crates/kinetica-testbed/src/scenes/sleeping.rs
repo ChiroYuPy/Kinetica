@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use kinetica::prelude::*;
 
-use super::{Build, Category, Frame, Scene, SceneUpdate, add_ground};
+use super::{Build, Category, Frame, Labels, Scene, SceneUpdate, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Sleeping",
@@ -19,7 +19,7 @@ const DROP_PERIOD: f32 = 2.5;
 /// Old balls are removed, which wakes what they rested on.
 const MAX_BALLS: usize = 4;
 
-fn build(world: &mut World) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
     add_ground(world, 20.0);
     for x in STACK_XS {
         for level in 0..6 {

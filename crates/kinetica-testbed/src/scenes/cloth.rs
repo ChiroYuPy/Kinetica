@@ -3,7 +3,7 @@
 use kinetica::prelude::*;
 use kinetica::{Color, DebugDraw};
 
-use super::{Build, Category, Frame, Scene, SceneUpdate, add_ground};
+use super::{Build, Category, Frame, Labels, Scene, SceneUpdate, add_ground};
 use kinetica_macroquad::DebugRenderer;
 
 pub const SCENE: Scene = Scene {
@@ -170,7 +170,7 @@ impl Cloth {
     }
 }
 
-fn build(world: &mut World) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
     add_ground(world, 30.0);
     let curtain = Cloth::new(
         world,

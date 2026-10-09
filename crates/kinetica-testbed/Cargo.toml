@@ -8,10 +8,11 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-kinetica.workspace = true
+kinetica = { workspace = true, features = ["serde"] }
 kinetica-macroquad.workspace = true
 macroquad.workspace = true
 egui-macroquad.workspace = true
+serde_json = "1.0.151"
 
 [lints]
 workspace = true

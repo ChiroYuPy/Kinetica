@@ -1,7 +1,7 @@
 use kinetica::prelude::*;
 use kinetica::{CollisionLayers, Color};
 
-use super::{Build, Category, Frame, Scene, SceneUpdate};
+use super::{Build, Category, Frame, Labels, Scene, SceneUpdate};
 use kinetica_macroquad::DebugRenderer;
 
 pub const SCENE: Scene = Scene {
@@ -25,7 +25,7 @@ const COLORS: [(u32, Color); 3] =
 const BALL_COUNT: usize = 150;
 const SPAWN_PERIOD: f32 = 0.08;
 
-fn build(world: &mut World) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
     let frame = world.add_body(BodyDesc::fixed());
     let solid = CollisionLayers::new(WORLD, u32::MAX);
     for (half_width, half_height, center) in
@@ -87,9 +87,9 @@ mod tests {
     #[test]
     fn balls_end_up_sorted_by_color() {
         let mut world = World::new();
-        let mut scene = build(&mut world);
+        let mut scene = build(&mut world, &mut Labels::default());
         for step in 0..30 * 60 {
-            let frame = Frame { time: step as f32 / 60.0, mouse: Vec2::ZERO };
+            let frame = Frame { time: step as f32 / 60.0, ..Frame::default() };
             scene.update(&mut world, &frame);
             world.step(1.0 / 60.0);
         }

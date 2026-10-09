@@ -18,13 +18,14 @@ world.step(1.0 / 60.0);
 |-------|------|
 | [`crates/kinetica`](crates/kinetica) | The engine. No rendering or windowing dependency. Optional `serde` feature. |
 | [`crates/kinetica-macroquad`](crates/kinetica-macroquad) | Glue for macroquad games: camera in meters, debug rendering, fixed time step, mouse grab. |
-| [`crates/kinetica-testbed`](crates/kinetica-testbed) | Interactive scenes covering every feature. |
+| [`crates/kinetica-testbed`](crates/kinetica-testbed) | One labeled scene per engine concept, from body types to queries. |
 | [`games/slingshot`](games/slingshot) | Knock down towers with a slingshot. |
 | [`games/platformer`](games/platformer) | Run, jump and collect coins. |
+| [`games/hill-climb`](games/hill-climb) | Drive a sprung car over the hills before the fuel runs out. |
 
 ```sh
 cargo run --release -p kinetica-testbed       # interactive testbed
-cargo run --release -p slingshot              # or platformer
+cargo run --release -p slingshot              # or platformer, hill-climb
 cargo test --workspace --all-features         # all tests
 cargo clippy --workspace --all-targets        # lints (pedantic)
 ```
