@@ -28,7 +28,8 @@ const CUT_RADIUS: f32 = 0.15;
 const CUT_COLOR: Color = Color::rgb(0.95, 0.95, 0.95);
 const BAR_COLOR: Color = Color::rgb(0.45, 0.45, 0.5);
 
-fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
+    labels.at(vec2(0.0, TOP_LEFT.y + 0.4), "Hold Shift and move the mouse across the curtain to cut it");
     Box::new(build_curtain(world))
 }
 
@@ -49,13 +50,15 @@ fn build_curtain(world: &mut World) -> Tearing {
         let point = world.body(particle).map_or(center, kinetica::Body::position);
         world.add_joint(RevoluteJointDesc::at_world_point(world, bar, particle, point));
     }
-    Tearing { curtain, bar, cutting: false }
+    Tearing { curtain, bar, cutting: false, links: world.joint_count() }
 }
 
 struct Tearing {
     curtain: Cloth,
     bar: BodyHandle,
     cutting: bool,
+    /// Joints at the start, to count the broken links.
+    links: usize,
 }
 
 impl SceneUpdate for Tearing {
@@ -73,6 +76,11 @@ impl SceneUpdate for Tearing {
         if self.cutting {
             drawer.draw_circle(frame.mouse, CUT_RADIUS, Rot::IDENTITY, CUT_COLOR);
         }
+    }
+
+    fn labels(&self, world: &World, _frame: &Frame, labels: &mut Labels) {
+        let broken = self.links.saturating_sub(world.joint_count());
+        labels.at(vec2(0.0, 2.4), format!("{BAR_MASS:.0} kg bar\nLinks break above {STRENGTH:.0} N: {broken} broken"));
     }
 }
 

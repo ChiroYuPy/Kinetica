@@ -25,7 +25,7 @@ const FLASH_TIME: f32 = 0.15;
 const SPAWN_PERIOD: f32 = 0.35;
 const MAX_BODIES: usize = 40;
 
-fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
     add_ground(world, 20.0);
 
     let zones = world.add_body(BodyDesc::fixed());
@@ -41,6 +41,8 @@ fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
         arm,
         ColliderDesc::new(kinetica::shape::Circle::new(0.8).with_center(vec2(3.5, 0.0))).sensor(true),
     ));
+
+    labels.above(arm, "Sensor on a kinematic arm");
 
     let flashes = vec![f32::NEG_INFINITY; sensors.len()];
     Box::new(Zones { sensors, flashes, bodies: VecDeque::new(), spawned: 0, next_spawn: 0.0, time: 0.0 })
@@ -100,6 +102,19 @@ impl SceneUpdate for Zones {
             for pair in world.sensor_overlaps(sensor) {
                 drawer.draw_collider(world, pair.visitor, VISITOR_COLOR);
             }
+        }
+    }
+
+    fn labels(&self, world: &World, _frame: &Frame, labels: &mut Labels) {
+        // The fixed zones; the arm's tip moves too much to carry a label.
+        for &sensor in &self.sensors[..2] {
+            let Some(collider) = world.collider(sensor) else { continue };
+            let aabb = collider.aabb();
+            let inside = world.sensor_overlaps(sensor).count();
+            labels.at(
+                vec2(f32::midpoint(aabb.min.x, aabb.max.x), aabb.max.y + 0.15),
+                format!("Fixed sensor: {inside} inside"),
+            );
         }
     }
 }

@@ -32,6 +32,7 @@ struct Blob {
     center: BodyHandle,
     ring: Vec<BodyHandle>,
     color: Color,
+    stiffness: f32,
 }
 
 impl Blob {
@@ -60,7 +61,7 @@ impl Blob {
             link(world, ring[i], ring[(i + 2) % RING_PARTICLES], stiffness);
             link(world, center, ring[i], stiffness);
         }
-        Self { center, ring, color }
+        Self { center, ring, color, stiffness }
     }
 
     /// Fills the blob with triangles from its center, which works however much it is squashed.
@@ -75,7 +76,7 @@ impl Blob {
     }
 }
 
-fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
     add_ground(world, 20.0);
     let level = world.add_body(BodyDesc::fixed());
     // A ramp down to the right, pegs below it, and walls around a pit.
@@ -86,6 +87,7 @@ fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
     for x in [-9.0, 9.0] {
         world.add_collider(level, ColliderDesc::offset_rectangle(0.3, 5.0, vec2(x, 5.0), 0.0));
     }
+    labels.at(vec2(0.0, 10.5), "A ring of balls tied to its center by springs; label: spring frequency");
     Box::new(Blobs { blobs: Vec::new(), next_spawn: 0.0 })
 }
 
@@ -109,6 +111,21 @@ impl SceneUpdate for Blobs {
     fn draw(&self, world: &World, _frame: &Frame, drawer: &mut DebugRenderer) {
         for blob in &self.blobs {
             blob.draw(world, drawer);
+        }
+    }
+
+    fn labels(&self, world: &World, _frame: &Frame, labels: &mut Labels) {
+        for blob in &self.blobs {
+            // Above the highest particle of the ring.
+            let top = blob
+                .ring
+                .iter()
+                .filter_map(|&body| world.body(body))
+                .map(kinetica::Body::position)
+                .max_by(|a, b| a.y.total_cmp(&b.y));
+            if let Some(top) = top {
+                labels.at(vec2(top.x, top.y + 0.3), format!("{} Hz", blob.stiffness));
+            }
         }
     }
 }

@@ -14,7 +14,7 @@ pub const SCENE: Scene = Scene {
     build: Build::Static(build),
 };
 
-fn build(world: &mut World, _labels: &mut Labels) {
+fn build(world: &mut World, labels: &mut Labels) {
     add_ground(world, 40.0);
 
     // Stairs going down to the right: the outline of eight steps, from the left wall's foot.
@@ -29,6 +29,8 @@ fn build(world: &mut World, _labels: &mut Labels) {
     // Consecutive points must differ: each step's left edge starts where the previous one ends.
     outline.dedup();
     world.add_chain(stairs, &ChainDesc::new(outline));
+    labels.at(vec2(-1.5, 1.0), "Stairs: a single chain collider");
+    labels.at(vec2(-3.0, 10.2), "10 capsules, 9 revolute joints with limits\n(knees and elbows bend one way only)");
 
     for (i, x) in [-8.0, -6.5, -5.0].into_iter().enumerate() {
         let floor = 3.2 + 2.5 * i as f32;

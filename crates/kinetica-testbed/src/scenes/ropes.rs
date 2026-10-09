@@ -14,7 +14,7 @@ pub const SCENE: Scene = Scene {
 
 const BEAD_RADIUS: f32 = 0.08;
 
-fn build(world: &mut World, _labels: &mut Labels) {
+fn build(world: &mut World, labels: &mut Labels) {
     add_ground(world, 20.0);
     let ceiling = world.add_body(BodyDesc::fixed());
     let rope = |desc: DistanceJointDesc, length: f32| desc.spring(0.0, 0.0).limits(0.0..=length);
@@ -58,6 +58,11 @@ fn build(world: &mut World, _labels: &mut Labels) {
     let crank = world.add_body(BodyDesc::kinematic().position(pivot).angular_velocity(3.0));
     world.add_collider(crank, ColliderDesc::offset_rectangle(0.4, 0.05, vec2(0.4, 0.0), 0.0));
     add_beads(world, crank, pivot + vec2(0.8, 0.0), pivot + vec2(3.3, 0.0), 12, rope);
+
+    labels.at(vec2(-7.5, 10.5), "Rope: beads joined by\ndistance joints, slack allowed");
+    labels.at(vec2(0.7, 10.5), "Chain: bars joined\nby revolute joints");
+    labels.at(vec2(5.5, 4.6), "Elastic band: beads\njoined by springs");
+    labels.at(pivot + vec2(0.0, 0.6), "Rope on a turning\nkinematic crank");
 }
 
 /// Creates `count` beads from `start` (excluded, where `anchor` holds the first one) to `end`,

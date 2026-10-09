@@ -19,21 +19,26 @@ const DROP_PERIOD: f32 = 2.5;
 /// Old balls are removed, which wakes what they rested on.
 const MAX_BALLS: usize = 4;
 
-fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
     add_ground(world, 20.0);
-    for x in STACK_XS {
-        for level in 0..6 {
-            let block = world.add_body(BodyDesc::dynamic().position(vec2(x, 0.4 + 0.8 * level as f32)));
-            world.add_collider(block, ColliderDesc::rectangle(0.6, 0.4));
-        }
-    }
-    Box::new(Dropper { next_drop: DROP_PERIOD, next_stack: 0, balls: VecDeque::new() })
+    let stacks = STACK_XS.map(|x| {
+        (0..6)
+            .map(|level| {
+                let block = world.add_body(BodyDesc::dynamic().position(vec2(x, 0.4 + 0.8 * level as f32)));
+                world.add_collider(block, ColliderDesc::rectangle(0.6, 0.4));
+                block
+            })
+            .collect()
+    });
+    labels.at(vec2(0.0, 11.0), "Each stack sleeps and wakes on its own");
+    Box::new(Dropper { next_drop: DROP_PERIOD, next_stack: 0, balls: VecDeque::new(), stacks })
 }
 
 struct Dropper {
     next_drop: f32,
     next_stack: usize,
     balls: VecDeque<BodyHandle>,
+    stacks: [Vec<BodyHandle>; STACK_XS.len()],
 }
 
 impl SceneUpdate for Dropper {
@@ -53,6 +58,13 @@ impl SceneUpdate for Dropper {
             && let Some(oldest) = self.balls.pop_front()
         {
             world.remove_body(oldest);
+        }
+    }
+
+    fn labels(&self, world: &World, _frame: &Frame, labels: &mut Labels) {
+        for (x, stack) in STACK_XS.into_iter().zip(&self.stacks) {
+            let asleep = stack.iter().filter_map(|&block| world.body(block)).all(kinetica::Body::is_sleeping);
+            labels.at(vec2(x, 5.4), if asleep { "asleep" } else { "awake" });
         }
     }
 }

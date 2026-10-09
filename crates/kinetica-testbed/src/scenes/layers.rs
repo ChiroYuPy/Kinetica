@@ -25,7 +25,7 @@ const COLORS: [(u32, Color); 3] =
 const BALL_COUNT: usize = 150;
 const SPAWN_PERIOD: f32 = 0.08;
 
-fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
     let frame = world.add_body(BodyDesc::fixed());
     let solid = CollisionLayers::new(WORLD, u32::MAX);
     for (half_width, half_height, center) in
@@ -43,6 +43,9 @@ fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
             ColliderDesc::offset_rectangle(6.0, 0.12, vec2(0.0, y), angle).layers(CollisionLayers::new(WORLD, layer));
         shelves.push((world.add_collider(frame, shelf), color));
     }
+    labels.at(vec2(0.0, 7.6), "Red shelf: collides with red only");
+    labels.at(vec2(0.0, 4.1), "Green shelf: collides with green only");
+    labels.at(vec2(0.0, 11.2), "Balls collide with their own color and the walls");
     Box::new(Sorter { shelves, balls: Vec::new(), next_spawn: 0.0 })
 }
 

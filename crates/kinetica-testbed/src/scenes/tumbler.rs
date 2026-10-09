@@ -14,7 +14,7 @@ pub const SCENE: Scene = Scene {
 const HALF_SIZE: f32 = 5.0;
 const WALL: f32 = 0.25;
 
-fn build(world: &mut World, _labels: &mut Labels) {
+fn build(world: &mut World, labels: &mut Labels) {
     // One kinematic body made of four wall colliders.
     let drum = world.add_body(BodyDesc::kinematic().angular_velocity(0.3));
     for (center, half_width, half_height) in [
@@ -25,6 +25,8 @@ fn build(world: &mut World, _labels: &mut Labels) {
     ] {
         world.add_collider(drum, ColliderDesc::offset_rectangle(half_width, half_height, center, 0.0));
     }
+
+    labels.at(vec2(0.0, 7.3), "One kinematic body, four colliders, turning at 0.3 rad/s");
 
     let per_side = 12;
     let spacing = 2.0 * (HALF_SIZE - 1.0) / (per_side - 1) as f32;

@@ -170,7 +170,7 @@ impl Cloth {
     }
 }
 
-fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
     add_ground(world, 30.0);
     let curtain = Cloth::new(
         world,
@@ -182,6 +182,8 @@ fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
     );
     let hammock =
         Cloth::new(world, vec2(1.0, 7.0), (34, 4), (0.3, 1.15), |column, _| column == 0 || column == 33, HAMMOCK_COLOR);
+    labels.at(vec2(-6.5, 5.8), "Curtain: top particles fixed,\nwind applied as a force");
+    labels.at(vec2(6.0, 7.5), "Hammock: fixed at both ends,\nlinks 15% longer than the spacing");
     Box::new(ClothDemo { curtain, hammock, drops: Vec::new(), next_drop: 1.0 })
 }
 

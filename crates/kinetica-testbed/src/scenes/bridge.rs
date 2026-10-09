@@ -15,7 +15,7 @@ const PLANK_COUNT: usize = 40;
 const PLANK_HALF_LENGTH: f32 = 0.25;
 const HEIGHT: f32 = 5.0;
 
-fn build(world: &mut World, _labels: &mut Labels) {
+fn build(world: &mut World, labels: &mut Labels) {
     add_ground(world, 40.0);
 
     let span = 2.0 * PLANK_HALF_LENGTH * PLANK_COUNT as f32;
@@ -37,6 +37,10 @@ fn build(world: &mut World, _labels: &mut Labels) {
     }
     let right_anchor = world.add_body(BodyDesc::fixed().position(hinge));
     world.add_joint(RevoluteJointDesc::at_world_point(world, previous, right_anchor, hinge));
+    labels.at(
+        vec2(0.0, HEIGHT + 4.3),
+        "40 planks, each pinned to the next by a revolute joint,\nand to a fixed body at both ends",
+    );
 
     // Load.
     for i in 0..6 {

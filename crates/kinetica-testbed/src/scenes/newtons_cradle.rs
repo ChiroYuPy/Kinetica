@@ -18,7 +18,7 @@ const RELEASE_ANGLE: f32 = 1.0;
 /// balls when they touch. A small gap makes the impacts happen one after the other.
 const GAP: f32 = 0.05;
 
-fn build(world: &mut World, _labels: &mut Labels) {
+fn build(world: &mut World, labels: &mut Labels) {
     for i in 0..5 {
         let pivot_position = vec2((i as f32 - 2.0) * (2.0 * RADIUS + GAP), 9.0);
         let pivot = world.add_body(BodyDesc::fixed().position(pivot_position));
@@ -28,4 +28,6 @@ fn build(world: &mut World, _labels: &mut Labels) {
         world.add_collider(ball, ColliderDesc::circle(RADIUS).restitution(1.0).friction(0.0));
         world.add_joint(DistanceJointDesc::between_world_points(world, pivot, ball, pivot_position, ball_position));
     }
+    labels.at(vec2(0.0, 9.4), "Restitution 1, friction 0, strings are distance joints");
+    labels.at(vec2(0.0, 3.2), "A 5 cm gap makes the impacts happen one after the other");
 }

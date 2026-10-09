@@ -23,7 +23,7 @@ const FIRE_PERIOD: f32 = 0.5;
 const MAX_BALLS: usize = 12;
 const BULLET_COLOR: Color = Color::rgb(0.95, 0.3, 0.3);
 
-fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
     add_ground(world, 20.0);
     let wall = world.add_body(BodyDesc::fixed().position(vec2(8.0, 3.0)));
     world.add_collider(wall, ColliderDesc::rectangle(0.05, 3.0));
@@ -36,6 +36,9 @@ fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
         world.add_collider(plate, ColliderDesc::rectangle(0.04, 1.5).density(5.0));
         world.add_joint(RevoluteJointDesc::at_world_point(world, support, plate, hinge));
     }
+    labels.at(vec2(6.8, 6.4), "Thin fixed wall:\nstops every ball");
+    labels.at(vec2(1.0, 4.4), "Thin moving plates: only bullets (red) hit them");
+    labels.at(CANNON + vec2(0.0, 0.8), "150 m/s");
     Box::new(Cannon { next_shot: 0.5, shots: 0, balls: VecDeque::new() })
 }
 
