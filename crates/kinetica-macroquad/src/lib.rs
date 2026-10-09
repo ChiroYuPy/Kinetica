@@ -6,7 +6,8 @@
 //! - [`WorldCamera`]: a camera in meters with the Y axis up, zoom, pan and target following;
 //! - [`DebugRenderer`]: draws a world, or single colliders, with macroquad shapes;
 //! - [`FixedTimestep`]: steps the world at a fixed rate whatever the frame rate;
-//! - [`MouseGrab`]: drags dynamic bodies with the mouse.
+//! - [`MouseGrab`]: drags dynamic bodies with the mouse;
+//! - [`window_conf`] and [`draw_centered_text`]: the window, and messages on it.
 //!
 //! ```no_run
 //! use kinetica::prelude::*;
@@ -39,8 +40,10 @@ mod camera;
 mod grab;
 mod render;
 mod timestep;
+mod window;
 
 pub use camera::WorldCamera;
 pub use grab::MouseGrab;
 pub use render::DebugRenderer;
 pub use timestep::FixedTimestep;
+pub use window::{draw_centered_text, window_conf};

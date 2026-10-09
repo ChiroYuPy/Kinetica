@@ -85,7 +85,7 @@ impl Game {
     }
 
     fn handle_sensors(&mut self) {
-        let car_bodies = self.car.bodies(&self.world);
+        let car_bodies = self.car.bodies();
         let entered: Vec<_> = self
             .world
             .sensor_events()
@@ -96,14 +96,19 @@ impl Game {
             })
             .collect();
         for pair in entered {
+            let by_the_car = car_bodies.contains(&pair.visitor_body);
             if pair.sensor == self.car.head {
                 // The head is a sensor too: anything solid that is not part of the car hurts.
-                if !car_bodies.contains(&pair.visitor_body) {
+                if !by_the_car {
                     self.state = State::Crashed;
                 }
-            } else if !car_bodies.contains(&pair.visitor_body) {
-                // Pickups only react to the car.
-            } else if let Some(index) = self.level.fuel_cans.iter().position(|&can| can == pair.sensor_body) {
+                continue;
+            }
+            // Pickups only react to the car.
+            if !by_the_car {
+                continue;
+            }
+            if let Some(index) = self.level.fuel_cans.iter().position(|&can| can == pair.sensor_body) {
                 self.world.remove_body(self.level.fuel_cans.remove(index));
                 self.fuel = FULL_TANK;
             } else if let Some(index) = self.level.coins.iter().position(|&coin| coin == pair.sensor_body) {
@@ -213,7 +218,7 @@ mod tests {
         let mut game = Game::new();
         // Turn the whole car upside down around its chassis, a little above the ground.
         let pivot = game.car.position(&game.world);
-        for body in game.car.bodies(&game.world) {
+        for body in game.car.bodies() {
             let body = &mut game.world[body];
             let offset = body.position() - pivot;
             body.set_position(pivot + vec2(0.0, 1.0) - offset);

@@ -26,6 +26,7 @@ const CAST_ORIGIN: Vec2 = vec2(-8.0, 9.0);
 const FOUND_COLOR: Color = Color::new(1.0, 0.85, 0.3, 1.0);
 const PROBE_COLOR: Color = Color::new(0.45, 0.75, 0.95, 1.0);
 const NORMAL_COLOR: Color = Color::new(0.35, 0.85, 0.45, 1.0);
+const BOX_COLOR: Color = Color::new(0.9, 0.3, 0.9, 1.0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Query {
@@ -97,10 +98,10 @@ impl SceneUpdate for QueryDemo {
             }
             Query::Area => {
                 let area = Aabb::new(mouse - AREA_SIZE / 2.0, mouse + AREA_SIZE / 2.0);
-                draw_aabb(drawer, &area, PROBE_COLOR);
+                drawer.draw_aabb(&area, PROBE_COLOR);
                 let found = world.colliders_in_aabb(&area, filter);
                 for &collider in &found {
-                    draw_aabb(drawer, &world[collider].aabb(), Color::new(0.9, 0.3, 0.9, 1.0));
+                    drawer.draw_aabb(&world[collider].aabb(), BOX_COLOR);
                 }
                 found
             }
@@ -127,12 +128,5 @@ impl SceneUpdate for QueryDemo {
 
     fn labels(&self, _world: &World, _frame: &Frame, labels: &mut Labels) {
         labels.at(vec2(0.0, 10.0), self.query.description());
-    }
-}
-
-fn draw_aabb(drawer: &mut DebugRenderer, aabb: &Aabb, color: Color) {
-    let corners = [aabb.min, vec2(aabb.max.x, aabb.min.y), aabb.max, vec2(aabb.min.x, aabb.max.y)];
-    for (i, &corner) in corners.iter().enumerate() {
-        drawer.draw_segment(corner, corners[(i + 1) % 4], color);
     }
 }

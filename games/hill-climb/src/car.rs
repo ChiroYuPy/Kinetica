@@ -41,6 +41,8 @@ pub struct Controls {
 pub struct Car {
     pub chassis: BodyHandle,
     pub wheels: [BodyHandle; 2],
+    /// What each wheel turns on: it slides up and down in the chassis, on the suspension.
+    hubs: [BodyHandle; 2],
     /// A sensor: the car crashes when it touches the ground.
     pub head: ColliderHandle,
     motors: [JointHandle<RevoluteJoint>; 2],
@@ -61,9 +63,7 @@ impl Car {
         let clearance = AXLE_DROP - SUSPENSION_TRAVEL.end() - WHEEL_RADIUS - CHASSIS_HEIGHT / 2.0;
         debug_assert!(clearance > 0.0, "fully compressed, the wheels would hit the chassis");
 
-        let mut wheels = Vec::new();
-        let mut motors = Vec::new();
-        for side in [-1.0, 1.0] {
+        let [rear, front] = [-1.0, 1.0].map(|side| {
             let axle = position + vec2(side * AXLE_X, -AXLE_DROP);
             // The hub slides vertically in the chassis, pushed down by a spring…
             let hub = world
@@ -74,10 +74,10 @@ impl Car {
             let wheel = world.add_body(
                 BodyDesc::dynamic().position(axle).collider(ColliderDesc::circle(WHEEL_RADIUS).friction(1.2)),
             );
-            motors.push(world.add_joint(RevoluteJointDesc::new(hub, wheel, axle).motor(0.0, IDLE_TORQUE)));
-            wheels.push(wheel);
-        }
-        Self { chassis, wheels: [wheels[0], wheels[1]], head, motors: [motors[0], motors[1]] }
+            let motor = world.add_joint(RevoluteJointDesc::new(hub, wheel, axle).motor(0.0, IDLE_TORQUE));
+            (hub, wheel, motor)
+        });
+        Self { chassis, wheels: [rear.1, front.1], hubs: [rear.0, front.0], head, motors: [rear.2, front.2] }
     }
 
     /// Applies the controls; call before every step.
@@ -116,10 +116,8 @@ impl Car {
     }
 
     /// Every body of the car, to tell its colliders apart from the rest.
-    pub fn bodies(&self, world: &World) -> Vec<BodyHandle> {
-        let mut bodies = vec![self.chassis];
-        bodies.extend(self.wheels);
-        bodies.extend(self.motors.map(|joint| world[joint].body_a()));
-        bodies
+    pub fn bodies(&self) -> [BodyHandle; 5] {
+        let ([rear, front], [rear_hub, front_hub]) = (self.wheels, self.hubs);
+        [self.chassis, rear, front, rear_hub, front_hub]
     }
 }

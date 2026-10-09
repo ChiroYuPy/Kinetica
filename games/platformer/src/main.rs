@@ -4,11 +4,11 @@ mod game;
 mod level;
 mod player;
 
-use kinetica_macroquad::{DebugRenderer, FixedTimestep, WorldCamera};
+use kinetica_macroquad::{DebugRenderer, FixedTimestep, WorldCamera, draw_centered_text};
 use macroquad::prelude::*;
 
 use crate::game::{Game, State};
-use crate::level::COIN_RADIUS;
+use crate::level::{COIN_RADIUS, GOAL_HEIGHT};
 use crate::player::Input;
 
 const SKY: Color = Color::new(0.12, 0.15, 0.22, 1.0);
@@ -21,16 +21,13 @@ const PLAYER: Color = Color::new(0.95, 0.45, 0.35, 1.0);
 const COIN: Color = Color::new(1.0, 0.85, 0.25, 1.0);
 const SPIKES: Color = Color::new(0.8, 0.8, 0.85, 1.0);
 const FLAG: Color = Color::new(0.95, 0.3, 0.3, 1.0);
+/// Width of one spike, in meters.
+const SPIKE_WIDTH: f32 = 0.4;
+/// How far the ground is drawn below the lowest point of the level, in meters.
+const GROUND_BOTTOM: f32 = -30.0;
 
 fn window_conf() -> Conf {
-    Conf {
-        window_title: "Platformer".to_owned(),
-        window_width: 1280,
-        window_height: 720,
-        high_dpi: true,
-        sample_count: 4,
-        ..Conf::default()
-    }
+    kinetica_macroquad::window_conf("Platformer")
 }
 
 struct App {
@@ -78,23 +75,25 @@ impl App {
 
         // Solid rock beyond the walls at both ends.
         if let (Some(first), Some(last)) = (level.terrain.first(), level.terrain.last()) {
-            draw_rectangle(first.x - 50.0, -30.0, 50.0, 80.0, GROUND);
-            draw_rectangle(last.x, -30.0, 50.0, 80.0, GROUND);
+            draw_rectangle(first.x - 50.0, GROUND_BOTTOM, 50.0, 80.0, GROUND);
+            draw_rectangle(last.x, GROUND_BOTTOM, 50.0, 80.0, GROUND);
         }
         // The ground, filled down to well below the screen.
         for pair in level.terrain.windows(2) {
             let (a, b) = (pair[0], pair[1]);
-            let bottom = -30.0;
-            draw_triangle(a, b, vec2(b.x, bottom), GROUND);
-            draw_triangle(a, vec2(b.x, bottom), vec2(a.x, bottom), GROUND);
+            draw_triangle(a, b, vec2(b.x, GROUND_BOTTOM), GROUND);
+            draw_triangle(a, vec2(b.x, GROUND_BOTTOM), vec2(a.x, GROUND_BOTTOM), GROUND);
             draw_line(a.x, a.y, b.x, b.y, 0.08, GROUND_EDGE);
         }
+        // A row of spikes filling each spike sensor.
         for &spikes in &level.spikes {
             let aabb = world[spikes].aabb();
-            let mut x = aabb.min.x;
-            while x + 0.4 <= aabb.max.x + 0.01 {
-                draw_triangle(vec2(x, aabb.min.y), vec2(x + 0.4, aabb.min.y), vec2(x + 0.2, aabb.max.y), SPIKES);
-                x += 0.4;
+            let mut left = aabb.min.x;
+            // A little tolerance, so rounding errors do not drop the last spike.
+            while left + SPIKE_WIDTH <= aabb.max.x + 0.01 {
+                let tip = vec2(left + SPIKE_WIDTH / 2.0, aabb.max.y);
+                draw_triangle(vec2(left, aabb.min.y), vec2(left + SPIKE_WIDTH, aabb.min.y), tip, SPIKES);
+                left += SPIKE_WIDTH;
             }
         }
         for &platform in &level.platforms {
@@ -112,12 +111,11 @@ impl App {
             let width = COIN_RADIUS * (3.0 * game.time + center.x).cos().abs().max(0.15);
             draw_ellipse(center.x, center.y, width, COIN_RADIUS, 0.0, COIN);
         }
-        if let Some(goal) = level.goal {
-            let bottom = world[goal].aabb().min;
-            draw_line(bottom.x, bottom.y, bottom.x, bottom.y + 3.0, 0.1, WHITE);
-            let top = bottom + vec2(0.0, 3.0);
-            draw_triangle(top, top - vec2(0.0, 0.8), top + vec2(1.0, -0.4), FLAG);
-        }
+        // A flag on a pole at the left edge of the goal.
+        let bottom = world[level.goal].aabb().min;
+        let top = bottom + vec2(0.0, GOAL_HEIGHT);
+        draw_line(bottom.x, bottom.y, top.x, top.y, 0.1, WHITE);
+        draw_triangle(top, top - vec2(0.0, 0.8), top + vec2(1.0, -0.4), FLAG);
         // The body only, not the feet sensor.
         for &collider in world[game.player.body].colliders() {
             if !world[collider].is_sensor() {
@@ -153,9 +151,7 @@ impl App {
                 .map(|_| format!("Collect every coin first: {} left", game.coin_count - game.coins_collected)),
         };
         if let Some(message) = message {
-            let size: u16 = 40;
-            let width = measure_text(&message, None, size, 1.0).width;
-            draw_text(&message, (screen_width() - width) / 2.0, screen_height() / 3.0, f32::from(size), COIN);
+            draw_centered_text(&message, screen_height() / 3.0, 40, COIN);
         }
     }
 }

@@ -13,6 +13,10 @@ const LAUNCH_SPEED_PER_METER: f32 = 9.0;
 pub const PROJECTILE_RADIUS: f32 = 0.3;
 /// A target hit at this speed, in m/s, pops.
 const POP_IMPACT_SPEED: f32 = 2.0;
+/// A target below this height fell off the world, and pops too.
+const FALL_LIMIT: f32 = -5.0;
+/// How long a popped target stays drawn, in seconds.
+pub const POP_DURATION: f32 = 0.5;
 const TIME_STEP: f32 = 1.0 / 60.0;
 /// Below this speed, in m/s, everything counts as settled.
 const SETTLED_SPEED: f32 = 0.1;
@@ -29,6 +33,14 @@ pub enum State {
     Lost,
 }
 
+/// Where a target popped, for a small effect.
+#[derive(Debug, Clone, Copy)]
+pub struct Pop {
+    pub position: Vec2,
+    /// Seconds since it popped.
+    pub age: f32,
+}
+
 #[derive(Clone)]
 pub struct Game {
     pub world: World,
@@ -38,8 +50,8 @@ pub struct Game {
     pub shots_left: u32,
     pub score: u32,
     pub state: State,
-    /// Positions where targets popped recently, with their age, for a small effect.
-    pub pops: Vec<(Vec2, f32)>,
+    /// Targets popped recently.
+    pub pops: Vec<Pop>,
 }
 
 impl Game {
@@ -61,6 +73,14 @@ impl Game {
 
     pub fn has_next_level(&self) -> bool {
         self.level_index + 1 < LEVEL_COUNT
+    }
+
+    /// The next level, keeping the score; after the last one, a new game from the first.
+    pub fn next_level(&self) -> Self {
+        if !self.has_next_level() {
+            return Self::new(0);
+        }
+        Self { score: self.score, ..Self::new(self.level_index + 1) }
     }
 
     /// Launch velocity for the projectile pulled to `pull_point`.
@@ -100,9 +120,9 @@ impl Game {
         self.world.step(TIME_STEP);
         self.pop_hit_targets();
         for pop in &mut self.pops {
-            pop.1 += TIME_STEP;
+            pop.age += TIME_STEP;
         }
-        self.pops.retain(|(_, age)| *age < 0.5);
+        self.pops.retain(|pop| pop.age < POP_DURATION);
         self.update_state();
     }
 
@@ -120,9 +140,9 @@ impl Game {
         let Self { world, level, pops, score, .. } = self;
         level.targets.retain(|&target| {
             let position = world[target].position();
-            let popped = hard_hits.iter().any(|pair| pair.involves_body(target)) || position.y < -5.0;
+            let popped = hard_hits.iter().any(|pair| pair.involves_body(target)) || position.y < FALL_LIMIT;
             if popped {
-                pops.push((position, 0.0));
+                pops.push(Pop { position, age: 0.0 });
                 world.remove_body(target);
                 *score += POINTS_PER_TARGET;
             }

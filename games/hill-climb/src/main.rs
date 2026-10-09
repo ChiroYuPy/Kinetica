@@ -6,7 +6,7 @@ mod game;
 mod level;
 
 use kinetica::shape::Shape;
-use kinetica_macroquad::{DebugRenderer, FixedTimestep, WorldCamera};
+use kinetica_macroquad::{DebugRenderer, FixedTimestep, WorldCamera, draw_centered_text};
 use macroquad::prelude::*;
 
 use crate::car::{Controls, HEAD_CENTER, HEAD_RADIUS, WHEEL_RADIUS};
@@ -33,14 +33,7 @@ const GROUND_DEPTH: f32 = 30.0;
 const LOOK_AHEAD: f32 = 4.0;
 
 fn window_conf() -> Conf {
-    Conf {
-        window_title: "Hill Climb".to_owned(),
-        window_width: 1280,
-        window_height: 720,
-        high_dpi: true,
-        sample_count: 4,
-        ..Conf::default()
-    }
+    kinetica_macroquad::window_conf("Hill Climb")
 }
 
 struct App {
@@ -223,10 +216,8 @@ impl App {
             State::Finished => Some("You reached the end of the track!"),
         };
         if let Some(message) = message {
-            for (text, size, y) in [(message, 48, 0.35), ("Press Enter to drive again", 28, 0.43)] {
-                let width = measure_text(text, None, size, 1.0).width;
-                draw_text(text, (screen_width() - width) / 2.0, screen_height() * y, f32::from(size), WHITE);
-            }
+            draw_centered_text(message, screen_height() * 0.35, 48, WHITE);
+            draw_centered_text("Press Enter to drive again", screen_height() * 0.43, 28, WHITE);
         }
     }
 }

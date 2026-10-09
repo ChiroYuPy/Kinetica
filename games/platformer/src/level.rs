@@ -19,17 +19,20 @@ impl MovingPlatform {
     pub fn update(&mut self, world: &mut World) {
         let body = &mut world[self.body];
         let target = if self.forward { self.to } else { self.from };
-        let offset = target - body.position();
-        let direction = (self.to - self.from).normalize() * if self.forward { 1.0 } else { -1.0 };
-        if offset.dot(direction) <= 0.0 {
+        if (target - body.position()).dot(self.direction()) <= 0.0 {
             self.forward = !self.forward;
         }
-        let direction = (self.to - self.from).normalize() * if self.forward { 1.0 } else { -1.0 };
-        body.set_linear_velocity(self.speed * direction);
+        body.set_linear_velocity(self.speed * self.direction());
+    }
+
+    /// The unit vector it currently moves along.
+    fn direction(&self) -> Vec2 {
+        let forward = (self.to - self.from).normalize();
+        if self.forward { forward } else { -forward }
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Level {
     pub spawn: Vec2,
     /// The ground outline, to draw it filled.
@@ -40,20 +43,20 @@ pub struct Level {
     /// Each coin is a fixed body holding a sensor.
     pub coins: Vec<BodyHandle>,
     pub spikes: Vec<ColliderHandle>,
-    pub goal: Option<ColliderHandle>,
+    pub goal: ColliderHandle,
 }
 
 pub const COIN_RADIUS: f32 = 0.3;
+pub const GOAL_HEIGHT: f32 = 3.0;
 /// Below this height, the player fell out of the level.
 pub const FALL_LIMIT: f32 = -8.0;
 
 pub fn build(world: &mut World) -> Level {
-    let mut level = Level { spawn: vec2(-6.0, 1.0), ..Level::default() };
     let fixed = world.add_body(BodyDesc::fixed());
 
     // Terrain, listed left to right so it faces up, walled at both ends. A pit lined with
     // spikes splits it in two.
-    level.terrain = vec![
+    let terrain = vec![
         vec2(-10.0, 12.0),
         vec2(-10.0, 0.0),
         vec2(2.0, 0.0),
@@ -69,34 +72,35 @@ pub fn build(world: &mut World) -> Level {
         vec2(52.0, 0.5),
         vec2(52.0, 12.0),
     ];
-    world.add_chain(fixed, ChainDesc::new(level.terrain.clone()).friction(0.8));
-    let spikes = ColliderDesc::rectangle(8.0, 0.6).offset(vec2(12.0, -3.7)).sensor();
-    level.spikes.push(world.add_collider(fixed, spikes));
+    world.add_chain(fixed, ChainDesc::new(terrain.clone()).friction(0.8));
+    let spikes = vec![world.add_collider(fixed, ColliderDesc::rectangle(8.0, 0.6).offset(vec2(12.0, -3.7)).sensor())];
 
     // One-way platforms.
-    for (center, width) in [
+    let platforms = [
         (vec2(-2.0, 2.5), 3.0),
         (vec2(1.5, 4.5), 3.0),
         (vec2(-3.0, 6.5), 2.4),
         (vec2(30.0, 6.0), 4.0),
         (vec2(36.0, 4.5), 3.0),
-    ] {
+    ]
+    .map(|(center, width)| {
         let platform = ColliderDesc::rectangle(width, 0.24).offset(center).one_way(Vec2::Y).friction(0.8);
-        level.platforms.push(world.add_collider(fixed, platform));
-    }
+        world.add_collider(fixed, platform)
+    });
 
     // A ferry over the pit, and an elevator up to the high platform.
-    for (from, to, speed) in [(vec2(9.5, 1.0), vec2(14.5, 1.0), 2.0), (vec2(24.0, 3.5), vec2(24.0, 7.0), 1.5)] {
-        let platform = ColliderDesc::rectangle(2.4, 0.3).friction(0.8);
-        let body = world.add_body(BodyDesc::kinematic().position(from).collider(platform));
-        level.moving_platforms.push(MovingPlatform { body, from, to, speed, forward: true });
-    }
+    let moving_platforms =
+        [(vec2(9.5, 1.0), vec2(14.5, 1.0), 2.0), (vec2(24.0, 3.5), vec2(24.0, 7.0), 1.5)].map(|(from, to, speed)| {
+            let platform = ColliderDesc::rectangle(2.4, 0.3).friction(0.8);
+            let body = world.add_body(BodyDesc::kinematic().position(from).collider(platform));
+            MovingPlatform { body, from, to, speed, forward: true }
+        });
 
     // Crates to push around or climb on.
-    for position in [vec2(19.0, 1.5), vec2(19.0, 2.5), vec2(44.0, 1.0)] {
+    let crates = [vec2(19.0, 1.5), vec2(19.0, 2.5), vec2(44.0, 1.0)].map(|position| {
         let crate_box = ColliderDesc::square(0.9).friction(0.8);
-        level.crates.push(world.add_body(BodyDesc::dynamic().position(position).collider(crate_box)));
-    }
+        world.add_body(BodyDesc::dynamic().position(position).collider(crate_box))
+    });
 
     let coin_positions = [
         vec2(-2.0, 3.5),
@@ -109,12 +113,21 @@ pub fn build(world: &mut World) -> Level {
         vec2(36.0, 5.5),
         vec2(46.0, 1.5),
     ];
-    for position in coin_positions {
-        let coin = BodyDesc::fixed().position(position).collider(ColliderDesc::circle(COIN_RADIUS).sensor());
-        level.coins.push(world.add_body(coin));
-    }
+    let coins = coin_positions.map(|position| {
+        world.add_body(BodyDesc::fixed().position(position).collider(ColliderDesc::circle(COIN_RADIUS).sensor()))
+    });
 
-    let goal = ColliderDesc::rectangle(1.0, 3.0).offset(vec2(50.0, 2.0)).sensor();
-    level.goal = Some(world.add_collider(fixed, goal));
-    level
+    let goal = ColliderDesc::rectangle(1.0, GOAL_HEIGHT).offset(vec2(50.0, 0.5 + GOAL_HEIGHT / 2.0)).sensor();
+    let goal = world.add_collider(fixed, goal);
+
+    Level {
+        spawn: vec2(-6.0, 1.0),
+        terrain,
+        platforms: platforms.to_vec(),
+        moving_platforms: moving_platforms.to_vec(),
+        crates: crates.to_vec(),
+        coins: coins.to_vec(),
+        spikes,
+        goal,
+    }
 }

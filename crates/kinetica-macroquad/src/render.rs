@@ -1,6 +1,6 @@
 //! Draws Kinetica worlds with macroquad shapes.
 
-use kinetica::math::{Rot, Vec2};
+use kinetica::math::{Aabb, Rot, Vec2};
 use kinetica::{BodyHandle, ColliderHandle, DebugDraw, DebugDrawOptions, World};
 use macroquad::color::Color;
 use macroquad::shapes;
@@ -79,6 +79,14 @@ impl DebugRenderer {
     /// Draws a capsule: every point within `radius` of the segment from `start` to `end`.
     pub fn draw_capsule(&mut self, start: Vec2, end: Vec2, radius: f32, color: Color) {
         DebugDraw::draw_capsule(self, start, end, radius, physics_color(color));
+    }
+
+    /// Draws the outline of a box.
+    pub fn draw_aabb(&mut self, aabb: &Aabb, color: Color) {
+        let corners = [aabb.min, Vec2::new(aabb.max.x, aabb.min.y), aabb.max, Vec2::new(aabb.min.x, aabb.max.y)];
+        for (i, &corner) in corners.iter().enumerate() {
+            self.draw_segment(corner, corners[(i + 1) % corners.len()], color);
+        }
     }
 
     /// Draws a line segment.

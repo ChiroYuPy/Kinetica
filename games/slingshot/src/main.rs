@@ -4,10 +4,10 @@ mod game;
 mod level;
 
 use kinetica::prelude::*;
-use kinetica_macroquad::{DebugRenderer, FixedTimestep, WorldCamera};
+use kinetica_macroquad::{DebugRenderer, FixedTimestep, WorldCamera, draw_centered_text};
 use macroquad::prelude::*;
 
-use crate::game::{Game, PROJECTILE_RADIUS, SLING, State};
+use crate::game::{Game, POP_DURATION, PROJECTILE_RADIUS, SLING, State};
 use crate::level::{Material, TARGET_RADIUS};
 
 const SKY: Color = Color::new(0.1, 0.12, 0.17, 1.0);
@@ -15,6 +15,7 @@ const GROUND: Color = Color::new(0.45, 0.35, 0.25, 1.0);
 const WOOD: Color = Color::new(0.85, 0.6, 0.3, 1.0);
 const STONE: Color = Color::new(0.6, 0.62, 0.68, 1.0);
 const TARGET: Color = Color::new(0.4, 0.85, 0.35, 1.0);
+const POP: Color = Color::new(0.5, 1.0, 0.4, 1.0);
 const PROJECTILE: Color = Color::new(0.9, 0.25, 0.25, 1.0);
 const MESSAGE: Color = Color::new(1.0, 0.9, 0.5, 1.0);
 const BAND: Color = Color::new(0.55, 0.3, 0.2, 1.0);
@@ -23,14 +24,7 @@ const TRAJECTORY: Color = Color::new(1.0, 1.0, 1.0, 0.5);
 const GRAB_DISTANCE: f32 = 1.2;
 
 fn window_conf() -> Conf {
-    Conf {
-        window_title: "Slingshot".to_owned(),
-        window_width: 1280,
-        window_height: 720,
-        high_dpi: true,
-        sample_count: 4,
-        ..Conf::default()
-    }
+    kinetica_macroquad::window_conf("Slingshot")
 }
 
 struct App {
@@ -42,13 +36,8 @@ struct App {
 }
 
 impl App {
-    fn new(level: usize) -> Self {
-        Self {
-            game: Game::new(level),
-            camera: WorldCamera::new(vec2(8.0, 4.0), 11.0),
-            timestep: FixedTimestep::default(),
-            aiming: None,
-        }
+    fn new(game: Game) -> Self {
+        Self { game, camera: WorldCamera::new(vec2(8.0, 4.0), 11.0), timestep: FixedTimestep::default(), aiming: None }
     }
 
     fn update(&mut self) {
@@ -68,15 +57,9 @@ impl App {
 
         match self.game.state {
             State::Won if is_key_pressed(KeyCode::Space) || is_mouse_button_pressed(MouseButton::Left) => {
-                let next = if self.game.has_next_level() { self.game.level_index + 1 } else { 0 };
-                let score = self.game.score;
-                *self = Self::new(next);
-                self.game.score = if next == 0 { 0 } else { score };
+                *self = Self::new(self.game.next_level());
             }
-            _ if is_key_pressed(KeyCode::R) => {
-                let level = self.game.level_index;
-                *self = Self::new(level);
-            }
+            _ if is_key_pressed(KeyCode::R) => *self = Self::new(Game::new(self.game.level_index)),
             _ => {}
         }
 
@@ -107,9 +90,11 @@ impl App {
         for &projectile in &self.game.projectiles {
             renderer.draw_body(world, projectile, PROJECTILE);
         }
-        for &(position, age) in &self.game.pops {
-            let radius = TARGET_RADIUS * (1.0 + 4.0 * age);
-            draw_circle_lines(position.x, position.y, radius, 0.05, Color::new(0.5, 1.0, 0.4, 1.0 - 2.0 * age));
+        // Popped targets leave a ring that grows and fades.
+        for pop in &self.game.pops {
+            let progress = pop.age / POP_DURATION;
+            let radius = TARGET_RADIUS * (1.0 + 2.0 * progress);
+            draw_circle_lines(pop.position.x, pop.position.y, radius, 0.05, Color { a: 1.0 - progress, ..POP });
         }
         self.draw_sling(&mut renderer);
 
@@ -161,16 +146,14 @@ impl App {
             State::Playing => None,
         };
         if let Some(message) = message {
-            let size: u16 = 40;
-            let width = measure_text(message, None, size, 1.0).width;
-            draw_text(message, (screen_width() - width) / 2.0, screen_height() / 3.0, f32::from(size), MESSAGE);
+            draw_centered_text(message, screen_height() / 3.0, 40, MESSAGE);
         }
     }
 }
 
 #[macroquad::main(window_conf)]
 async fn main() {
-    let mut app = App::new(0);
+    let mut app = App::new(Game::new(0));
     loop {
         app.update();
         app.draw();

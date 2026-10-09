@@ -84,7 +84,7 @@ impl Game {
                 self.coins_collected += 1;
             } else if self.level.spikes.contains(&pair.sensor) {
                 self.die();
-            } else if self.level.goal == Some(pair.sensor) {
+            } else if pair.sensor == self.level.goal {
                 if self.level.coins.is_empty() {
                     self.state = State::Won;
                 } else {

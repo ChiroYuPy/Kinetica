@@ -121,3 +121,8 @@
       formulas, solver passes are a `Pass` enum instead of a boolean, and the shared joint
       methods come from one macro. `contact.rs` became `contact/` (public types, events,
       pair tracking). Bench checksums and a joint probe are bit-identical before and after.
+- [x] **12. Games readability**: the window setup, centered messages and box outlines moved to
+      `kinetica-macroquad` (`window_conf`, `draw_centered_text`, `DebugRenderer::draw_aabb`)
+      instead of being copied in every game. The slingshot names its pop effects and moves to
+      the next level with `Game::next_level`, the platformer level is built as values instead
+      of filled in, and the car keeps its hubs instead of finding them through its joints.
