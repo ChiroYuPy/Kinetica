@@ -3,12 +3,13 @@
 use std::ops::RangeInclusive;
 
 use super::frame::{
-    BiasTerms, JointFrame, apply_angular_impulse, apply_linear_impulse, relative_angle, relative_velocity, wrap_angle,
+    JointFrame, apply_angular_impulse, apply_linear_impulse, limit_impulse, motor_impulse, relative_angle,
+    relative_velocity, wrap_angle,
 };
 use super::{JointBase, Motor, validated_range};
 use crate::body::{Body, BodyHandle};
 use crate::math::Vec2;
-use crate::solver::SolverContext;
+use crate::solver::{Pass, SolverContext};
 
 /// Description of a [`RevoluteJoint`].
 ///
@@ -94,11 +95,6 @@ pub struct RevoluteJoint {
 }
 
 impl RevoluteJoint {
-    shared_joint_methods!();
-
-    fn base(&self) -> &JointBase {
-        &self.base
-    }
     pub(super) fn new(desc: &RevoluteJointDesc, a: &Body, b: &Body) -> Self {
         Self {
             base: JointBase::new(desc.body_a, desc.body_b, desc.collide_connected),
@@ -180,50 +176,41 @@ impl RevoluteJoint {
         a: &mut Body,
         b: &mut Body,
         context: &SolverContext,
-        use_bias: bool,
+        pass: Pass,
     ) {
+        let angular_speed = |a: &Body, b: &Body| b.angular_velocity() - a.angular_velocity();
+
         if let Some(motor) = self.motor {
-            let speed_error = b.angular_velocity() - a.angular_velocity() - motor.speed;
-            let max_impulse = motor.max_force * context.substep;
-            let previous = self.motor_impulse;
-            self.motor_impulse = (previous - self.axial_mass * speed_error).clamp(-max_impulse, max_impulse);
-            apply_angular_impulse(a, b, self.motor_impulse - previous);
+            let speed = angular_speed(a, b);
+            let impulse = motor_impulse(motor, &mut self.motor_impulse, self.axial_mass, speed, context.substep);
+            apply_angular_impulse(a, b, impulse);
         }
 
         if let Some((lower, upper)) = self.limits {
             let angle = self.delta_angle + relative_angle(b.delta_rotation(), a.delta_rotation());
 
             // Lower limit: keeps the angle above `lower`.
-            let terms = BiasTerms::limit(angle - lower, context, use_bias);
-            let speed = b.angular_velocity() - a.angular_velocity();
-            let impulse =
-                -self.axial_mass * terms.mass_scale * (speed + terms.bias) - terms.impulse_scale * self.lower_impulse;
-            let previous = self.lower_impulse;
-            self.lower_impulse = (previous + impulse).max(0.0);
-            apply_angular_impulse(a, b, self.lower_impulse - previous);
+            let gap = angle - lower;
+            let softness = context.limit_softness(gap, pass);
+            let speed = angular_speed(a, b);
+            let impulse = limit_impulse(&mut self.lower_impulse, self.axial_mass, speed, gap, softness);
+            apply_angular_impulse(a, b, impulse);
 
-            // Upper limit: same, mirrored.
-            let terms = BiasTerms::limit(upper - angle, context, use_bias);
-            let speed = a.angular_velocity() - b.angular_velocity();
-            let impulse =
-                -self.axial_mass * terms.mass_scale * (speed + terms.bias) - terms.impulse_scale * self.upper_impulse;
-            let previous = self.upper_impulse;
-            self.upper_impulse = (previous + impulse).max(0.0);
-            apply_angular_impulse(a, b, previous - self.upper_impulse);
+            // Upper limit: keeps the angle below `upper`, pushing the other way.
+            let gap = upper - angle;
+            let softness = context.limit_softness(gap, pass);
+            let speed = -angular_speed(a, b);
+            let impulse = limit_impulse(&mut self.upper_impulse, self.axial_mass, speed, gap, softness);
+            apply_angular_impulse(a, b, -impulse);
         }
 
         // The pivot itself, solved last so it wins over the motor and the limits.
         let (anchor_a, anchor_b) = frame.current_anchors(a, b);
-        let velocity_error = relative_velocity(a, b, anchor_a, anchor_b);
-        let (bias, mass_scale, impulse_scale) = if use_bias {
-            let separation = frame.separation(a, b, anchor_a, anchor_b);
-            let softness = context.joint_softness;
-            (softness.bias_rate * separation, softness.mass_scale, softness.impulse_scale)
-        } else {
-            (Vec2::ZERO, 1.0, 0.0)
-        };
-        let mass = frame.point_mass(anchor_a, anchor_b);
-        let impulse = -mass_scale * mass.solve(velocity_error + bias) - impulse_scale * self.linear_impulse;
+        let velocity = relative_velocity(a, b, anchor_a, anchor_b);
+        let separation = frame.separation(a, b, anchor_a, anchor_b);
+        let inverse_mass = frame.inverse_point_mass(anchor_a, anchor_b);
+        let impulse =
+            context.equality_softness(pass).impulse_2d(&inverse_mass, velocity, separation, self.linear_impulse);
         self.linear_impulse += impulse;
         apply_linear_impulse(a, b, impulse, anchor_a, anchor_b);
     }

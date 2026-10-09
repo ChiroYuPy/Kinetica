@@ -1,9 +1,9 @@
 //! Mouse joint: pulls a point of a body towards a target, like dragging it with the mouse.
 
-use super::frame::{JointFrame, SymmetricMatrix};
+use super::frame::JointFrame;
 use super::{JointBase, Spring};
 use crate::body::{Body, BodyHandle};
-use crate::math::Vec2;
+use crate::math::{SymmetricMatrix, Vec2};
 use crate::solver::{Softness, SolverContext};
 
 /// Description of a [`MouseJoint`].
@@ -70,11 +70,6 @@ pub struct MouseJoint {
 }
 
 impl MouseJoint {
-    shared_joint_methods!();
-
-    fn base(&self) -> &JointBase {
-        &self.base
-    }
     pub(super) fn new(desc: &MouseJointDesc, _reference: &Body, b: &Body) -> Self {
         Self {
             // The reference body is not really connected.
@@ -137,14 +132,12 @@ impl MouseJoint {
         let error = b.delta_position() + anchor + self.offset;
 
         let (mass, inertia) = (frame.mass_b, frame.inertia_b);
-        let matrix = SymmetricMatrix {
+        let inverse_mass = SymmetricMatrix {
             xx: mass + inertia * anchor.y * anchor.y,
             xy: -inertia * anchor.x * anchor.y,
             yy: mass + inertia * anchor.x * anchor.x,
         };
-        let softness = self.softness;
-        let impulse = -softness.mass_scale * matrix.solve(velocity + softness.bias_rate * error)
-            - softness.impulse_scale * self.linear_impulse;
+        let impulse = self.softness.impulse_2d(&inverse_mass, velocity, error, self.linear_impulse);
 
         let previous = self.linear_impulse;
         self.linear_impulse = (previous + impulse).clamp_length_max(self.max_force * context.substep);

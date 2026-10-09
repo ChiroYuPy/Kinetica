@@ -2,9 +2,10 @@
 
 use std::f32::consts::{PI, TAU};
 
+use super::Motor;
 use crate::body::Body;
-use crate::math::{Rot, Vec2, vec2};
-use crate::solver::{Softness, SolverContext};
+use crate::math::{Rot, SymmetricMatrix, Vec2};
+use crate::solver::Softness;
 
 /// Anchors and masses of a joint, captured at the start of each step.
 ///
@@ -47,8 +48,8 @@ impl JointFrame {
         (b.delta_position() - a.delta_position()) + self.delta_center + (anchor_b - anchor_a)
     }
 
-    /// Inverse of the effective mass matrix of a point-to-point constraint.
-    pub(crate) fn point_mass(&self, anchor_a: Vec2, anchor_b: Vec2) -> SymmetricMatrix {
+    /// Inverse of the effective mass matrix of a constraint keeping the anchors together.
+    pub(crate) fn inverse_point_mass(&self, anchor_a: Vec2, anchor_b: Vec2) -> SymmetricMatrix {
         let (ma, mb, ia, ib) = (self.mass_a, self.mass_b, self.inertia_a, self.inertia_b);
         SymmetricMatrix {
             xx: ma + mb + anchor_a.y * anchor_a.y * ia + anchor_b.y * anchor_b.y * ib,
@@ -63,65 +64,22 @@ impl JointFrame {
     }
 }
 
-/// A symmetric 2×2 matrix.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct SymmetricMatrix {
-    pub(crate) xx: f32,
-    pub(crate) xy: f32,
-    pub(crate) yy: f32,
+/// Accumulates the impulse of a motor driving `speed` towards `motor.speed`, and returns the
+/// part to apply now. The total is bounded by the motor force.
+pub(crate) fn motor_impulse(motor: Motor, accumulated: &mut f32, mass: f32, speed: f32, substep: f32) -> f32 {
+    let max_impulse = motor.max_force * substep;
+    let previous = *accumulated;
+    *accumulated = (previous - mass * (speed - motor.speed)).clamp(-max_impulse, max_impulse);
+    *accumulated - previous
 }
 
-impl SymmetricMatrix {
-    /// Solves `self * x = b`; returns zero when the matrix is singular.
-    pub(crate) fn solve(&self, b: Vec2) -> Vec2 {
-        let determinant = self.xx * self.yy - self.xy * self.xy;
-        if determinant == 0.0 {
-            return Vec2::ZERO;
-        }
-        let inverse = 1.0 / determinant;
-        vec2(inverse * (self.yy * b.x - self.xy * b.y), inverse * (self.xx * b.y - self.xy * b.x))
-    }
-}
-
-/// The three terms that turn a constraint into a soft one, see [`Softness`].
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct BiasTerms {
-    /// Velocity added to correct the position error.
-    pub(crate) bias: f32,
-    pub(crate) mass_scale: f32,
-    pub(crate) impulse_scale: f32,
-}
-
-impl BiasTerms {
-    /// No position correction: only the velocity error is removed.
-    pub(crate) const RIGID: Self = Self { bias: 0.0, mass_scale: 1.0, impulse_scale: 0.0 };
-
-    pub(crate) fn soft(softness: Softness, position_error: f32) -> Self {
-        Self {
-            bias: softness.bias_rate * position_error,
-            mass_scale: softness.mass_scale,
-            impulse_scale: softness.impulse_scale,
-        }
-    }
-
-    /// Terms for a one-sided limit whose remaining room is `gap` (negative when violated).
-    ///
-    /// While there is room, the limit only stops the motion that would cross it during this
-    /// substep; once violated, it pushes back softly.
-    pub(crate) fn limit(gap: f32, context: &SolverContext, use_bias: bool) -> Self {
-        if gap > 0.0 {
-            Self { bias: gap * context.inverse_substep, ..Self::RIGID }
-        } else if use_bias {
-            Self::soft(context.joint_softness, gap)
-        } else {
-            Self::RIGID
-        }
-    }
-
-    /// Terms for an equality constraint with the given position error.
-    pub(crate) fn equality(position_error: f32, context: &SolverContext, use_bias: bool) -> Self {
-        if use_bias { Self::soft(context.joint_softness, position_error) } else { Self::RIGID }
-    }
+/// Accumulates the impulse of a limit keeping `gap` from becoming negative, and returns the
+/// part to apply now. `speed` is the rate of change of the gap. A limit can only push, so the
+/// total stays positive.
+pub(crate) fn limit_impulse(accumulated: &mut f32, mass: f32, speed: f32, gap: f32, softness: Softness) -> f32 {
+    let previous = *accumulated;
+    *accumulated = (previous + softness.impulse(mass, speed, gap, previous)).max(0.0);
+    *accumulated - previous
 }
 
 /// Velocity of B's anchor relative to A's anchor.
@@ -168,15 +126,6 @@ pub(crate) fn inverse_or_zero(value: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn symmetric_solve_inverts_multiplication() {
-        let matrix = SymmetricMatrix { xx: 3.0, xy: 1.0, yy: 2.0 };
-        let x = vec2(0.5, -1.5);
-        let b = vec2(matrix.xx * x.x + matrix.xy * x.y, matrix.xy * x.x + matrix.yy * x.y);
-        assert!(matrix.solve(b).abs_diff_eq(x, 1e-5));
-        assert_eq!(SymmetricMatrix { xx: 1.0, xy: 1.0, yy: 1.0 }.solve(b), Vec2::ZERO);
-    }
 
     #[test]
     fn wrap_angle_stays_in_range() {

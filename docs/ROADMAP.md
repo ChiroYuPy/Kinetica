@@ -115,3 +115,9 @@
       joint anchors, typed joint handles, `rope()`, impact speed in collision events, no-op
       setters that keep bodies asleep, shape queries taking a shape and a position, and
       macroquad colors in `kinetica-macroquad`.
+- [x] **11. Internal readability**: `docs/ARCHITECTURE.md` maps the modules and walks through
+      a step; `World::step` numbers its seven stages. Joints share their constraint math
+      (`Softness::impulse`, `motor_impulse`, `limit_impulse`) instead of repeating the
+      formulas, solver passes are a `Pass` enum instead of a boolean, and the shared joint
+      methods come from one macro. `contact.rs` became `contact/` (public types, events,
+      pair tracking). Bench checksums and a joint probe are bit-identical before and after.

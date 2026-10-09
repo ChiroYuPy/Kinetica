@@ -1,8 +1,8 @@
 //! Joints: constraints connecting two bodies.
 //!
 //! Describe a joint with one of the `*JointDesc` types, anchors given as world points, and add
-//! it with [`World::add_joint`](crate::World::add_joint). By default, the two connected bodies stop colliding with each
-//! other.
+//! it with [`World::add_joint`](crate::World::add_joint). By default, the two connected bodies
+//! stop colliding with each other.
 //!
 //! | Joint | Keeps | Typical use |
 //! |-------|-------|-------------|
@@ -12,8 +12,8 @@
 //! | [`WeldJoint`] | the relative placement | breakable or bendable structures |
 //! | [`MouseJoint`] | a point near a target | dragging bodies with the mouse |
 //!
-//! The handle returned by [`World::add_joint`](crate::World::add_joint) knows the type of the joint, so indexing the
-//! world with it gives that joint directly:
+//! The handle returned by [`World::add_joint`](crate::World::add_joint) knows the type of the
+//! joint, so indexing the world with it gives that joint directly:
 //!
 //! ```
 //! use kinetica::prelude::*;
@@ -104,12 +104,12 @@ pub use weld::{WeldJoint, WeldJointDesc};
 use crate::arena::{Arena, Index};
 use crate::body::{Body, BodyHandle};
 use crate::math::Vec2;
-use crate::solver::SolverContext;
+use crate::solver::{Pass, SolverContext};
 
 /// Handle to a joint stored in a [`World`](crate::World).
 ///
-/// `J` is the type of the joint: [`World::add_joint`](crate::World::add_joint)(crate::World::add_joint) returns, say, a
-/// `JointHandle<RevoluteJoint>`, and `world[handle]` is then a [`RevoluteJoint`]. A plain
+/// `J` is the type of the joint: [`World::add_joint`](crate::World::add_joint) returns, say,
+/// a `JointHandle<RevoluteJoint>`, and `world[handle]` is then a [`RevoluteJoint`]. A plain
 /// `JointHandle` refers to a joint of any type and gives a [`Joint`].
 ///
 /// A handle stays valid until its joint (or one of its bodies) is removed.
@@ -293,14 +293,14 @@ impl Joint {
         }
     }
 
-    pub(crate) fn solve(&mut self, bodies: &mut Arena<Body>, context: &SolverContext, use_bias: bool) {
+    pub(crate) fn solve(&mut self, bodies: &mut Arena<Body>, context: &SolverContext, pass: Pass) {
         let Some((a, b)) = bodies.get2_mut(self.body_a().0, self.body_b().0) else { return };
         let frame = self.base().frame;
         match self {
-            Self::Revolute(joint) => joint.solve(&frame, a, b, context, use_bias),
-            Self::Distance(joint) => joint.solve(&frame, a, b, context, use_bias),
-            Self::Prismatic(joint) => joint.solve(&frame, a, b, context, use_bias),
-            Self::Weld(joint) => joint.solve(&frame, a, b, context, use_bias),
+            Self::Revolute(joint) => joint.solve(&frame, a, b, context, pass),
+            Self::Distance(joint) => joint.solve(&frame, a, b, context, pass),
+            Self::Prismatic(joint) => joint.solve(&frame, a, b, context, pass),
+            Self::Weld(joint) => joint.solve(&frame, a, b, context, pass),
             // A soft spring by design: identical with and without bias.
             Self::Mouse(joint) => joint.solve(&frame, b, context),
         }
@@ -329,7 +329,7 @@ impl JointBase {
 /// [`RevoluteJoint`]. It is the `J` of a [`JointHandle<J>`].
 pub trait JointType: sealed::JointType {}
 
-/// A joint description, accepted by [`World::add_joint`](crate::World::add_joint)(crate::World::add_joint).
+/// A joint description, accepted by [`World::add_joint`](crate::World::add_joint).
 pub trait JointDesc: sealed::JointDesc {
     /// The type of joint it creates.
     type Joint: JointType;
@@ -364,9 +364,18 @@ impl sealed::JointType for Joint {
 
 impl JointType for Joint {}
 
-/// Links a joint type to its variant of [`Joint`] and to its description.
+/// Links a joint type to its variant of [`Joint`] and to its description, and gives it the
+/// shared methods.
 macro_rules! joint_type {
     ($joint:ident, $desc:ident, $variant:ident) => {
+        impl $joint {
+            shared_joint_methods!();
+
+            fn base(&self) -> &JointBase {
+                &self.base
+            }
+        }
+
         impl sealed::JointType for $joint {
             fn from_joint(joint: &Joint) -> Option<&Self> {
                 if let Joint::$variant(joint) = joint { Some(joint) } else { None }

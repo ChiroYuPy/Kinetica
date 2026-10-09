@@ -9,7 +9,7 @@ use crate::contact::{Contact, ContactPair};
 use crate::math::{Vec2, vec2};
 use crate::solver::Softness;
 
-use super::SolverContext;
+use super::{Pass, SolverContext};
 
 /// Everything the solver needs about one contact, prepared once per step.
 #[derive(Debug, Clone)]
@@ -112,11 +112,9 @@ impl ContactConstraint {
         }
     }
 
-    /// Solves the contact velocities once.
-    ///
-    /// With `use_bias`, overlapping points are also pushed apart; the relax pass runs without it
-    /// to remove the velocity this push added.
-    pub(crate) fn solve(&mut self, bodies: &mut Arena<Body>, inverse_substep: f32, use_bias: bool) {
+    /// Solves the contact velocities once: pushes the bodies apart without pulling them
+    /// together, then applies friction.
+    pub(crate) fn solve(&mut self, bodies: &mut Arena<Body>, context: &SolverContext, pass: Pass) {
         let Some((body_a, body_b)) = bodies.get2_mut(self.pair.body_a.0, self.pair.body_b.0) else { return };
         let normal = self.normal;
         let softness = self.softness;
@@ -131,8 +129,8 @@ impl ContactConstraint {
 
             let (bias, mass_scale, impulse_scale) = if separation > 0.0 {
                 // Not touching yet: allow closing exactly the gap during this substep.
-                (separation * inverse_substep, 1.0, 0.0)
-            } else if use_bias {
+                (separation * context.inverse_substep, 1.0, 0.0)
+            } else if pass == Pass::Solve {
                 let push = (softness.bias_rate * separation).max(-MAX_CONTACT_PUSH_SPEED);
                 (push, softness.mass_scale, softness.impulse_scale)
             } else {

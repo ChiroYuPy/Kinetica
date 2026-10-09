@@ -1,12 +1,12 @@
 //! Weld joint: glues two bodies together, rigidly or elastically.
 
 use super::frame::{
-    BiasTerms, JointFrame, apply_angular_impulse, apply_linear_impulse, relative_angle, relative_velocity, wrap_angle,
+    JointFrame, apply_angular_impulse, apply_linear_impulse, relative_angle, relative_velocity, wrap_angle,
 };
 use super::{JointBase, Spring};
 use crate::body::{Body, BodyHandle};
 use crate::math::Vec2;
-use crate::solver::{Softness, SolverContext};
+use crate::solver::{Pass, Softness, SolverContext};
 
 /// Description of a [`WeldJoint`].
 #[derive(Debug, Clone, PartialEq)]
@@ -76,11 +76,6 @@ pub struct WeldJoint {
 }
 
 impl WeldJoint {
-    shared_joint_methods!();
-
-    fn base(&self) -> &JointBase {
-        &self.base
-    }
     pub(super) fn new(desc: &WeldJointDesc, a: &Body, b: &Body) -> Self {
         Self {
             base: JointBase::new(desc.body_a, desc.body_b, desc.collide_connected),
@@ -134,37 +129,26 @@ impl WeldJoint {
         a: &mut Body,
         b: &mut Body,
         context: &SolverContext,
-        use_bias: bool,
+        pass: Pass,
     ) {
+        // Springs keep their softness in both passes: they are meant to give.
+        let rigid = context.equality_softness(pass);
+
         // Angle.
         let angle = self.delta_angle + relative_angle(b.delta_rotation(), a.delta_rotation());
-        let terms = match self.angular_softness {
-            Some(softness) => BiasTerms::soft(softness, angle),
-            None => BiasTerms::equality(angle, context, use_bias),
-        };
         let speed = b.angular_velocity() - a.angular_velocity();
-        let impulse =
-            -self.axial_mass * terms.mass_scale * (speed + terms.bias) - terms.impulse_scale * self.angular_impulse;
+        let softness = self.angular_softness.unwrap_or(rigid);
+        let impulse = softness.impulse(self.axial_mass, speed, angle, self.angular_impulse);
         self.angular_impulse += impulse;
         apply_angular_impulse(a, b, impulse);
 
         // Weld point.
         let (anchor_a, anchor_b) = frame.current_anchors(a, b);
-        let softness = match (self.linear_softness, use_bias) {
-            (Some(softness), _) => Some(softness),
-            (None, true) => Some(context.joint_softness),
-            (None, false) => None,
-        };
-        let (bias, mass_scale, impulse_scale) = match softness {
-            Some(softness) => {
-                let separation = frame.separation(a, b, anchor_a, anchor_b);
-                (softness.bias_rate * separation, softness.mass_scale, softness.impulse_scale)
-            }
-            None => (Vec2::ZERO, 1.0, 0.0),
-        };
-        let velocity_error = relative_velocity(a, b, anchor_a, anchor_b);
-        let mass = frame.point_mass(anchor_a, anchor_b);
-        let impulse = -mass_scale * mass.solve(velocity_error + bias) - impulse_scale * self.linear_impulse;
+        let velocity = relative_velocity(a, b, anchor_a, anchor_b);
+        let separation = frame.separation(a, b, anchor_a, anchor_b);
+        let inverse_mass = frame.inverse_point_mass(anchor_a, anchor_b);
+        let softness = self.linear_softness.unwrap_or(rigid);
+        let impulse = softness.impulse_2d(&inverse_mass, velocity, separation, self.linear_impulse);
         self.linear_impulse += impulse;
         apply_linear_impulse(a, b, impulse, anchor_a, anchor_b);
     }

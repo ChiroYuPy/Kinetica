@@ -4,9 +4,11 @@
 
 mod aabb;
 mod rot;
+mod symmetric_matrix;
 mod transform;
 
 pub use aabb::Aabb;
 pub use glam::{Vec2, vec2};
 pub use rot::Rot;
+pub(crate) use symmetric_matrix::SymmetricMatrix;
 pub use transform::Transform;

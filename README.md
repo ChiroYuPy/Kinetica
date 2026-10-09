@@ -20,6 +20,9 @@ println!("The ball is at {}", world[ball].position());
 Sizes are full sizes (`rectangle(20.0, 1.0)` is 20 m wide), joint anchors are world points, and
 indexing the world with a handle reaches the body, collider or joint.
 
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) explains how the engine works inside, and
+[`docs/ROADMAP.md`](docs/ROADMAP.md) records the design decisions and the history.
+
 ## Workspace
 
 | Crate | Role |

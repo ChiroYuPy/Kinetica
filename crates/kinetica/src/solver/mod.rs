@@ -18,10 +18,21 @@ use crate::contact::ContactSet;
 use crate::joint::Joint;
 use crate::math::Vec2;
 
+/// What [`step`] needs from the world.
 pub(crate) struct StepSettings {
     pub(crate) gravity: Vec2,
     pub(crate) dt: f32,
     pub(crate) substep_count: u32,
+}
+
+/// The two kinds of constraint passes of a substep.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Pass {
+    /// Removes velocity errors and pushes position errors (overlaps, drifted anchors) away.
+    Solve,
+    /// Removes velocity errors only, after the positions moved: this takes out the extra
+    /// velocity the push added, so bodies separate without flying apart.
+    Relax,
 }
 
 /// Values shared by every constraint during a step.
@@ -47,6 +58,22 @@ impl SolverContext {
             fixed_contact_softness: Softness::new(2.0 * contact_hertz, CONTACT_DAMPING_RATIO, substep),
             joint_softness: Softness::new(JOINT_HERTZ_RATIO * contact_hertz, JOINT_DAMPING_RATIO, substep),
         }
+    }
+
+    /// Softness of a joint constraint that keeps a position error at zero.
+    pub(crate) fn equality_softness(&self, pass: Pass) -> Softness {
+        match pass {
+            Pass::Solve => self.joint_softness,
+            Pass::Relax => Softness::RIGID,
+        }
+    }
+
+    /// Softness of a joint limit with `gap` of room left, negative once crossed.
+    ///
+    /// While there is room, the limit only stops the motion that would cross it during this
+    /// substep; once crossed, it pushes back softly like an equality.
+    pub(crate) fn limit_softness(&self, gap: f32, pass: Pass) -> Softness {
+        if gap > 0.0 { Softness::closing_within(self.inverse_substep) } else { self.equality_softness(pass) }
     }
 }
 
@@ -91,10 +118,10 @@ pub(crate) fn step(
 
         // Joints first: contacts are solved last because overlap is the most visible error.
         for joint in awake(joints, &awake_joints) {
-            joint.solve(bodies, &context, true);
+            joint.solve(bodies, &context, Pass::Solve);
         }
         for constraint in &mut constraints {
-            constraint.solve(bodies, context.inverse_substep, true);
+            constraint.solve(bodies, &context, Pass::Solve);
         }
 
         for body in bodies.values_mut() {
@@ -102,10 +129,10 @@ pub(crate) fn step(
         }
 
         for joint in awake(joints, &awake_joints) {
-            joint.solve(bodies, &context, false);
+            joint.solve(bodies, &context, Pass::Relax);
         }
         for constraint in &mut constraints {
-            constraint.solve(bodies, context.inverse_substep, false);
+            constraint.solve(bodies, &context, Pass::Relax);
         }
     }
 

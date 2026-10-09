@@ -430,7 +430,8 @@ impl World {
         self.collision_events.clear();
         self.sensor_events.clear();
 
-        // Contact geometry for the current positions.
+        // 1. Contacts: the geometry of every candidate pair at the current positions, and the
+        //    events of the pairs that started or stopped touching.
         self.contacts.update(
             &self.colliders,
             &self.bodies,
@@ -440,13 +441,14 @@ impl World {
         );
         profile.collide = timer.lap();
 
-        // Bodies touched by awake ones wake up before solving, so they react at once.
+        // 2. Islands: bodies touched by awake ones wake up before solving, so they react at once.
         let islands = self.sleeping_enabled.then(|| Islands::build(&self.bodies, &self.contacts, &self.joints));
         if let Some(islands) = &islands {
             islands.wake_up(&mut self.bodies);
         }
         profile.islands = timer.lap();
 
+        // 3. Solver: new velocities and positions, keeping contacts and joints satisfied.
         let settings = StepSettings { gravity: self.gravity, dt, substep_count: self.substep_count };
         solver::step(&mut self.bodies, &self.colliders, &mut self.contacts, &mut self.joints, &settings);
         for body in self.bodies.values_mut() {
@@ -454,8 +456,11 @@ impl World {
         }
         profile.solve = timer.lap();
 
+        // 4. Collider bounding boxes follow their bodies.
         self.synchronize_colliders();
         profile.synchronize = timer.lap();
+
+        // 5. Continuous collision: fast bodies that went through something are moved back.
         if self.continuous_enabled {
             let moved = continuous::solve(&mut self.bodies, &self.colliders, &self.joints, &self.broad_phase);
             for body in moved {
@@ -464,13 +469,14 @@ impl World {
         }
         profile.continuous = timer.lap();
 
+        // 6. Sleep: islands that stayed still long enough fall asleep.
         if let Some(islands) = &islands {
             islands.fall_asleep(&mut self.bodies, dt);
             self.put_kinematic_bodies_to_sleep(dt);
         }
         profile.sleep = timer.lap();
 
-        // Find the pairs the motion brought together; they are collided at the next step.
+        // 7. New pairs: colliders the motion brought together, collided at the next step.
         let new_pairs = self.broad_phase.find_new_pairs();
         self.contacts.add_pairs(&new_pairs, &self.colliders, &self.bodies, &self.joints);
         profile.find_pairs = timer.lap();
@@ -496,6 +502,7 @@ impl World {
         }
     }
 
+    /// Moves the bounding boxes and proxies of one body's colliders.
     fn synchronize_body_colliders(&mut self, handle: BodyHandle) {
         let Some(body) = self.bodies.get(handle.0) else { return };
         for collider in body.colliders() {

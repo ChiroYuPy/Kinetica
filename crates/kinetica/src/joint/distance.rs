@@ -2,12 +2,12 @@
 
 use std::ops::RangeInclusive;
 
-use super::frame::{BiasTerms, JointFrame, apply_linear_impulse, inverse_or_zero, relative_velocity};
+use super::frame::{JointFrame, apply_linear_impulse, inverse_or_zero, limit_impulse, relative_velocity};
 use super::{JointBase, Spring, validated_range};
 use crate::body::{Body, BodyHandle};
 use crate::constants::LINEAR_SLOP;
 use crate::math::Vec2;
-use crate::solver::{Softness, SolverContext};
+use crate::solver::{Pass, Softness, SolverContext};
 
 /// Description of a [`DistanceJoint`].
 ///
@@ -114,11 +114,6 @@ pub struct DistanceJoint {
 }
 
 impl DistanceJoint {
-    shared_joint_methods!();
-
-    fn base(&self) -> &JointBase {
-        &self.base
-    }
     pub(super) fn new(desc: &DistanceJointDesc, a: &Body, b: &Body) -> Self {
         let (local_anchor_a, local_anchor_b) = (a.local_point(desc.anchor_a), b.local_point(desc.anchor_b));
         let current_length = a.world_point(local_anchor_a).distance(b.world_point(local_anchor_b));
@@ -205,7 +200,7 @@ impl DistanceJoint {
         a: &mut Body,
         b: &mut Body,
         context: &SolverContext,
-        use_bias: bool,
+        pass: Pass,
     ) {
         let (anchor_a, anchor_b) = frame.current_anchors(a, b);
         let separation = frame.separation(a, b, anchor_a, anchor_b);
@@ -214,40 +209,31 @@ impl DistanceJoint {
         self.axis = axis;
         let axial_speed = |a: &Body, b: &Body| relative_velocity(a, b, anchor_a, anchor_b).dot(axis);
 
-        let Some(spring) = self.spring else {
-            // Rigid rod.
-            let terms = BiasTerms::equality(length - self.length, context, use_bias);
-            let impulse = -terms.mass_scale * self.axial_mass * (axial_speed(a, b) + terms.bias)
-                - terms.impulse_scale * self.impulse;
-            self.impulse += impulse;
-            apply_linear_impulse(a, b, impulse * axis, anchor_a, anchor_b);
-            return;
+        // The rest length: rigid for a rod, elastic for a spring, absent for a rope.
+        let softness = match self.spring {
+            None => Some(context.equality_softness(pass)),
+            Some(spring) if spring.hertz > 0.0 => Some(self.spring_softness),
+            Some(_) => None,
         };
-
-        if spring.hertz > 0.0 {
-            let terms = BiasTerms::soft(self.spring_softness, length - self.length);
-            let impulse = -terms.mass_scale * self.axial_mass * (axial_speed(a, b) + terms.bias)
-                - terms.impulse_scale * self.impulse;
+        if let Some(softness) = softness {
+            let impulse = softness.impulse(self.axial_mass, axial_speed(a, b), length - self.length, self.impulse);
             self.impulse += impulse;
             apply_linear_impulse(a, b, impulse * axis, anchor_a, anchor_b);
         }
 
-        if let Some((min, max)) = self.limits {
+        // Limits only apply to springs and ropes: a rod already keeps its length.
+        if let (Some(_), Some((min, max))) = (self.spring, self.limits) {
             // Shortest allowed distance: pushes the anchors apart.
-            let terms = BiasTerms::limit(length - min, context, use_bias);
-            let impulse = -terms.mass_scale * self.axial_mass * (axial_speed(a, b) + terms.bias)
-                - terms.impulse_scale * self.lower_impulse;
-            let previous = self.lower_impulse;
-            self.lower_impulse = (previous + impulse).max(0.0);
-            apply_linear_impulse(a, b, (self.lower_impulse - previous) * axis, anchor_a, anchor_b);
+            let gap = length - min;
+            let softness = context.limit_softness(gap, pass);
+            let impulse = limit_impulse(&mut self.lower_impulse, self.axial_mass, axial_speed(a, b), gap, softness);
+            apply_linear_impulse(a, b, impulse * axis, anchor_a, anchor_b);
 
             // Longest allowed distance: pulls them together.
-            let terms = BiasTerms::limit(max - length, context, use_bias);
-            let impulse = -terms.mass_scale * self.axial_mass * (-axial_speed(a, b) + terms.bias)
-                - terms.impulse_scale * self.upper_impulse;
-            let previous = self.upper_impulse;
-            self.upper_impulse = (previous + impulse).max(0.0);
-            apply_linear_impulse(a, b, (previous - self.upper_impulse) * axis, anchor_a, anchor_b);
+            let gap = max - length;
+            let softness = context.limit_softness(gap, pass);
+            let impulse = limit_impulse(&mut self.upper_impulse, self.axial_mass, -axial_speed(a, b), gap, softness);
+            apply_linear_impulse(a, b, -impulse * axis, anchor_a, anchor_b);
         }
     }
 }

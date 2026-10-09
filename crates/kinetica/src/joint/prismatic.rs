@@ -3,12 +3,12 @@
 use std::ops::RangeInclusive;
 
 use super::frame::{
-    BiasTerms, JointFrame, SymmetricMatrix, apply_impulses, inverse_or_zero, relative_angle, wrap_angle,
+    JointFrame, apply_impulses, inverse_or_zero, limit_impulse, motor_impulse, relative_angle, wrap_angle,
 };
 use super::{JointBase, Motor, validated_range};
 use crate::body::{Body, BodyHandle};
-use crate::math::{Vec2, vec2};
-use crate::solver::SolverContext;
+use crate::math::{SymmetricMatrix, Vec2, vec2};
+use crate::solver::{Pass, SolverContext};
 
 /// Description of a [`PrismaticJoint`].
 #[derive(Debug, Clone, PartialEq)]
@@ -101,11 +101,6 @@ pub struct PrismaticJoint {
 }
 
 impl PrismaticJoint {
-    shared_joint_methods!();
-
-    fn base(&self) -> &JointBase {
-        &self.base
-    }
     pub(super) fn new(desc: &PrismaticJointDesc, a: &Body, b: &Body) -> Self {
         Self {
             base: JointBase::new(desc.body_a, desc.body_b, desc.collide_connected),
@@ -206,7 +201,7 @@ impl PrismaticJoint {
         a: &mut Body,
         b: &mut Body,
         context: &SolverContext,
-        use_bias: bool,
+        pass: Pass,
     ) {
         let geometry = Geometry::new(self, frame, a, b);
         let apply_axial = |a: &mut Body, b: &mut Body, impulse: f32| {
@@ -220,53 +215,45 @@ impl PrismaticJoint {
         };
 
         if let Some(motor) = self.motor {
-            let speed_error = geometry.axial_speed(a, b) - motor.speed;
-            let max_impulse = motor.max_force * context.substep;
-            let previous = self.motor_impulse;
-            self.motor_impulse = (previous - self.axial_mass * speed_error).clamp(-max_impulse, max_impulse);
-            apply_axial(a, b, self.motor_impulse - previous);
+            let speed = geometry.axial_speed(a, b);
+            let impulse = motor_impulse(motor, &mut self.motor_impulse, self.axial_mass, speed, context.substep);
+            apply_axial(a, b, impulse);
         }
 
         if let Some((lower, upper)) = self.limits {
-            let terms = BiasTerms::limit(geometry.translation - lower, context, use_bias);
-            let impulse = -self.axial_mass * terms.mass_scale * (geometry.axial_speed(a, b) + terms.bias)
-                - terms.impulse_scale * self.lower_impulse;
-            let previous = self.lower_impulse;
-            self.lower_impulse = (previous + impulse).max(0.0);
-            apply_axial(a, b, self.lower_impulse - previous);
+            // Lower limit: keeps the translation above `lower`.
+            let gap = geometry.translation - lower;
+            let softness = context.limit_softness(gap, pass);
+            let speed = geometry.axial_speed(a, b);
+            let impulse = limit_impulse(&mut self.lower_impulse, self.axial_mass, speed, gap, softness);
+            apply_axial(a, b, impulse);
 
-            let terms = BiasTerms::limit(upper - geometry.translation, context, use_bias);
-            let impulse = -self.axial_mass * terms.mass_scale * (-geometry.axial_speed(a, b) + terms.bias)
-                - terms.impulse_scale * self.upper_impulse;
-            let previous = self.upper_impulse;
-            self.upper_impulse = (previous + impulse).max(0.0);
-            apply_axial(a, b, previous - self.upper_impulse);
+            // Upper limit: keeps the translation below `upper`, pushing the other way.
+            let gap = upper - geometry.translation;
+            let softness = context.limit_softness(gap, pass);
+            let speed = -geometry.axial_speed(a, b);
+            let impulse = limit_impulse(&mut self.upper_impulse, self.axial_mass, speed, gap, softness);
+            apply_axial(a, b, -impulse);
         }
 
         // Across the axis and around the joint: solved together as a 2×2 block.
-        let velocity_error = vec2(
+        let velocity = vec2(
             geometry.perp.dot(b.linear_velocity() - a.linear_velocity()) + geometry.perp_arm_b * b.angular_velocity()
                 - geometry.perp_arm_a * a.angular_velocity(),
             b.angular_velocity() - a.angular_velocity(),
         );
-        let (bias, mass_scale, impulse_scale) = if use_bias {
-            let angle = self.delta_angle + relative_angle(b.delta_rotation(), a.delta_rotation());
-            let error = vec2(geometry.perp.dot(geometry.separation), angle);
-            let softness = context.joint_softness;
-            (softness.bias_rate * error, softness.mass_scale, softness.impulse_scale)
-        } else {
-            (Vec2::ZERO, 1.0, 0.0)
-        };
+        let angle = self.delta_angle + relative_angle(b.delta_rotation(), a.delta_rotation());
+        let position_error = vec2(geometry.perp.dot(geometry.separation), angle);
         let (ma, mb, ia, ib) = (frame.mass_a, frame.mass_b, frame.inertia_a, frame.inertia_b);
         let (s1, s2) = (geometry.perp_arm_a, geometry.perp_arm_b);
         let rotational = ia + ib;
-        let mass = SymmetricMatrix {
+        let inverse_mass = SymmetricMatrix {
             xx: ma + mb + ia * s1 * s1 + ib * s2 * s2,
             xy: ia * s1 + ib * s2,
             // Two bodies that cannot rotate: the angular row is irrelevant but must stay invertible.
             yy: if rotational == 0.0 { 1.0 } else { rotational },
         };
-        let impulse = -mass_scale * mass.solve(velocity_error + bias) - impulse_scale * self.impulse;
+        let impulse = context.equality_softness(pass).impulse_2d(&inverse_mass, velocity, position_error, self.impulse);
         self.impulse += impulse;
         apply_impulses(a, b, impulse.x * geometry.perp, impulse.x * s1 + impulse.y, impulse.x * s2 + impulse.y);
     }

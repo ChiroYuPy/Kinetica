@@ -210,6 +210,14 @@ impl<T: Copy> DynamicTree<T> {
     /// Swaps a child of `a` with one of its grandchildren, or two grandchildren, when that
     /// lowers the total perimeter of the boxes below `a` (the surface area heuristic, as in
     /// Box2D v3). Smaller boxes overlap less, so queries visit fewer nodes.
+    ///
+    /// ```text
+    ///         a
+    ///       /   \
+    ///      b     c
+    ///     / \   / \
+    ///    d   e f   g
+    /// ```
     fn rotate(&mut self, a: NodeId) {
         let [b, c] = self.children(a);
         let perimeter = |tree: &Self, x: NodeId| tree.node(x).aabb.perimeter();

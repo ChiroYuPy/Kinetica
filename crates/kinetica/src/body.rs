@@ -529,7 +529,10 @@ impl Body {
             self.wake_up();
         }
     }
+}
 
+/// Used by the world and the solver, not by games.
+impl Body {
     pub(crate) fn attach_collider(&mut self, handle: ColliderHandle) {
         self.colliders.push(handle);
     }
