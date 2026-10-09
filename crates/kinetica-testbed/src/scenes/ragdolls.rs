@@ -6,11 +6,11 @@ use super::{Build, Category, Labels, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Ragdolls",
-    category: Category::Joints,
+    category: Category::SoftStructures,
     description: "Ragdolls made of ten capsules and nine limited revolute joints tumble down stairs made of \
                   a single chain.",
-    camera_center: vec2(0.0, 4.0),
-    view_height: 14.0,
+    camera_center: vec2(-3.5, 4.5),
+    view_height: 11.0,
     build: Build::Static(build),
 };
 
@@ -29,20 +29,20 @@ fn build(world: &mut World, labels: &mut Labels) {
     // Consecutive points must differ: each step's left edge starts where the previous one ends.
     outline.dedup();
     world.add_chain(stairs, ChainDesc::new(outline));
-    labels.at(vec2(-1.5, 1.0), "Stairs: a single chain collider");
-    labels.at(vec2(-3.0, 10.2), "10 capsules, 9 revolute joints with limits\n(knees and elbows bend one way only)");
+    labels.at(vec2(1.5, 0.6), "Stairs: a single\nchain collider");
+    labels.at(vec2(-3.5, 8.8), "10 capsules, 9 revolute joints with limits\n(knees and elbows bend one way only)");
 
     for (i, x) in [-8.0, -6.5, -5.0].into_iter().enumerate() {
         let floor = 3.2 + 2.5 * i as f32;
-        add_ragdoll(world, vec2(x, floor));
+        add_ragdoll(world, vec2(x, floor), vec2(1.5, 0.0));
     }
 }
 
-/// Adds a ragdoll standing with its feet at `feet`.
-fn add_ragdoll(world: &mut World, feet: Vec2) {
+/// Adds a ragdoll standing with its feet at `feet`, stepping forward at `velocity`.
+fn add_ragdoll(world: &mut World, feet: Vec2, velocity: Vec2) {
     let mut part = |center: Vec2, collider: ColliderDesc| {
-        world
-            .add_body(BodyDesc::dynamic().position(feet + center).angular_damping(0.5).collider(collider.friction(0.6)))
+        let desc = BodyDesc::dynamic().position(feet + center).linear_velocity(velocity).angular_damping(0.5);
+        world.add_body(desc.collider(collider.friction(0.6)))
     };
     // Capsules spanning from joint to joint: as tall as the limb.
     let torso = part(vec2(0.0, 1.3), ColliderDesc::vertical_capsule(0.6, 0.15));

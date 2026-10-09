@@ -27,7 +27,6 @@ mod shapes;
 mod sleeping;
 mod soft_bodies;
 mod stacks;
-mod tearing;
 mod tumbler;
 mod weld_joints;
 
@@ -53,12 +52,11 @@ pub const SCENES: &[Scene] = &[
     prismatic_joints::SCENE,
     distance_joints::SCENE,
     weld_joints::SCENE,
-    bridge::SCENE,
-    ragdolls::SCENE,
     ropes::SCENE,
+    bridge::SCENE,
     cloth::SCENE,
-    tearing::SCENE,
     soft_bodies::SCENE,
+    ragdolls::SCENE,
     sleeping::SCENE,
     layers::SCENE,
     sensors::SCENE,

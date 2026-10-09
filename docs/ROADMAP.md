@@ -149,3 +149,7 @@
       half as much. The default 4 substeps behave exactly as before (bench checksums
       unchanged). The testbed panel gained a substep slider. A touching Newton's cradle still
       shares its impact: solving contacts together is what keeps stacks stable.
+- [x] **16. Testbed review**: one scene per concept. "Tearing cloth" merged into "Cloth" (a
+      curtain you cut holding a heavy bar, next to the hammock), the "Joints" category keeps one
+      scene per joint type while the bridge and the ragdolls joined the structures built from
+      joints, and the ragdolls scene was reframed so none falls behind the stairs.

@@ -4,7 +4,7 @@ use super::{Build, Category, Labels, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
     name: "Bridge",
-    category: Category::Joints,
+    category: Category::SoftStructures,
     description: "Forty planks hinged together between two pillars, loaded with boxes and balls.",
     camera_center: vec2(0.0, 3.0),
     view_height: 14.0,
