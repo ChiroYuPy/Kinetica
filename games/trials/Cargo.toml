@@ -1,6 +1,6 @@
 [package]
-name = "pinball"
-description = "Keep the ball in play with the flippers: a pinball game built on Kinetica."
+name = "trials"
+description = "Drive a little car over hills, bridges and jumps to the flag: a game built on Kinetica."
 publish = false
 version.workspace = true
 edition.workspace = true

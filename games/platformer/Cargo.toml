@@ -1,6 +1,6 @@
 [package]
 name = "platformer"
-description = "Run, jump and collect the coins: a platformer built on Kinetica."
+description = "Run and jump across a paper world: one-way and moving platforms, a box to push, a bridge: a game built on Kinetica."
 publish = false
 version.workspace = true
 edition.workspace = true

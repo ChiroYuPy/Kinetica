@@ -5,7 +5,7 @@ use std::f32::consts::{PI, TAU};
 use super::Motor;
 use crate::body::Body;
 use crate::math::{Rot, SymmetricMatrix, Vec2};
-use crate::solver::Softness;
+use crate::solver::{Pass, Softness, SolverContext};
 
 /// Anchors and masses of a joint, captured at the start of each step.
 ///
@@ -58,10 +58,102 @@ impl JointFrame {
         }
     }
 
+    /// Effective mass of a constraint moving B's anchor along `direction` relative to A, at the
+    /// start of the step: A turns about its center, through the line from its center to B's anchor.
+    pub(crate) fn mass_along(&self, direction: Vec2) -> f32 {
+        let separation = self.delta_center + self.anchor_b - self.anchor_a;
+        let arm_a = (separation + self.anchor_a).perp_dot(direction);
+        let arm_b = self.anchor_b.perp_dot(direction);
+        inverse_or_zero(self.mass_a + self.mass_b + self.inertia_a * arm_a * arm_a + self.inertia_b * arm_b * arm_b)
+    }
+
     /// Inverse of the summed rotational inertias, the effective mass of an angular constraint.
     pub(crate) fn axial_mass(&self) -> f32 {
         inverse_or_zero(self.inertia_a + self.inertia_b)
     }
+}
+
+/// The current slide axis of a joint and the lever arms along and across it, for joints whose
+/// body B slides along an axis fixed in body A.
+pub(crate) struct SlideGeometry {
+    pub(crate) axis: Vec2,
+    pub(crate) perp: Vec2,
+    /// Current vector from anchor A to anchor B.
+    pub(crate) separation: Vec2,
+    /// How far B slid along the axis.
+    pub(crate) translation: f32,
+    pub(crate) axial_arm_a: f32,
+    pub(crate) axial_arm_b: f32,
+    pub(crate) perp_arm_a: f32,
+    pub(crate) perp_arm_b: f32,
+}
+
+impl SlideGeometry {
+    /// `axis` is the slide axis in world space at the start of the step.
+    pub(crate) fn new(axis: Vec2, frame: &JointFrame, a: &Body, b: &Body) -> Self {
+        let (anchor_a, anchor_b) = frame.current_anchors(a, b);
+        let separation = frame.separation(a, b, anchor_a, anchor_b);
+        let axis = a.delta_rotation().rotate(axis);
+        let perp = axis.perp();
+        Self {
+            axis,
+            perp,
+            separation,
+            translation: axis.dot(separation),
+            axial_arm_a: (separation + anchor_a).perp_dot(axis),
+            axial_arm_b: anchor_b.perp_dot(axis),
+            perp_arm_a: (separation + anchor_a).perp_dot(perp),
+            perp_arm_b: anchor_b.perp_dot(perp),
+        }
+    }
+
+    /// Relative speed of B along the axis.
+    pub(crate) fn axial_speed(&self, a: &Body, b: &Body) -> f32 {
+        self.axis.dot(b.linear_velocity() - a.linear_velocity()) + self.axial_arm_b * b.angular_velocity()
+            - self.axial_arm_a * a.angular_velocity()
+    }
+
+    /// Relative speed of B across the axis.
+    pub(crate) fn perp_speed(&self, a: &Body, b: &Body) -> f32 {
+        self.perp.dot(b.linear_velocity() - a.linear_velocity()) + self.perp_arm_b * b.angular_velocity()
+            - self.perp_arm_a * a.angular_velocity()
+    }
+
+    /// Applies an impulse along the axis to B, and its opposite to A.
+    pub(crate) fn apply_axial(&self, a: &mut Body, b: &mut Body, impulse: f32) {
+        apply_impulses(a, b, impulse * self.axis, impulse * self.axial_arm_a, impulse * self.axial_arm_b);
+    }
+
+    /// Applies an impulse across the axis to B, and its opposite to A.
+    pub(crate) fn apply_perp(&self, a: &mut Body, b: &mut Body, impulse: f32) {
+        apply_impulses(a, b, impulse * self.perp, impulse * self.perp_arm_a, impulse * self.perp_arm_b);
+    }
+}
+
+/// Keeps the translation of a slide within `lower..=upper`, accumulating the impulses of the
+/// lower and upper limits.
+#[allow(clippy::too_many_arguments, reason = "the state of both limits and of the step")]
+pub(crate) fn solve_slide_limits(
+    geometry: &SlideGeometry,
+    (lower, upper): (f32, f32),
+    (lower_impulse, upper_impulse): (&mut f32, &mut f32),
+    mass: f32,
+    a: &mut Body,
+    b: &mut Body,
+    context: &SolverContext,
+    pass: Pass,
+) {
+    // Lower limit: keeps the translation above `lower`.
+    let gap = geometry.translation - lower;
+    let speed = geometry.axial_speed(a, b);
+    let impulse = limit_impulse(lower_impulse, mass, speed, gap, context.limit_softness(gap, pass));
+    geometry.apply_axial(a, b, impulse);
+
+    // Upper limit: keeps the translation below `upper`, pushing the other way.
+    let gap = upper - geometry.translation;
+    let speed = -geometry.axial_speed(a, b);
+    let impulse = limit_impulse(upper_impulse, mass, speed, gap, context.limit_softness(gap, pass));
+    geometry.apply_axial(a, b, -impulse);
 }
 
 /// Accumulates the impulse of a motor driving `speed` towards `motor.speed`, and returns the

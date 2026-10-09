@@ -1,6 +1,6 @@
 [package]
 name = "slingshot"
-description = "Knock down the towers: a slingshot game built on Kinetica."
+description = "Knock down paper towers with a slingshot: a game built on Kinetica."
 publish = false
 version.workspace = true
 edition.workspace = true

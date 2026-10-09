@@ -1,6 +1,6 @@
 [package]
-name = "hill-climb"
-description = "Drive as far as you can over the hills before the fuel runs out: a car game built on Kinetica."
+name = "snip"
+description = "Snip the ropes to drop the sweet in the basket: a physics puzzle built on Kinetica."
 publish = false
 version.workspace = true
 edition.workspace = true

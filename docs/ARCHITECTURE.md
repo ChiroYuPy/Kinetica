@@ -19,7 +19,7 @@ Everything is in `crates/kinetica/src`.
 | `collision/narrow_phase/` | Exact contact points between two shapes (`collide`). |
 | `contact/` | Tracks every candidate pair from step to step; contact and sensor events. |
 | `solver/` | Turns contacts into constraints and moves bodies (soft step). |
-| `joint/` | The five joint types, and the math they share (`frame.rs`). |
+| `joint/` | The six joint types, and the math they share (`frame.rs`): anchors, slide axes, limits and motors. |
 | `island.rs` | Groups of touching bodies that fall asleep and wake up together. |
 | `continuous.rs` | Stops fast bodies from tunneling through thin obstacles. |
 | `query.rs` | Ray casts, shape casts, point and area queries. |

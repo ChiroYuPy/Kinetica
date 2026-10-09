@@ -29,6 +29,7 @@ mod soft_bodies;
 mod stacks;
 mod tumbler;
 mod weld_joints;
+mod wheel_joints;
 
 use std::collections::HashSet;
 
@@ -52,6 +53,7 @@ pub const SCENES: &[Scene] = &[
     prismatic_joints::SCENE,
     distance_joints::SCENE,
     weld_joints::SCENE,
+    wheel_joints::SCENE,
     ropes::SCENE,
     bridge::SCENE,
     cloth::SCENE,

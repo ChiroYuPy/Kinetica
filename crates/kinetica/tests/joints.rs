@@ -312,6 +312,62 @@ fn prismatic_motor_lifts_an_elevator() {
 }
 
 #[test]
+fn wheel_hangs_on_its_spring_and_turns_freely() {
+    let mut world = World::new();
+    let chassis = world.add_body(BodyDesc::fixed());
+    let wheel = world.add_body(BodyDesc::dynamic().angular_velocity(3.0).collider(ColliderDesc::circle(0.4)));
+    let hertz = 3.0;
+    world.add_joint(WheelJointDesc::new(chassis, wheel, Vec2::ZERO, Vec2::Y).spring(hertz, 1.0));
+
+    run(&mut world, 3 * SECOND);
+
+    // A spring of angular frequency ω holding a mass sags by g / ω².
+    let omega = 2.0 * PI * hertz;
+    let sag = 9.81 / (omega * omega);
+    let body = &world[wheel];
+    assert!((body.position().y + sag).abs() < 0.05 * sag, "sagged to {}, expected {}", -body.position().y, sag);
+    assert!(body.position().x.abs() < 1e-3, "the axle left its axis: {:?}", body.position());
+    assert!((body.angular_velocity() - 3.0).abs() < 1e-3, "the wheel should spin freely");
+}
+
+#[test]
+fn wheel_suspension_stops_at_its_limits() {
+    let mut world = World::new();
+    let chassis = world.add_body(BodyDesc::fixed());
+    let wheel = world.add_body(BodyDesc::dynamic().collider(ColliderDesc::circle(0.4)));
+    // Alone, this 1 Hz spring would sag by 25 cm.
+    world.add_joint(WheelJointDesc::new(chassis, wheel, Vec2::ZERO, Vec2::Y).spring(1.0, 0.7).limits(-0.1..=0.1));
+
+    run(&mut world, 2 * SECOND);
+
+    let y = world[wheel].position().y;
+    assert!((y + 0.1).abs() < 0.01, "the wheel should rest on its lower limit, not at {y}");
+}
+
+#[test]
+fn wheel_motors_drive_a_car() {
+    let mut world = World::new();
+    world.add_body(BodyDesc::fixed().position(vec2(0.0, -0.5)).collider(ColliderDesc::rectangle(200.0, 1.0)));
+    let chassis =
+        world.add_body(BodyDesc::dynamic().position(vec2(0.0, 1.0)).collider(ColliderDesc::rectangle(3.0, 0.4)));
+    let (radius, speed) = (0.4, 10.0);
+    for x in [-1.0, 1.0] {
+        let axle = vec2(x, 0.4);
+        let wheel = world.add_body(BodyDesc::dynamic().position(axle).collider(ColliderDesc::circle(radius)));
+        // Clockwise wheels roll to the right.
+        let joint = WheelJointDesc::new(chassis, wheel, axle, Vec2::Y).spring(5.0, 0.7).motor(-speed, 200.0);
+        world.add_joint(joint);
+    }
+
+    run(&mut world, 3 * SECOND);
+
+    let body = &world[chassis];
+    let velocity = body.linear_velocity();
+    assert!((velocity.x - speed * radius).abs() < 0.05 * speed * radius, "the car drives at {velocity:?}");
+    assert!(body.angle().abs() < 0.05, "the car tilted to {}", body.angle());
+}
+
+#[test]
 fn weld_holds_a_cantilever() {
     let mut world = World::new();
     let wall = world.add_body(BodyDesc::fixed());

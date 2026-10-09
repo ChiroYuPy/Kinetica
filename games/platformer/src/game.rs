@@ -1,9 +1,8 @@
 //! Game rules, independent of input and drawing so they can be tested.
 
-use kinetica::SensorEvent;
 use kinetica::prelude::*;
 
-use crate::level::{self, FALL_LIMIT, Level};
+use crate::level::{CHECKPOINTS, DEATH_HEIGHT, GOAL, Level};
 use crate::player::{Input, Player};
 
 pub const TIME_STEP: f32 = 1.0 / 60.0;
@@ -11,7 +10,6 @@ pub const TIME_STEP: f32 = 1.0 / 60.0;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
     Playing,
-    /// Reached the goal with every coin.
     Won,
 }
 
@@ -20,89 +18,82 @@ pub struct Game {
     pub world: World,
     pub level: Level,
     pub player: Player,
-    pub coins_collected: usize,
-    pub coin_count: usize,
-    pub deaths: u32,
-    pub time: f32,
     pub state: State,
-    /// The player touched the goal without every coin, this long ago.
-    pub missing_coins_hint: Option<f32>,
+    pub time: f32,
+    pub coins: usize,
+    pub deaths: u32,
+    /// Index in [`CHECKPOINTS`] of the last checkpoint passed.
+    pub checkpoint: usize,
 }
 
 impl Game {
     pub fn new() -> Self {
         let mut world = World::new();
-        let level = level::build(&mut world);
-        let player = Player::new(&mut world, level.spawn);
-        let coin_count = level.coins.len();
-        Self {
-            world,
-            level,
-            player,
-            coins_collected: 0,
-            coin_count,
-            deaths: 0,
-            time: 0.0,
-            state: State::Playing,
-            missing_coins_hint: None,
-        }
+        let level = Level::new(&mut world);
+        let player = Player::new(&mut world, CHECKPOINTS[0]);
+        Self { world, level, player, state: State::Playing, time: 0.0, coins: 0, deaths: 0, checkpoint: 0 }
+    }
+
+    pub fn total_coins(&self) -> usize {
+        self.coins + self.level.coins.len()
     }
 
     pub fn step(&mut self, input: Input) {
         let input = if self.state == State::Playing { input } else { Input::default() };
+        for mover in &self.level.movers {
+            mover.update(&mut self.world, self.time, TIME_STEP);
+        }
         self.player.update(&mut self.world, input, TIME_STEP);
-        for platform in &mut self.level.moving_platforms {
-            platform.update(&mut self.world);
-        }
         self.world.step(TIME_STEP);
-        if self.state == State::Playing {
-            self.time += TIME_STEP;
+        self.time += TIME_STEP;
+        if self.state != State::Playing {
+            return;
         }
-        if let Some(age) = &mut self.missing_coins_hint {
-            *age += TIME_STEP;
+
+        self.collect_coins();
+        let position = self.player.position(&self.world);
+        while self.checkpoint + 1 < CHECKPOINTS.len() && position.x > CHECKPOINTS[self.checkpoint + 1].x {
+            self.checkpoint += 1;
         }
-        self.handle_sensors();
-        if self.player.position(&self.world).y < FALL_LIMIT {
-            self.die();
+        if position.x > GOAL {
+            self.state = State::Won;
+        } else if position.y < DEATH_HEIGHT || self.on_spikes() {
+            self.deaths += 1;
+            self.player.respawn(&mut self.world, CHECKPOINTS[self.checkpoint]);
         }
     }
 
-    fn handle_sensors(&mut self) {
+    fn collect_coins(&mut self) {
         let player = self.player.body;
-        let entered: Vec<_> = self
+        let touched: Vec<BodyHandle> = self
             .world
             .sensor_events()
             .iter()
             .filter_map(|event| match event {
-                SensorEvent::Entered(pair) if pair.visitor_body == player => Some(*pair),
+                SensorEvent::Entered(pair) if pair.visitor_body == player => Some(pair.sensor_body),
                 _ => None,
             })
+            .filter(|body| self.level.coins.contains(body))
             .collect();
-        for pair in entered {
-            if let Some(index) = self.level.coins.iter().position(|&coin| coin == pair.sensor_body) {
-                self.world.remove_body(self.level.coins.swap_remove(index));
-                self.coins_collected += 1;
-            } else if self.level.spikes.contains(&pair.sensor) {
-                self.die();
-            } else if pair.sensor == self.level.goal {
-                if self.level.coins.is_empty() {
-                    self.state = State::Won;
-                } else {
-                    self.missing_coins_hint = Some(0.0);
-                }
-            }
+        for coin in touched {
+            self.level.coins.retain(|&other| other != coin);
+            self.world.remove_body(coin);
+            self.coins += 1;
         }
     }
 
-    fn die(&mut self) {
-        self.deaths += 1;
-        self.player.respawn(&mut self.world, self.level.spawn);
+    fn on_spikes(&self) -> bool {
+        let player = self.player.body;
+        self.level.pits.iter().any(|pit| self.world.sensor_overlaps(pit.sensor).any(|pair| pair.visitor_body == player))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const IDLE: Input = Input { run: 0.0, jump_pressed: false, jump_held: false };
+    const RIGHT: Input = Input { run: 1.0, ..IDLE };
 
     fn run(game: &mut Game, steps: usize, input: Input) {
         for _ in 0..steps {
@@ -114,95 +105,112 @@ mod tests {
         game.player.position(&game.world)
     }
 
-    const RIGHT: Input = Input { run: 1.0, jump_pressed: false, jump_held: false };
-    const IDLE: Input = Input { run: 0.0, jump_pressed: false, jump_held: false };
+    /// Puts the player at `position`, at rest, and lets it land.
+    fn place(game: &mut Game, position: Vec2) {
+        game.player.respawn(&mut game.world, position);
+        run(game, 30, IDLE);
+    }
 
-    fn jump(game: &mut Game) {
+    /// Jumps holding the button, and returns how high the feet went above where they started.
+    fn jump_height(game: &mut Game) -> f32 {
+        let start = position(game).y;
         game.step(Input { jump_pressed: true, jump_held: true, ..IDLE });
+        let mut highest = start;
+        for _ in 0..90 {
+            game.step(Input { jump_held: true, ..IDLE });
+            highest = highest.max(position(game).y);
+        }
+        highest - start
     }
 
     #[test]
-    fn player_stands_still_and_runs() {
+    fn player_stands_still_on_the_ground() {
         let mut game = Game::new();
         run(&mut game, 60, IDLE);
         let start = position(&game);
-        assert!(game.player.ground(&game.world).is_some(), "the player should stand on the ground");
         run(&mut game, 60, IDLE);
-        assert!(position(&game).distance(start) < 0.01, "the player slides while idle");
-
-        run(&mut game, 30, RIGHT);
-        let speed = game.world[game.player.body].linear_velocity().x;
-        assert!((speed - 7.0).abs() < 0.1, "running speed {speed}");
+        assert!(position(&game).distance(start) < 1e-3, "drifted from {start} to {}", position(&game));
+        assert!(game.player.ground(&game.world).is_some());
     }
 
     #[test]
-    fn jumps_reach_the_first_platform_and_land_on_it() {
+    fn a_held_jump_is_higher_than_a_tap_but_cannot_reach_the_ledge() {
         let mut game = Game::new();
-        // Under the first platform (top at y = 2.62), then jump straight up and hold.
-        game.player.respawn(&mut game.world, vec2(-2.0, 0.7));
         run(&mut game, 30, IDLE);
-        jump(&mut game);
-        run(&mut game, 120, Input { jump_held: true, ..IDLE });
-        let y = position(&game).y;
-        assert!((y - (2.62 + 0.6)).abs() < 0.05, "the player should stand on the platform, at y = {y}");
-    }
-
-    #[test]
-    fn short_jumps_are_lower() {
-        let apex = |hold_steps: usize| {
-            let mut game = Game::new();
-            run(&mut game, 30, IDLE);
-            let floor = position(&game).y;
-            jump(&mut game);
-            let mut highest = floor;
-            for step in 0..90 {
-                game.step(Input { jump_held: step < hold_steps, ..IDLE });
-                highest = highest.max(position(&game).y);
-            }
-            highest - floor
-        };
-        let (short, full) = (apex(3), apex(90));
-        assert!((full - 3.7).abs() < 0.3, "full jump height {full}");
-        assert!(short < 0.6 * full, "short jump {short} vs full {full}");
-    }
-
-    #[test]
-    fn ferry_carries_the_player_over_the_pit() {
-        let mut game = Game::new();
-        // Drop onto the ferry at its starting point.
-        game.player.respawn(&mut game.world, vec2(9.5, 2.0));
-        run(&mut game, 120, IDLE);
-        let x = position(&game).x;
-        assert!(x > 12.0, "the player should ride the ferry, it is at x = {x}");
-        assert_eq!(game.deaths, 0, "the player fell into the pit");
-    }
-
-    #[test]
-    fn coins_spikes_and_goal() {
-        let mut game = Game::new();
-        // Walk into the first coin from below it.
-        game.player.respawn(&mut game.world, vec2(-2.0, 3.0));
-        run(&mut game, 10, IDLE);
-        assert_eq!(game.coins_collected, 1);
-
-        // The spikes send the player back to the start.
-        game.player.respawn(&mut game.world, vec2(12.0, -2.5));
-        run(&mut game, 60, IDLE);
-        assert_eq!(game.deaths, 1);
-        assert!(position(&game).distance(game.level.spawn) < 1.0);
-
-        // The goal only counts with every coin.
-        game.player.respawn(&mut game.world, vec2(50.0, 1.5));
-        run(&mut game, 10, IDLE);
-        assert_eq!(game.state, State::Playing);
-        assert!(game.missing_coins_hint.is_some());
-        for coin in std::mem::take(&mut game.level.coins) {
-            game.world.remove_body(coin);
+        let held = jump_height(&mut game);
+        let start = position(&game).y;
+        game.step(Input { jump_pressed: true, jump_held: true, ..IDLE });
+        let mut tap = 0.0_f32;
+        for _ in 0..90 {
+            game.step(IDLE);
+            tap = tap.max(position(&game).y - start);
         }
-        game.player.respawn(&mut game.world, vec2(46.0, 1.5));
-        run(&mut game, 10, IDLE);
-        game.player.respawn(&mut game.world, vec2(50.0, 1.5));
-        run(&mut game, 10, IDLE);
-        assert_eq!(game.state, State::Won);
+        assert!(held > 2.5 && held < 3.3, "a held jump rose {held} m");
+        assert!(tap < 0.6 * held, "a tap rose {tap} m, a held jump {held} m");
+    }
+
+    #[test]
+    fn one_way_platforms_are_jumped_through_and_stood_on() {
+        let mut game = Game::new();
+        // Under the first platform, whose top is at 2.2 m.
+        place(&mut game, vec2(10.0, 1.2));
+        jump_height(&mut game);
+        run(&mut game, 30, IDLE);
+        let y = position(&game).y;
+        assert!(y > 2.2, "the player should stand on the platform, it is at {y}");
+    }
+
+    #[test]
+    fn the_moving_platform_carries_the_player_over_the_pit() {
+        let mut game = Game::new();
+        // Wait at the edge for the platform, step on, and ride it.
+        place(&mut game, vec2(27.0, 1.2));
+        while game.world[game.level.movers[0].body].position().x > 29.6 {
+            game.step(IDLE);
+        }
+        run(&mut game, 20, RIGHT);
+        run(&mut game, 150, IDLE);
+        run(&mut game, 40, RIGHT);
+        assert_eq!(game.deaths, 0);
+        assert!(position(&game).x > 38.0, "the player is at {}", position(&game));
+    }
+
+    #[test]
+    fn the_box_is_the_way_up_the_ledge() {
+        let mut game = Game::new();
+        place(&mut game, vec2(41.0, 1.2));
+        // Push the box against the ledge, back off, climb on it, then jump to the ledge.
+        run(&mut game, 90, RIGHT);
+        let box_x = game.world[game.level.boxes[0]].position().x;
+        assert!(box_x > 48.5, "the box only went to {box_x}");
+        run(&mut game, 25, Input { run: -1.0, ..IDLE });
+        // Two jumps to the right, each from the ground: onto the box, then onto the ledge.
+        let jump_right = Input { run: 1.0, jump_pressed: true, jump_held: true };
+        for _ in 0..2 {
+            game.step(jump_right);
+            run(&mut game, 10, Input { jump_pressed: false, ..jump_right });
+            while game.player.ground(&game.world).is_none() {
+                game.step(Input { jump_pressed: false, ..jump_right });
+            }
+        }
+        assert!(position(&game).y > 3.4, "the player did not reach the ledge: {}", position(&game));
+    }
+
+    #[test]
+    fn spikes_kill_and_the_player_restarts_at_the_checkpoint() {
+        let mut game = Game::new();
+        place(&mut game, vec2(33.0, -1.0));
+        assert_eq!(game.deaths, 1);
+        assert!(position(&game).distance(CHECKPOINTS[0]) < 1.0, "respawned at {}", position(&game));
+    }
+
+    #[test]
+    fn coins_are_collected_once() {
+        let mut game = Game::new();
+        let total = game.total_coins();
+        place(&mut game, vec2(116.0, 1.2));
+        run(&mut game, 30, IDLE);
+        assert_eq!(game.coins, 1);
+        assert_eq!(game.total_coins(), total);
     }
 }

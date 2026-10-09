@@ -53,7 +53,8 @@ pub use contact::{CollisionEvent, Contact, ContactPair, SensorEvent, SensorPair}
 pub use debug_draw::{Color, DebugDraw, DebugDrawOptions};
 pub use joint::{
     DistanceJoint, DistanceJointDesc, Joint, JointDesc, JointHandle, JointType, Motor, MouseJoint, MouseJointDesc,
-    PrismaticJoint, PrismaticJointDesc, RevoluteJoint, RevoluteJointDesc, Spring, WeldJoint, WeldJointDesc,
+    PrismaticJoint, PrismaticJointDesc, RevoluteJoint, RevoluteJointDesc, Spring, WeldJoint, WeldJointDesc, WheelJoint,
+    WheelJointDesc,
 };
 pub use math::{Vec2, vec2};
 pub use profile::StepProfile;
@@ -67,6 +68,6 @@ pub mod prelude {
         BodyDesc, BodyHandle, BodyType, ChainDesc, ColliderDesc, ColliderHandle, CollisionEvent, CollisionLayers,
         ContactPair, DistanceJoint, DistanceJointDesc, Joint, JointHandle, Motor, MouseJoint, MouseJointDesc,
         PrismaticJoint, PrismaticJointDesc, QueryFilter, RevoluteJoint, RevoluteJointDesc, SensorEvent, SensorPair,
-        WeldJoint, WeldJointDesc, World,
+        WeldJoint, WeldJointDesc, WheelJoint, WheelJointDesc, World,
     };
 }

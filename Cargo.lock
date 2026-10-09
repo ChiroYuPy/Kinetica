@@ -488,15 +488,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e17592d60ebacc7d5e169f4663c5f84f9161cc90328abcfe8456f41e4dfcb284"
 
 [[package]]
-name = "hill-climb"
-version = "0.1.0"
-dependencies = [
- "kinetica",
- "kinetica-macroquad",
- "macroquad",
-]
-
-[[package]]
 name = "icu_collections"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1067,15 +1058,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
-name = "pinball"
-version = "0.1.0"
-dependencies = [
- "kinetica",
- "kinetica-macroquad",
- "macroquad",
-]
-
-[[package]]
 name = "pkg-config"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1376,6 +1358,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "snip"
+version = "0.1.0"
+dependencies = [
+ "kinetica",
+ "kinetica-macroquad",
+ "macroquad",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1460,6 +1451,15 @@ name = "tracing-core"
 version = "0.1.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
+
+[[package]]
+name = "trials"
+version = "0.1.0"
+dependencies = [
+ "kinetica",
+ "kinetica-macroquad",
+ "macroquad",
+]
 
 [[package]]
 name = "ttf-parser"

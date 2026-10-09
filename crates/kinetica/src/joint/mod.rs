@@ -9,6 +9,7 @@
 //! | [`RevoluteJoint`] | a shared pivot | hinges, wheels, ragdoll limbs, pendulums |
 //! | [`DistanceJoint`] | a distance | rods, springs, ropes |
 //! | [`PrismaticJoint`] | a slide axis | pistons, elevators, sliding doors |
+//! | [`WheelJoint`] | an axle on a sprung axis | vehicle wheels |
 //! | [`WeldJoint`] | the relative placement | breakable or bendable structures |
 //! | [`MouseJoint`] | a point near a target | dragging bodies with the mouse |
 //!
@@ -88,6 +89,7 @@ mod mouse;
 mod prismatic;
 mod revolute;
 mod weld;
+mod wheel;
 
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -100,6 +102,7 @@ pub use mouse::{MouseJoint, MouseJointDesc};
 pub use prismatic::{PrismaticJoint, PrismaticJointDesc};
 pub use revolute::{RevoluteJoint, RevoluteJointDesc};
 pub use weld::{WeldJoint, WeldJointDesc};
+pub use wheel::{WheelJoint, WheelJointDesc};
 
 use crate::arena::{Arena, Index};
 use crate::body::{Body, BodyHandle};
@@ -173,10 +176,10 @@ impl<J> fmt::Debug for JointHandle<J> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Motor {
-    /// Target speed: rad/s for revolute joints, m/s for prismatic joints.
+    /// Target speed: rad/s for revolute and wheel joints, m/s for prismatic joints.
     pub speed: f32,
-    /// Strongest effort the motor may apply: a torque (N·m) for revolute joints, a force (N)
-    /// for prismatic joints.
+    /// Strongest effort the motor may apply: a torque (N·m) for revolute and wheel joints, a
+    /// force (N) for prismatic joints.
     pub max_force: f32,
 }
 
@@ -204,6 +207,8 @@ pub enum Joint {
     Prismatic(PrismaticJoint),
     /// See [`WeldJoint`].
     Weld(WeldJoint),
+    /// See [`WheelJoint`].
+    Wheel(WheelJoint),
     /// See [`MouseJoint`].
     Mouse(MouseJoint),
 }
@@ -221,6 +226,7 @@ impl Joint {
             Self::Distance(joint) => (joint.local_anchor_a(), joint.local_anchor_b()),
             Self::Prismatic(joint) => (joint.local_anchor_a(), joint.local_anchor_b()),
             Self::Weld(joint) => (joint.local_anchor_a(), joint.local_anchor_b()),
+            Self::Wheel(joint) => (joint.local_anchor_a(), joint.local_anchor_b()),
             Self::Mouse(joint) => (joint.target(), joint.local_anchor_b()),
         }
     }
@@ -231,6 +237,7 @@ impl Joint {
             Self::Distance(joint) => &joint.base,
             Self::Prismatic(joint) => &joint.base,
             Self::Weld(joint) => &joint.base,
+            Self::Wheel(joint) => &joint.base,
             Self::Mouse(joint) => &joint.base,
         }
     }
@@ -241,6 +248,7 @@ impl Joint {
             Self::Distance(joint) => &mut joint.base,
             Self::Prismatic(joint) => &mut joint.base,
             Self::Weld(joint) => &mut joint.base,
+            Self::Wheel(joint) => &mut joint.base,
             Self::Mouse(joint) => &mut joint.base,
         }
     }
@@ -252,6 +260,7 @@ impl Joint {
             Self::Distance(joint) => joint.reaction_impulse(),
             Self::Prismatic(joint) => joint.reaction_impulse(),
             Self::Weld(joint) => joint.reaction_impulse(),
+            Self::Wheel(joint) => joint.reaction_impulse(),
             Self::Mouse(joint) => joint.reaction_impulse(),
         }
     }
@@ -277,6 +286,7 @@ impl Joint {
             Self::Distance(joint) => joint.prepare(&frame, context),
             Self::Prismatic(joint) => joint.prepare(&frame, a, b),
             Self::Weld(joint) => joint.prepare(&frame, a, b, context),
+            Self::Wheel(joint) => joint.prepare(&frame, a, context),
             Self::Mouse(joint) => joint.prepare(b, context),
         }
     }
@@ -289,6 +299,7 @@ impl Joint {
             Self::Distance(joint) => joint.warm_start(frame, a, b),
             Self::Prismatic(joint) => joint.warm_start(frame, a, b),
             Self::Weld(joint) => joint.warm_start(frame, a, b),
+            Self::Wheel(joint) => joint.warm_start(frame, a, b),
             Self::Mouse(joint) => joint.warm_start(frame, b),
         }
     }
@@ -301,6 +312,7 @@ impl Joint {
             Self::Distance(joint) => joint.solve(&frame, a, b, context, pass),
             Self::Prismatic(joint) => joint.solve(&frame, a, b, context, pass),
             Self::Weld(joint) => joint.solve(&frame, a, b, context, pass),
+            Self::Wheel(joint) => joint.solve(&frame, a, b, context, pass),
             // A soft spring by design: identical with and without bias.
             Self::Mouse(joint) => joint.solve(&frame, b, context),
         }
@@ -408,6 +420,7 @@ joint_type!(RevoluteJoint, RevoluteJointDesc, Revolute);
 joint_type!(DistanceJoint, DistanceJointDesc, Distance);
 joint_type!(PrismaticJoint, PrismaticJointDesc, Prismatic);
 joint_type!(WeldJoint, WeldJointDesc, Weld);
+joint_type!(WheelJoint, WheelJointDesc, Wheel);
 joint_type!(MouseJoint, MouseJointDesc, Mouse);
 
 /// Converts a range to `(lower, upper)`, checking it is not empty.

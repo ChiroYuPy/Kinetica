@@ -28,17 +28,17 @@ indexing the world with a handle reaches the body, collider or joint.
 | Crate | Role |
 |-------|------|
 | [`crates/kinetica`](crates/kinetica) | The engine. No rendering or windowing dependency. Optional `serde` and `profile` features. |
-| [`crates/kinetica-macroquad`](crates/kinetica-macroquad) | Glue for macroquad games: camera in meters, debug rendering, fixed time step, mouse grab. |
+| [`crates/kinetica-macroquad`](crates/kinetica-macroquad) | Glue for macroquad games: camera in meters, debug rendering, a cut-paper look for games, fixed time step, mouse grab. |
 | [`crates/kinetica-bench`](crates/kinetica-bench) | Reproducible performance benchmarks, with the time of each step stage. |
 | [`crates/kinetica-testbed`](crates/kinetica-testbed) | One labeled scene per engine concept, from body types to queries. |
-| [`games/slingshot`](games/slingshot) | Knock down towers with a slingshot. |
-| [`games/platformer`](games/platformer) | Run, jump and collect coins. |
-| [`games/hill-climb`](games/hill-climb) | Drive a sprung car over the hills before the fuel runs out. |
-| [`games/pinball`](games/pinball) | Keep the ball in play with the flippers and light the rollover lanes. |
+| [`games/slingshot`](games/slingshot) | Knock down towers of wood, glass and stone with a slingshot. |
+| [`games/trials`](games/trials) | Drive a little car over hills, a plank bridge, a seesaw and a jump to the flag. |
+| [`games/platformer`](games/platformer) | Run and jump across one-way and moving platforms, push a box, collect coins. |
+| [`games/snip`](games/snip) | Cut the ropes to drop the sweet in the basket. |
 
 ```sh
 cargo run --release -p kinetica-testbed       # interactive testbed
-cargo run --release -p slingshot              # or platformer, hill-climb, pinball
+cargo run --release -p slingshot              # or trials, platformer, snip
 cargo run --release -p kinetica-bench         # performance benchmarks
 cargo test --workspace --all-features         # all tests
 cargo clippy --workspace --all-targets        # lints (pedantic)

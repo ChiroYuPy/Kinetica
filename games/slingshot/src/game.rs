@@ -2,42 +2,56 @@
 
 use kinetica::prelude::*;
 
-use crate::level::{self, LEVEL_COUNT, Level};
+use crate::level::{Level, Material, TARGET_RADIUS, levels};
 
-/// Where the projectile is launched from.
-pub const SLING: Vec2 = vec2(0.0, 2.2);
-/// The projectile can be pulled at most this far from the sling.
+pub const TIME_STEP: f32 = 1.0 / 60.0;
+/// Where the sling's pouch rests.
+pub const SLING: Vec2 = vec2(-4.0, 3.2);
+/// How far the pouch can be pulled from its rest position, in meters.
 pub const MAX_PULL: f32 = 2.5;
+pub const PROJECTILE_RADIUS: f32 = 0.35;
+pub const SHOTS_PER_LEVEL: u32 = 4;
 /// Launch speed per meter of pull, in m/s.
 const LAUNCH_SPEED_PER_METER: f32 = 9.0;
-pub const PROJECTILE_RADIUS: f32 = 0.3;
-/// A target hit at this speed, in m/s, pops.
-const POP_IMPACT_SPEED: f32 = 2.0;
-/// A target below this height fell off the world, and pops too.
-const FALL_LIMIT: f32 = -5.0;
-/// How long a popped target stays drawn, in seconds.
-pub const POP_DURATION: f32 = 0.5;
-const TIME_STEP: f32 = 1.0 / 60.0;
-/// Below this speed, in m/s, everything counts as settled.
-const SETTLED_SPEED: f32 = 0.1;
-const POINTS_PER_TARGET: u32 = 500;
-const POINTS_PER_SPARE_SHOT: u32 = 1000;
+/// Impact speed that pops a target, in m/s.
+const TARGET_TOUGHNESS: f32 = 2.5;
+const TARGET_POINTS: u32 = 500;
+const UNUSED_SHOT_POINTS: u32 = 1000;
+/// A shot ends when everything is still, or after this long.
+const LONGEST_SHOT: f32 = 8.0;
+/// Bodies slower than this, in m/s, count as still.
+const STILL_SPEED: f32 = 0.15;
+/// How long debris flies before vanishing, in seconds.
+pub const DEBRIS_LIFETIME: f32 = 1.2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
-    /// Waiting for the player to shoot, or for the scene to settle.
-    Playing,
-    /// Every target popped.
+    /// A stone waits in the sling.
+    Aiming,
+    /// The stone flies and things fall; the next shot waits for everything to settle.
+    Shot,
     Won,
-    /// No shot left and targets remain.
+    /// Out of stones with targets left.
     Lost,
 }
 
-/// Where a target popped, for a small effect.
+/// What a scrap of paper flying from a broken block or a popped target was.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scrap {
+    Block(Material),
+    Target,
+}
+
+/// A scrap of paper flying away, only drawn: it does not collide.
 #[derive(Debug, Clone, Copy)]
-pub struct Pop {
+pub struct Debris {
+    pub kind: Scrap,
     pub position: Vec2,
-    /// Seconds since it popped.
+    pub velocity: Vec2,
+    pub angle: f32,
+    pub spin: f32,
+    pub size: f32,
+    /// Seconds since it broke off.
     pub age: f32,
 }
 
@@ -45,129 +59,183 @@ pub struct Pop {
 pub struct Game {
     pub world: World,
     pub level_index: usize,
-    pub level: Level,
+    pub level_name: &'static str,
+    pub blocks: Vec<(BodyHandle, Material)>,
+    pub targets: Vec<BodyHandle>,
     pub projectiles: Vec<BodyHandle>,
+    pub debris: Vec<Debris>,
     pub shots_left: u32,
     pub score: u32,
     pub state: State,
-    /// Targets popped recently.
-    pub pops: Vec<Pop>,
+    /// Seconds since the last shot.
+    shot_time: f32,
+    /// Seeds the debris scatter.
+    random: u32,
 }
 
 impl Game {
-    pub fn new(level_index: usize) -> Self {
+    pub fn new(level_index: usize, score: u32) -> Self {
+        let level = &levels()[level_index];
         let mut world = World::new();
-        let level = level::build(&mut world, level_index);
-        let shots_left = level.shots;
+        world.add_body(BodyDesc::fixed().position(vec2(0.0, -0.5)).collider(ColliderDesc::rectangle(80.0, 1.0)));
+        let Level { name, blocks, targets } = level;
+        let blocks = blocks.iter().map(|block| (world.add_body(block.desc()), block.material)).collect();
+        let targets = targets
+            .iter()
+            .map(|&center| {
+                let ball = ColliderDesc::circle(TARGET_RADIUS).density(0.5).friction(0.7);
+                world.add_body(BodyDesc::dynamic().position(center).collider(ball))
+            })
+            .collect();
         Self {
             world,
             level_index,
-            level,
+            level_name: name,
+            blocks,
+            targets,
             projectiles: Vec::new(),
-            shots_left,
-            score: 0,
-            state: State::Playing,
-            pops: Vec::new(),
+            debris: Vec::new(),
+            shots_left: SHOTS_PER_LEVEL,
+            score,
+            state: State::Aiming,
+            shot_time: 0.0,
+            random: 0x1234_5678,
         }
     }
 
-    pub fn has_next_level(&self) -> bool {
-        self.level_index + 1 < LEVEL_COUNT
+    pub fn level_count() -> usize {
+        levels().len()
     }
 
-    /// The next level, keeping the score; after the last one, a new game from the first.
-    pub fn next_level(&self) -> Self {
-        if !self.has_next_level() {
-            return Self::new(0);
-        }
-        Self { score: self.score, ..Self::new(self.level_index + 1) }
+    pub fn is_last_level(&self) -> bool {
+        self.level_index + 1 == Self::level_count()
     }
 
-    /// Launch velocity for the projectile pulled to `pull_point`.
-    pub fn launch_velocity(pull_point: Vec2) -> Vec2 {
-        Self::clamp_pull(pull_point - SLING) * -LAUNCH_SPEED_PER_METER
+    /// The pouch position for a pull towards `point`, kept within reach.
+    pub fn pouch(point: Vec2) -> Vec2 {
+        SLING + (point - SLING).clamp_length_max(MAX_PULL)
     }
 
-    /// Where the projectile sits when pulled towards `point`.
-    pub fn pulled_position(point: Vec2) -> Vec2 {
-        SLING + Self::clamp_pull(point - SLING)
+    /// Launch velocity for the pouch pulled to `pouch`: away from the pull, faster the further.
+    pub fn launch_velocity(pouch: Vec2) -> Vec2 {
+        (SLING - pouch) * LAUNCH_SPEED_PER_METER
     }
 
-    fn clamp_pull(pull: Vec2) -> Vec2 {
-        pull.clamp_length_max(MAX_PULL)
+    /// Where a stone launched from `pouch` will be at regular times, ignoring what it hits.
+    pub fn trajectory(&self, pouch: Vec2) -> impl Iterator<Item = Vec2> {
+        let velocity = Self::launch_velocity(pouch);
+        let gravity = self.world.gravity();
+        (1..16).map(move |i| {
+            let t = 0.07 * i as f32;
+            pouch + velocity * t + 0.5 * gravity * t * t
+        })
     }
 
-    pub fn can_shoot(&self) -> bool {
-        self.state == State::Playing && self.shots_left > 0
-    }
-
-    /// Releases the sling pulled to `pull_point`.
-    pub fn shoot(&mut self, pull_point: Vec2) {
-        if !self.can_shoot() {
+    /// Releases the sling pulled to `pouch`.
+    pub fn launch(&mut self, pouch: Vec2) {
+        if self.state != State::Aiming {
             return;
         }
+        let pouch = Self::pouch(pouch);
+        let stone = ColliderDesc::circle(PROJECTILE_RADIUS).density(8.0).friction(0.7);
+        let desc = BodyDesc::dynamic().position(pouch).linear_velocity(Self::launch_velocity(pouch)).bullet();
+        self.projectiles.push(self.world.add_body(desc.collider(stone)));
         self.shots_left -= 1;
-        let projectile = BodyDesc::dynamic()
-            .position(Self::pulled_position(pull_point))
-            .linear_velocity(Self::launch_velocity(pull_point))
-            .angular_damping(1.0)
-            .bullet()
-            .collider(ColliderDesc::circle(PROJECTILE_RADIUS).density(4.0).friction(0.6));
-        self.projectiles.push(self.world.add_body(projectile));
+        self.shot_time = 0.0;
+        self.state = State::Shot;
     }
 
     pub fn step(&mut self) {
         self.world.step(TIME_STEP);
-        self.pop_hit_targets();
-        for pop in &mut self.pops {
-            pop.age += TIME_STEP;
+        self.shot_time += TIME_STEP;
+        self.break_what_was_hit();
+        self.update_debris();
+
+        if self.state == State::Shot && (self.everything_still() || self.shot_time > LONGEST_SHOT) {
+            self.state = if self.targets.is_empty() {
+                self.score += self.shots_left * UNUSED_SHOT_POINTS;
+                State::Won
+            } else if self.shots_left == 0 {
+                State::Lost
+            } else {
+                State::Aiming
+            };
         }
-        self.pops.retain(|pop| pop.age < POP_DURATION);
-        self.update_state();
     }
 
-    /// Targets hit hard, or fallen off the world, pop.
-    fn pop_hit_targets(&mut self) {
-        let hard_hits: Vec<ContactPair> = self
-            .world
-            .collision_events()
-            .iter()
-            .filter_map(|event| match event {
-                CollisionEvent::Started { pair, impact_speed } if *impact_speed > POP_IMPACT_SPEED => Some(*pair),
-                _ => None,
-            })
-            .collect();
-        let Self { world, level, pops, score, .. } = self;
-        level.targets.retain(|&target| {
-            let position = world[target].position();
-            let popped = hard_hits.iter().any(|pair| pair.involves_body(target)) || position.y < FALL_LIMIT;
-            if popped {
-                pops.push(Pop { position, age: 0.0 });
-                world.remove_body(target);
-                *score += POINTS_PER_TARGET;
+    /// Pops the targets and breaks the blocks hit harder than they can take.
+    fn break_what_was_hit(&mut self) {
+        let mut broken = Vec::new();
+        for event in self.world.collision_events() {
+            let CollisionEvent::Started { pair, impact_speed } = *event else { continue };
+            for body in [pair.body_a, pair.body_b] {
+                let toughness = if self.targets.contains(&body) {
+                    TARGET_TOUGHNESS
+                } else if let Some(&(_, material)) = self.blocks.iter().find(|(block, _)| *block == body) {
+                    material.strength()
+                } else {
+                    continue;
+                };
+                if impact_speed > toughness && !broken.contains(&body) {
+                    broken.push(body);
+                }
             }
-            !popped
-        });
+        }
+        for body in broken {
+            let kind = if let Some(index) = self.targets.iter().position(|&target| target == body) {
+                self.targets.remove(index);
+                self.score += TARGET_POINTS;
+                Scrap::Target
+            } else {
+                let index = self.blocks.iter().position(|(block, _)| *block == body).expect("a block");
+                let (_, material) = self.blocks.remove(index);
+                self.score += material.points();
+                Scrap::Block(material)
+            };
+            self.scatter(body, kind);
+            self.world.remove_body(body);
+        }
     }
 
-    fn update_state(&mut self) {
-        if self.state != State::Playing {
-            return;
-        }
-        if self.level.targets.is_empty() {
-            self.state = State::Won;
-            self.score += POINTS_PER_SPARE_SHOT * self.shots_left;
-        } else if self.shots_left == 0 && self.is_settled() {
-            self.state = State::Lost;
+    /// Throws scraps of paper out of a broken body.
+    fn scatter(&mut self, body: BodyHandle, kind: Scrap) {
+        let body = &self.world[body];
+        let (center, velocity) = (body.position(), body.linear_velocity());
+        let extent = body.colliders().iter().map(|&collider| self.world[collider].aabb().half_extents()).next();
+        let extent = extent.unwrap_or(Vec2::splat(0.3));
+        for _ in 0..8 {
+            let offset = vec2(self.random(-1.0, 1.0) * extent.x, self.random(-1.0, 1.0) * extent.y);
+            let burst = vec2(self.random(-3.0, 3.0), self.random(1.0, 5.0));
+            let (angle, spin, size) = (self.random(0.0, 6.0), self.random(-8.0, 8.0), self.random(0.12, 0.3));
+            let position = center + offset;
+            self.debris.push(Debris { kind, position, velocity: 0.3 * velocity + burst, angle, spin, size, age: 0.0 });
         }
     }
 
-    /// Whether everything stopped moving, so the last shot had its full effect.
-    pub fn is_settled(&self) -> bool {
-        self.world
-            .bodies()
-            .filter(|(_, body)| body.body_type() == BodyType::Dynamic)
-            .all(|(_, body)| body.is_sleeping() || body.linear_velocity().length() < SETTLED_SPEED)
+    fn update_debris(&mut self) {
+        let gravity = self.world.gravity();
+        for debris in &mut self.debris {
+            debris.velocity += gravity * TIME_STEP;
+            debris.position += debris.velocity * TIME_STEP;
+            debris.angle += debris.spin * TIME_STEP;
+            debris.age += TIME_STEP;
+        }
+        self.debris.retain(|debris| debris.age < DEBRIS_LIFETIME);
+    }
+
+    fn everything_still(&self) -> bool {
+        self.world.bodies().all(|(_, body)| {
+            body.is_sleeping()
+                || (body.linear_velocity().length() < STILL_SPEED && body.angular_velocity().abs() < STILL_SPEED)
+        })
+    }
+
+    /// A pseudo-random number between `low` and `high`, the same every game.
+    fn random(&mut self, low: f32, high: f32) -> f32 {
+        self.random ^= self.random << 13;
+        self.random ^= self.random >> 17;
+        self.random ^= self.random << 5;
+        low + (high - low) * (self.random % 10_000) as f32 / 10_000.0
     }
 }
 
@@ -175,56 +243,77 @@ impl Game {
 mod tests {
     use super::*;
 
-    fn run(game: &mut Game, seconds: u32) {
-        for _ in 0..seconds * 60 {
+    /// Steps until the shot is over: a shot never lasts longer than `LONGEST_SHOT`.
+    fn settle(game: &mut Game) {
+        while game.state == State::Shot {
             game.step();
         }
     }
 
     #[test]
-    fn levels_stand_still_until_shot() {
-        for index in 0..LEVEL_COUNT {
-            let mut game = Game::new(index);
-            let targets = game.level.targets.len();
-            run(&mut game, 6);
-            assert_eq!(game.level.targets.len(), targets, "level {index} collapses on its own");
-            assert!(game.is_settled(), "level {index} is still moving");
+    fn every_level_stands_until_hit() {
+        for index in 0..Game::level_count() {
+            let mut game = Game::new(index, 0);
+            let (blocks, targets) = (game.blocks.len(), game.targets.len());
+            for _ in 0..10 * 60 {
+                game.step();
+            }
+            assert_eq!(game.blocks.len(), blocks, "{}: a block broke on its own", game.level_name);
+            assert_eq!(game.targets.len(), targets, "{}: a target popped on its own", game.level_name);
+            assert_eq!(game.state, State::Aiming);
         }
     }
 
-    /// Searches a grid of pulls for the shot popping the most targets.
-    fn best_shot(game: &Game) -> (Vec2, usize) {
-        let mut best = (Vec2::ZERO, 0);
-        for angle_step in 0..24 {
-            for strength_step in 1..=5 {
-                // Pull down and to the left, to shoot up and to the right.
-                let angle = std::f32::consts::PI + 0.05 * angle_step as f32;
-                let pull = SLING + MAX_PULL * strength_step as f32 / 5.0 * Vec2::from_angle(angle);
-                let mut trial = game.clone();
-                let before = trial.level.targets.len();
-                trial.shoot(pull);
-                run(&mut trial, 4);
-                let popped = before - trial.level.targets.len();
-                if popped > best.1 {
-                    best = (pull, popped);
+    /// Plays the shot that pops the most targets among a grid of pulls, `shots` times.
+    fn play_greedily(mut game: Game) -> Game {
+        while game.state == State::Aiming {
+            let mut best: Option<(usize, u32, Game)> = None;
+            for angle_step in 0..24 {
+                for pull_step in 0..4 {
+                    // Pull down and to the left, at angles from 0 to 69° below horizontal.
+                    let angle = std::f32::consts::PI + 0.05 * angle_step as f32;
+                    let pull = MAX_PULL * (1.0 - 0.15 * pull_step as f32);
+                    let mut trial = game.clone();
+                    trial.launch(SLING + pull * Vec2::from_angle(angle));
+                    settle(&mut trial);
+                    let key = (usize::MAX - trial.targets.len(), trial.score);
+                    if best.as_ref().is_none_or(|(left, score, _)| key > (*left, *score)) {
+                        best = Some((key.0, key.1, trial));
+                    }
                 }
             }
+            game = best.expect("some shot was tried").2;
         }
-        best
+        game
     }
 
     #[test]
     fn every_level_can_be_won() {
-        for index in 0..LEVEL_COUNT {
-            let mut game = Game::new(index);
-            run(&mut game, 1);
-            while game.state == State::Playing && game.shots_left > 0 {
-                let (pull, popped) = best_shot(&game);
-                assert!(popped > 0, "level {index}: no shot pops anything, {} targets left", game.level.targets.len());
-                game.shoot(pull);
-                run(&mut game, 4);
+        for index in 0..Game::level_count() {
+            let game = play_greedily(Game::new(index, 0));
+            assert_eq!(game.state, State::Won, "{}: {} targets left", game.level_name, game.targets.len());
+        }
+    }
+
+    #[test]
+    fn hard_hits_break_glass_but_not_stone() {
+        for (material, breaks) in [(Material::Glass, true), (Material::Stone, false)] {
+            let mut world = World::new();
+            world.add_body(BodyDesc::fixed().position(vec2(0.0, -0.5)).collider(ColliderDesc::rectangle(80.0, 1.0)));
+            let mut game = Game::new(0, 0);
+            game.world = world;
+            let block = crate::level::Block { center: vec2(5.0, 0.5), size: Vec2::ONE, material };
+            game.blocks = vec![(game.world.add_body(block.desc()), material)];
+            game.targets.clear();
+            game.launch(SLING + vec2(-MAX_PULL, 0.0));
+            // Aim straight at the block instead.
+            let stone = game.projectiles[0];
+            game.world[stone].set_position(vec2(2.0, 0.5));
+            game.world[stone].set_linear_velocity(vec2(15.0, 0.0));
+            for _ in 0..60 {
+                game.step();
             }
-            assert_eq!(game.state, State::Won, "level {index} could not be won");
+            assert_eq!(game.blocks.is_empty(), breaks, "{material:?}");
         }
     }
 }

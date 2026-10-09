@@ -70,9 +70,11 @@
 - **Serialization**: the optional `serde` feature covers the whole world state and every
   description, so worlds can be saved and a loaded world continues bit for bit like the
   original. No state field holds an infinity (JSON cannot store it).
-- **Games**: `kinetica-macroquad` holds what every macroquad game needs; game rules are kept
-  apart from input and drawing so they can be tested headlessly (the slingshot tests even
-  search for winning shots). Web builds use the JavaScript loader shipped with the exact
+- **Games**: small demos with simple, cut-paper graphics (`kinetica_macroquad::paper`: paper
+  sheet, shapes with an ink edge and a soft shadow, a handwritten font). `kinetica-macroquad`
+  holds what every macroquad game needs; game rules are kept apart from input and drawing so
+  they can be tested headlessly (the slingshot and snip tests search for winning moves, the
+  trials test drives the track with an autopilot). Web builds use the JavaScript loader shipped with the exact
   macroquad version, plus the scripts of plugins such as `quad-url`.
 - **Visibility**: only the intended API is `pub`; internals are `pub(crate)`.
 - **Quality**: `unsafe` forbidden, clippy pedantic, documented public API, English only.
@@ -153,3 +155,12 @@
       curtain you cut holding a heavy bar, next to the hammock), the "Joints" category keeps one
       scene per joint type while the bridge and the ragdolls joined the structures built from
       joints, and the ragdolls scene was reframed so none falls behind the stairs.
+- [x] **17. Games from scratch**: the four games were rewritten with one cut-paper look shared
+      through `kinetica_macroquad::paper`. `slingshot` (wood, glass and stone towers), `trials`
+      (a car over hills, a plank bridge, a seesaw, boxes and a jump, against the clock),
+      `platformer` (one-way and moving platforms, an elevator, a box to push, a bridge, coins
+      and spikes) and `snip` (cut ropes to drop a sweet in a basket, with bouncy pads and a
+      windmill). Pinball and hill-climb were dropped. The engine gained the `WheelJoint` (an
+      axle on a sprung, limited suspension axis, with a motor), so a car no longer needs a
+      hidden body per wheel; the prismatic and wheel joints share their slide geometry and
+      limits. The testbed shows it in a "Wheel joints" scene.

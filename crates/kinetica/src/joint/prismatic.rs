@@ -3,7 +3,7 @@
 use std::ops::RangeInclusive;
 
 use super::frame::{
-    JointFrame, apply_impulses, inverse_or_zero, limit_impulse, motor_impulse, relative_angle, wrap_angle,
+    JointFrame, SlideGeometry, apply_impulses, motor_impulse, relative_angle, solve_slide_limits, wrap_angle,
 };
 use super::{JointBase, Motor, validated_range};
 use crate::body::{Body, BodyHandle};
@@ -178,16 +178,11 @@ impl PrismaticJoint {
     pub(crate) fn prepare(&mut self, frame: &JointFrame, a: &Body, b: &Body) {
         self.axis = a.world_vector(self.local_axis_a);
         self.delta_angle = wrap_angle(relative_angle(b.rotation(), a.rotation()) - self.reference_angle);
-        let separation = frame.delta_center + frame.anchor_b - frame.anchor_a;
-        let arm_a = (separation + frame.anchor_a).perp_dot(self.axis);
-        let arm_b = frame.anchor_b.perp_dot(self.axis);
-        self.axial_mass = inverse_or_zero(
-            frame.mass_a + frame.mass_b + frame.inertia_a * arm_a * arm_a + frame.inertia_b * arm_b * arm_b,
-        );
+        self.axial_mass = frame.mass_along(self.axis);
     }
 
     pub(crate) fn warm_start(&self, frame: &JointFrame, a: &mut Body, b: &mut Body) {
-        let geometry = Geometry::new(self, frame, a, b);
+        let geometry = SlideGeometry::new(self.axis, frame, a, b);
         let axial = self.motor_impulse + self.lower_impulse - self.upper_impulse;
         let linear = axial * geometry.axis + self.impulse.x * geometry.perp;
         let angular_a = axial * geometry.axial_arm_a + self.impulse.x * geometry.perp_arm_a + self.impulse.y;
@@ -203,45 +198,19 @@ impl PrismaticJoint {
         context: &SolverContext,
         pass: Pass,
     ) {
-        let geometry = Geometry::new(self, frame, a, b);
-        let apply_axial = |a: &mut Body, b: &mut Body, impulse: f32| {
-            apply_impulses(
-                a,
-                b,
-                impulse * geometry.axis,
-                impulse * geometry.axial_arm_a,
-                impulse * geometry.axial_arm_b,
-            );
-        };
-
+        let geometry = SlideGeometry::new(self.axis, frame, a, b);
         if let Some(motor) = self.motor {
             let speed = geometry.axial_speed(a, b);
             let impulse = motor_impulse(motor, &mut self.motor_impulse, self.axial_mass, speed, context.substep);
-            apply_axial(a, b, impulse);
+            geometry.apply_axial(a, b, impulse);
         }
-
-        if let Some((lower, upper)) = self.limits {
-            // Lower limit: keeps the translation above `lower`.
-            let gap = geometry.translation - lower;
-            let softness = context.limit_softness(gap, pass);
-            let speed = geometry.axial_speed(a, b);
-            let impulse = limit_impulse(&mut self.lower_impulse, self.axial_mass, speed, gap, softness);
-            apply_axial(a, b, impulse);
-
-            // Upper limit: keeps the translation below `upper`, pushing the other way.
-            let gap = upper - geometry.translation;
-            let softness = context.limit_softness(gap, pass);
-            let speed = -geometry.axial_speed(a, b);
-            let impulse = limit_impulse(&mut self.upper_impulse, self.axial_mass, speed, gap, softness);
-            apply_axial(a, b, -impulse);
+        if let Some(limits) = self.limits {
+            let impulses = (&mut self.lower_impulse, &mut self.upper_impulse);
+            solve_slide_limits(&geometry, limits, impulses, self.axial_mass, a, b, context, pass);
         }
 
         // Across the axis and around the joint: solved together as a 2×2 block.
-        let velocity = vec2(
-            geometry.perp.dot(b.linear_velocity() - a.linear_velocity()) + geometry.perp_arm_b * b.angular_velocity()
-                - geometry.perp_arm_a * a.angular_velocity(),
-            b.angular_velocity() - a.angular_velocity(),
-        );
+        let velocity = vec2(geometry.perp_speed(a, b), b.angular_velocity() - a.angular_velocity());
         let angle = self.delta_angle + relative_angle(b.delta_rotation(), a.delta_rotation());
         let position_error = vec2(geometry.perp.dot(geometry.separation), angle);
         let (ma, mb, ia, ib) = (frame.mass_a, frame.mass_b, frame.inertia_a, frame.inertia_b);
@@ -256,42 +225,5 @@ impl PrismaticJoint {
         let impulse = context.equality_softness(pass).impulse_2d(&inverse_mass, velocity, position_error, self.impulse);
         self.impulse += impulse;
         apply_impulses(a, b, impulse.x * geometry.perp, impulse.x * s1 + impulse.y, impulse.x * s2 + impulse.y);
-    }
-}
-
-/// The joint's current axis and lever arms.
-struct Geometry {
-    axis: Vec2,
-    perp: Vec2,
-    separation: Vec2,
-    translation: f32,
-    axial_arm_a: f32,
-    axial_arm_b: f32,
-    perp_arm_a: f32,
-    perp_arm_b: f32,
-}
-
-impl Geometry {
-    fn new(joint: &PrismaticJoint, frame: &JointFrame, a: &Body, b: &Body) -> Self {
-        let (anchor_a, anchor_b) = frame.current_anchors(a, b);
-        let separation = frame.separation(a, b, anchor_a, anchor_b);
-        let axis = a.delta_rotation().rotate(joint.axis);
-        let perp = axis.perp();
-        Self {
-            axis,
-            perp,
-            separation,
-            translation: axis.dot(separation),
-            axial_arm_a: (separation + anchor_a).perp_dot(axis),
-            axial_arm_b: anchor_b.perp_dot(axis),
-            perp_arm_a: (separation + anchor_a).perp_dot(perp),
-            perp_arm_b: anchor_b.perp_dot(perp),
-        }
-    }
-
-    /// Relative speed of B along the axis.
-    fn axial_speed(&self, a: &Body, b: &Body) -> f32 {
-        self.axis.dot(b.linear_velocity() - a.linear_velocity()) + self.axial_arm_b * b.angular_velocity()
-            - self.axial_arm_a * a.angular_velocity()
     }
 }

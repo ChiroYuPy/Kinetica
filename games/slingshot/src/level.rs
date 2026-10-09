@@ -1,122 +1,167 @@
-//! The levels: towers of wood and stone protecting targets.
+//! The levels: towers of wood, glass and stone, with targets to knock down.
 
 use kinetica::prelude::*;
 
-/// What a block is made of.
+pub const TARGET_RADIUS: f32 = 0.45;
+/// Thickness of posts and beams.
+const THICKNESS: f32 = 0.4;
+
+/// What a block is made of: how heavy it is, and how hard it must be hit to break.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Material {
     Wood,
+    Glass,
     Stone,
 }
 
 impl Material {
-    fn collider(self, width: f32, height: f32) -> ColliderDesc {
-        let desc = ColliderDesc::rectangle(width, height);
+    pub fn density(self) -> f32 {
         match self {
-            Self::Wood => desc.density(0.6).friction(0.7),
-            Self::Stone => desc.density(2.4).friction(0.8),
+            Self::Wood => 1.0,
+            Self::Glass => 0.8,
+            Self::Stone => 3.0,
+        }
+    }
+
+    /// Impact speed, in m/s, that breaks the block; stone never breaks.
+    pub fn strength(self) -> f32 {
+        match self {
+            Self::Wood => 7.0,
+            Self::Glass => 3.5,
+            Self::Stone => f32::INFINITY,
+        }
+    }
+
+    pub fn points(self) -> u32 {
+        match self {
+            Self::Wood => 100,
+            Self::Glass => 50,
+            Self::Stone => 0,
         }
     }
 }
 
-/// The bodies of a level, as the game needs to know them.
+#[derive(Debug, Clone, Copy)]
+pub struct Block {
+    pub center: Vec2,
+    pub size: Vec2,
+    pub material: Material,
+}
+
+impl Block {
+    pub fn desc(&self) -> BodyDesc {
+        let shape = ColliderDesc::rectangle(self.size.x, self.size.y).density(self.material.density()).friction(0.7);
+        BodyDesc::dynamic().position(self.center).collider(shape)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Level {
-    pub ground: Option<BodyHandle>,
-    pub blocks: Vec<(BodyHandle, Material)>,
-    pub targets: Vec<BodyHandle>,
-    pub shots: u32,
+    pub name: &'static str,
+    pub blocks: Vec<Block>,
+    /// Centers of the targets.
+    pub targets: Vec<Vec2>,
 }
 
-/// Number of levels.
-pub const LEVEL_COUNT: usize = 3;
-
-/// Radius of the targets.
-pub const TARGET_RADIUS: f32 = 0.35;
-
-/// Thickness of posts and beams.
-const THICKNESS: f32 = 0.24;
-
-/// Builds level `index` into an empty world.
-pub fn build(world: &mut World, index: usize) -> Level {
-    let mut builder = Builder { world, level: Level::default() };
-    builder.ground();
-    match index {
-        0 => builder.first(),
-        1 => builder.second(),
-        _ => builder.third(),
+impl Level {
+    fn new(name: &'static str) -> Self {
+        Self { name, ..Self::default() }
     }
-    builder.level
+
+    /// A vertical post standing on `bottom`; returns the height of its top.
+    fn post(&mut self, x: f32, bottom: f32, height: f32, material: Material) -> f32 {
+        let size = vec2(THICKNESS, height);
+        self.blocks.push(Block { center: vec2(x, bottom + height / 2.0), size, material });
+        bottom + height
+    }
+
+    /// A horizontal beam from `left` to `right` lying on `bottom`; returns the height of its top.
+    fn beam(&mut self, left: f32, right: f32, bottom: f32, material: Material) -> f32 {
+        let size = vec2(right - left, THICKNESS);
+        self.blocks.push(Block { center: vec2(f32::midpoint(left, right), bottom + THICKNESS / 2.0), size, material });
+        bottom + THICKNESS
+    }
+
+    /// A square block of side `size` sitting on `bottom`; returns the height of its top.
+    fn cube(&mut self, x: f32, bottom: f32, size: f32, material: Material) -> f32 {
+        self.blocks.push(Block { center: vec2(x, bottom + size / 2.0), size: Vec2::splat(size), material });
+        bottom + size
+    }
+
+    /// Two posts and a beam on top, `width` wide and centered on `x`; returns the roof height.
+    fn hut(&mut self, x: f32, bottom: f32, width: f32, height: f32, material: Material) -> f32 {
+        let half = (width - THICKNESS) / 2.0;
+        self.post(x - half, bottom, height, material);
+        self.post(x + half, bottom, height, material);
+        self.beam(x - width / 2.0, x + width / 2.0, bottom + height, material)
+    }
+
+    fn target(&mut self, x: f32, bottom: f32) {
+        self.targets.push(vec2(x, bottom + TARGET_RADIUS));
+    }
 }
 
-struct Builder<'a> {
-    world: &'a mut World,
-    level: Level,
+pub fn levels() -> Vec<Level> {
+    vec![two_huts(), glass_tower(), stone_fort(), pyramid()]
 }
 
-impl Builder<'_> {
-    fn ground(&mut self) {
-        let ground =
-            BodyDesc::fixed().position(vec2(15.0, -1.0)).collider(ColliderDesc::rectangle(80.0, 2.0).friction(0.9));
-        self.level.ground = Some(self.world.add_body(ground));
-    }
+/// Two wooden huts, a target in each and one on a roof.
+fn two_huts() -> Level {
+    let mut level = Level::new("Two huts");
+    level.hut(6.0, 0.0, 2.4, 1.8, Material::Wood);
+    level.target(6.0, 0.0);
+    let roof = level.hut(11.0, 0.0, 2.4, 1.8, Material::Wood);
+    level.target(11.0, 0.0);
+    level.target(11.0, roof);
+    level
+}
 
-    fn block(&mut self, material: Material, center: Vec2, width: f32, height: f32) {
-        let body = self.world.add_body(BodyDesc::dynamic().position(center).collider(material.collider(width, height)));
-        self.level.blocks.push((body, material));
+/// Three floors, the lower walls glass, a target on each floor.
+fn glass_tower() -> Level {
+    let mut level = Level::new("Glass tower");
+    let mut floor = 0.0;
+    for (storey, material) in [Material::Glass, Material::Wood, Material::Glass].into_iter().enumerate() {
+        let width = 3.2 - 0.6 * storey as f32;
+        level.target(9.0, floor);
+        floor = level.hut(9.0, floor, width, 1.6, material);
     }
+    level.target(9.0, floor);
+    level
+}
 
-    /// A vertical post standing on `floor`.
-    fn post(&mut self, material: Material, x: f32, floor: f32, height: f32) {
-        self.block(material, vec2(x, floor + height / 2.0), THICKNESS, height);
+/// Stone walls protect the targets; the wooden roof and the glass shelves are the weak spots.
+fn stone_fort() -> Level {
+    let mut level = Level::new("Stone fort");
+    for x in [5.0, 9.0, 13.0] {
+        level.post(x, 0.0, 2.8, Material::Stone);
     }
-
-    /// A horizontal beam lying on `floor`.
-    fn beam(&mut self, material: Material, x: f32, floor: f32, width: f32) {
-        self.block(material, vec2(x, floor + THICKNESS / 2.0), width, THICKNESS);
+    for room in [7.0, 11.0] {
+        let shelf = level.hut(room, 0.0, 1.6, 1.0, Material::Glass);
+        level.target(room, shelf);
     }
+    level.beam(4.8, 9.0, 2.8, Material::Wood);
+    let roof = level.beam(9.0, 13.2, 2.8, Material::Wood);
+    level.target(9.0, roof);
+    level
+}
 
-    fn target(&mut self, x: f32, floor: f32) {
-        let ball = ColliderDesc::circle(TARGET_RADIUS).density(0.8).friction(0.8);
-        let body = self.world.add_body(BodyDesc::dynamic().position(vec2(x, floor + TARGET_RADIUS)).collider(ball));
-        self.level.targets.push(body);
-    }
-
-    /// A one-storey hut of posts and a beam, with a target inside.
-    fn hut(&mut self, material: Material, x: f32, floor: f32) -> f32 {
-        self.post(material, x - 0.9, floor, 1.6);
-        self.post(material, x + 0.9, floor, 1.6);
-        self.beam(material, x, floor + 1.6, 2.3);
-        self.target(x, floor);
-        floor + 1.6 + THICKNESS
-    }
-
-    /// One hut with a target on its roof.
-    fn first(&mut self) {
-        let roof = self.hut(Material::Wood, 14.0, 0.0);
-        self.target(14.0, roof);
-        self.level.shots = 3;
-    }
-
-    /// Two towers of two storeys.
-    fn second(&mut self) {
-        for (x, material) in [(12.0, Material::Wood), (17.0, Material::Wood)] {
-            let first = self.hut(material, x, 0.0);
-            let second = self.hut(material, x, first);
-            self.target(x, second);
+/// A pyramid of crates with targets hidden in it and one on top.
+fn pyramid() -> Level {
+    let mut level = Level::new("Pyramid");
+    let size = 0.9;
+    let rows = 5;
+    let mut top = 0.0;
+    for row in 0..rows {
+        let count = rows - row;
+        let bottom = row as f32 * size;
+        for column in 0..count {
+            let x = 9.0 + (column as f32 - (count - 1) as f32 / 2.0) * (size + 0.02);
+            let material = if (row + column) % 3 == 0 { Material::Glass } else { Material::Wood };
+            top = level.cube(x, bottom, size, material);
         }
-        self.level.shots = 4;
     }
-
-    /// A stone bunker under a wooden tower.
-    fn third(&mut self) {
-        let floor = self.hut(Material::Stone, 15.0, 0.0);
-        let floor = self.hut(Material::Wood, 15.0, floor);
-        self.hut(Material::Wood, 15.0, floor);
-        for x in [11.5, 18.5] {
-            self.block(Material::Stone, vec2(x, 0.5), 1.0, 1.0);
-            self.target(x, 1.0);
-        }
-        self.level.shots = 5;
-    }
+    level.target(9.0, top);
+    level.target(14.5, 0.0);
+    level.hut(14.5, 0.0, 2.0, 1.2, Material::Stone);
+    level
 }
