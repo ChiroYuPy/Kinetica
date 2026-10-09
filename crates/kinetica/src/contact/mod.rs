@@ -55,6 +55,17 @@ impl ContactPair {
             _ => None,
         }
     }
+
+    /// Given one body of the pair, returns the collider of the other one: which part of a body
+    /// with several colliders was hit.
+    #[must_use]
+    pub fn other_collider(&self, body: BodyHandle) -> Option<ColliderHandle> {
+        match body {
+            _ if body == self.body_a => Some(self.collider_b),
+            _ if body == self.body_b => Some(self.collider_a),
+            _ => None,
+        }
+    }
 }
 
 /// Two touching colliders.

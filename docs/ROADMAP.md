@@ -126,3 +126,9 @@
       instead of being copied in every game. The slingshot names its pop effects and moves to
       the next level with `Game::next_level`, the platformer level is built as values instead
       of filled in, and the car keeps its hubs instead of finding them through its joints.
+- [x] **13. Pinball**: a fourth game, using what the others did not: flippers are motorized
+      revolute joints with limits, the plunger a prismatic joint pushed by a preloaded spring,
+      the table a counter-clockwise chain, the lane gate a one-way collider, and bumpers and
+      slingshots kick the ball from collision events. It needed one addition to the engine,
+      `ContactPair::other_collider`, to tell which part of a body with many colliders was hit.
+      A test plays two minutes of random flipping and checks the ball never leaves the table.

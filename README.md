@@ -34,10 +34,11 @@ indexing the world with a handle reaches the body, collider or joint.
 | [`games/slingshot`](games/slingshot) | Knock down towers with a slingshot. |
 | [`games/platformer`](games/platformer) | Run, jump and collect coins. |
 | [`games/hill-climb`](games/hill-climb) | Drive a sprung car over the hills before the fuel runs out. |
+| [`games/pinball`](games/pinball) | Keep the ball in play with the flippers and light the rollover lanes. |
 
 ```sh
 cargo run --release -p kinetica-testbed       # interactive testbed
-cargo run --release -p slingshot              # or platformer, hill-climb
+cargo run --release -p slingshot              # or platformer, hill-climb, pinball
 cargo run --release -p kinetica-bench         # performance benchmarks
 cargo test --workspace --all-features         # all tests
 cargo clippy --workspace --all-targets        # lints (pedantic)
