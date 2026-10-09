@@ -1,7 +1,5 @@
 //! Tracking every pair of colliders that may touch, from step to step.
 
-use std::collections::BTreeMap;
-
 use super::{CollisionEvent, SensorEvent, SensorPair};
 use super::{Contact, ContactPair, should_collide};
 use crate::arena::Arena;
@@ -14,14 +12,13 @@ use crate::joint::Joint;
 /// Every pair of colliders whose fat bounding boxes overlap, touching or not, split between
 /// solid contacts and sensor overlaps.
 ///
-/// Ordered maps keep the iteration order, and therefore the simulation, deterministic.
+/// Both lists are sorted by collider pair: the iteration order, and therefore the simulation,
+/// is deterministic, and walking them is cache friendly.
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct ContactSet {
-    #[cfg_attr(feature = "serde", serde(with = "values_only"))]
-    contacts: BTreeMap<CandidatePair, Contact>,
-    #[cfg_attr(feature = "serde", serde(with = "values_only"))]
-    sensors: BTreeMap<CandidatePair, SensorOverlap>,
+    contacts: Vec<Contact>,
+    sensors: Vec<SensorOverlap>,
 }
 
 /// A sensor and a collider whose fat boxes overlap, and whether the shapes do.
@@ -42,6 +39,7 @@ impl ContactSet {
         bodies: &Arena<Body>,
         joints: &Arena<Joint>,
     ) {
+        let (mut new_contacts, mut new_sensors) = (Vec::new(), Vec::new());
         for key in self.unknown(pairs) {
             let (collider_a, collider_b) = key;
             let (Some(a), Some(b)) = (colliders.get(collider_a.0), colliders.get(collider_b.0)) else { continue };
@@ -50,38 +48,40 @@ impl ContactSet {
                 (false, false) => {
                     if should_collide(&pair, bodies, joints) {
                         let contact = Contact { pair, manifold: Manifold::default(), enabled: true };
-                        self.contacts.insert(key, contact);
+                        new_contacts.push(contact);
                     }
                 }
                 (true, false) | (false, true) => {
                     if should_sense(&pair, bodies) {
                         let pair = SensorPair::new(&pair, a.is_sensor());
-                        self.sensors.insert(key, SensorOverlap { pair, overlapping: false });
+                        new_sensors.push(SensorOverlap { pair, overlapping: false });
                     }
                 }
                 (true, true) => {}
             }
         }
+        insert_sorted(&mut self.contacts, new_contacts);
+        insert_sorted(&mut self.sensors, new_sensors);
     }
 
     /// The pairs, among the sorted `pairs`, that are not tracked yet.
     fn unknown(&self, pairs: &[CandidatePair]) -> Vec<CandidatePair> {
         debug_assert!(pairs.is_sorted(), "candidate pairs must be sorted");
-        let is_known = |key: &CandidatePair| self.contacts.contains_key(key) || self.sensors.contains_key(key);
+        let is_known = |key: &CandidatePair| find(&self.contacts, *key).is_ok() || find(&self.sensors, *key).is_ok();
         let known_count = self.contacts.len() + self.sensors.len();
         if pairs.len() * 16 < known_count {
             return pairs.iter().copied().filter(|key| !is_known(key)).collect();
         }
         // Most pairs are already known. When there are many, walking them side by side with the
-        // maps (all sorted by key) is cheaper than looking each one up.
-        let mut contacts = self.contacts.keys().peekable();
-        let mut sensors = self.sensors.keys().peekable();
+        // lists (all sorted by key) is cheaper than looking each one up.
+        let mut contacts = self.contacts.iter().map(Keyed::key).peekable();
+        let mut sensors = self.sensors.iter().map(Keyed::key).peekable();
         pairs
             .iter()
             .copied()
-            .filter(|key| {
-                while contacts.next_if(|known| *known < key).is_some() {}
-                while sensors.next_if(|known| *known < key).is_some() {}
+            .filter(|&key| {
+                while contacts.next_if(|&known| known < key).is_some() {}
+                while sensors.next_if(|&known| known < key).is_some() {}
                 contacts.peek() != Some(&key) && sensors.peek() != Some(&key)
             })
             .collect()
@@ -97,7 +97,7 @@ impl ContactSet {
         collision_events: &mut Vec<CollisionEvent>,
         sensor_events: &mut Vec<SensorEvent>,
     ) {
-        self.contacts.retain(|_, contact| {
+        self.contacts.retain_mut(|contact| {
             let pair = contact.pair;
             let (a, b) = ((pair.collider_a, pair.body_a), (pair.collider_b, pair.body_b));
             let Some(placed) = Placed::new(a, b, colliders, bodies) else { return false };
@@ -110,7 +110,7 @@ impl ContactSet {
             keep
         });
 
-        self.sensors.retain(|_, overlap| {
+        self.sensors.retain_mut(|overlap| {
             let pair = overlap.pair;
             let (sensor, visitor) = ((pair.sensor, pair.sensor_body), (pair.visitor, pair.visitor_body));
             let Some(placed) = Placed::new(sensor, visitor, colliders, bodies) else { return false };
@@ -131,30 +131,51 @@ impl ContactSet {
 
     /// Forgets every contact between the two bodies, without reporting events.
     pub(crate) fn remove_between(&mut self, body: BodyHandle, other: BodyHandle) {
-        self.contacts.retain(|_, contact| !(contact.pair.involves_body(body) && contact.pair.involves_body(other)));
+        self.contacts.retain(|contact| !(contact.pair.involves_body(body) && contact.pair.involves_body(other)));
     }
 
     /// Forgets every contact and sensor overlap involving `collider`, without reporting events.
     pub(crate) fn remove_collider(&mut self, collider: ColliderHandle) {
-        self.contacts.retain(|_, contact| !contact.pair.involves_collider(collider));
-        self.sensors.retain(|&(collider_a, collider_b), _| collider_a != collider && collider_b != collider);
+        self.contacts.retain(|contact| !contact.pair.involves_collider(collider));
+        self.sensors.retain(|overlap| overlap.pair.sensor != collider && overlap.pair.visitor != collider);
     }
 
     /// Colliders currently overlapping `sensor`.
     pub(crate) fn sensor_overlaps(&self, sensor: ColliderHandle) -> impl Iterator<Item = &SensorPair> {
         self.sensors
-            .values()
+            .iter()
             .filter(move |overlap| overlap.overlapping && overlap.pair.sensor == sensor)
             .map(|overlap| &overlap.pair)
     }
 
     pub(crate) fn touching(&self) -> impl Iterator<Item = &Contact> {
-        self.contacts.values().filter(|contact| contact.is_touching())
+        self.contacts.iter().filter(|contact| contact.is_touching())
     }
 
-    pub(crate) fn get_mut(&mut self, pair: &ContactPair) -> Option<&mut Contact> {
-        self.contacts.get_mut(&(pair.collider_a, pair.collider_b))
+    pub(crate) fn touching_mut(&mut self) -> impl Iterator<Item = &mut Contact> {
+        self.contacts.iter_mut().filter(|contact| contact.is_touching())
     }
+}
+
+/// Where the value of `key` is in `values`, sorted by key, or where it would go.
+fn find<T: Keyed>(values: &[T], key: CandidatePair) -> Result<usize, usize> {
+    values.binary_search_by_key(&key, Keyed::key)
+}
+
+/// Adds `new` values, sorted by key and absent from `values`, keeping `values` sorted.
+fn insert_sorted<T: Keyed>(values: &mut Vec<T>, new: Vec<T>) {
+    if new.is_empty() {
+        return;
+    }
+    let old = std::mem::replace(values, Vec::with_capacity(values.len() + new.len()));
+    let mut new = new.into_iter().peekable();
+    for value in old {
+        while let Some(added) = new.next_if(|added| added.key() < value.key()) {
+            values.push(added);
+        }
+        values.push(value);
+    }
+    values.extend(new);
 }
 
 /// Recomputes the manifold of `contact` (empty when `keep` is false: the pair is about to be
@@ -250,48 +271,20 @@ fn should_sense(pair: &ContactPair, bodies: &Arena<Body>) -> bool {
     pair.body_a != pair.body_b && !(body_a.body_type() == BodyType::Fixed && body_b.body_type() == BodyType::Fixed)
 }
 
-/// Values that know their own key in the contact maps.
-#[cfg(feature = "serde")]
+/// Values that know their own key in the sorted contact lists.
 trait Keyed {
     fn key(&self) -> CandidatePair;
 }
 
-#[cfg(feature = "serde")]
 impl Keyed for Contact {
     fn key(&self) -> CandidatePair {
         (self.pair.collider_a, self.pair.collider_b)
     }
 }
 
-#[cfg(feature = "serde")]
 impl Keyed for SensorOverlap {
     fn key(&self) -> CandidatePair {
         let (sensor, visitor) = (self.pair.sensor, self.pair.visitor);
         if sensor < visitor { (sensor, visitor) } else { (visitor, sensor) }
-    }
-}
-
-/// Serializes the contact maps as plain lists: their keys are pairs of handles, which formats
-/// like JSON cannot use as map keys, and can be rebuilt from the values anyway.
-#[cfg(feature = "serde")]
-mod values_only {
-    use std::collections::BTreeMap;
-
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    use super::{CandidatePair, Keyed};
-
-    pub(super) fn serialize<S: Serializer, V: Serialize>(
-        map: &BTreeMap<CandidatePair, V>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        serializer.collect_seq(map.values())
-    }
-
-    pub(super) fn deserialize<'de, D: Deserializer<'de>, V: Deserialize<'de> + Keyed>(
-        deserializer: D,
-    ) -> Result<BTreeMap<CandidatePair, V>, D::Error> {
-        let values = Vec::<V>::deserialize(deserializer)?;
-        Ok(values.into_iter().map(|value| (value.key(), value)).collect())
     }
 }

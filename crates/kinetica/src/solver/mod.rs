@@ -139,8 +139,10 @@ pub(crate) fn step(
     for constraint in &mut constraints {
         constraint.apply_restitution(bodies);
     }
-    for constraint in &constraints {
-        if let Some(contact) = contacts.get_mut(constraint.pair()) {
+    // Constraints were made in the order of the contacts: walking both together pairs them up.
+    let mut constraints = constraints.iter().peekable();
+    for contact in contacts.touching_mut() {
+        if let Some(constraint) = constraints.next_if(|constraint| constraint.pair() == contact.pair()) {
             constraint.store_impulses(contact.manifold_mut());
         }
     }

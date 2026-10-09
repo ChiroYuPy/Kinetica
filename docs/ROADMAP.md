@@ -67,8 +67,7 @@
   `World: Clone` allows save/restore. Cross-platform determinism is a later goal.
 - **Serialization**: the optional `serde` feature covers the whole world state and every
   description, so worlds can be saved and a loaded world continues bit for bit like the
-  original. Contact maps are stored as lists (JSON keys must be strings), and no state field
-  holds an infinity (JSON cannot store it).
+  original. No state field holds an infinity (JSON cannot store it).
 - **Games**: `kinetica-macroquad` holds what every macroquad game needs; game rules are kept
   apart from input and drawing so they can be tested headlessly (the slingshot tests even
   search for winning shots). Web builds use the JavaScript loader shipped with the exact
@@ -132,3 +131,10 @@
       slingshots kick the ball from collision events. It needed one addition to the engine,
       `ContactPair::other_collider`, to tell which part of a body with many colliders was hit.
       A test plays two minutes of random flipping and checks the ball never leaves the table.
+- [x] **14. Performance, kept simple**: contacts and sensor overlaps live in `Vec`s sorted by
+      collider pair instead of `BTreeMap`s, so steps walk them contiguously, and solved
+      impulses are stored back by walking contacts and constraints together instead of
+      looking each one up. The broad phase reports each new pair once instead of sorting out
+      duplicates. Bench checksums are unchanged; rain and the tumbler got 9% faster, cloth 7%,
+      ragdolls 5%. Graph coloring and SIMD for the solver were set aside on purpose: they would
+      make it 2-3x faster but much harder to read, and games rarely need thousands of bodies.

@@ -88,7 +88,7 @@ patterns recur:
 ## Determinism
 
 The same build, given the same calls, produces bit-identical results. Arenas iterate in slot
-order, contacts live in ordered maps keyed by collider handles, and every sort uses a total
+order, contacts live in lists sorted by collider handles, and every sort uses a total
 order with handles as tie-breakers. `kinetica-bench` prints a checksum for each scenario:
 a change that should not alter the simulation, like a refactor or an optimization, must leave
 them unchanged.

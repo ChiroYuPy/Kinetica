@@ -72,18 +72,21 @@ impl BroadPhase {
     /// Returns every overlapping pair involving a proxy that moved since the last call, sorted
     /// and without duplicates. Pairs found by earlier calls may be returned again.
     pub(crate) fn find_new_pairs(&mut self) -> Vec<CandidatePair> {
+        self.moved.sort_unstable();
+        self.moved.dedup();
         let mut pairs = Vec::new();
         for &proxy in &self.moved {
             let collider = self.tree.data(proxy);
             self.tree.query(&self.tree.aabb(proxy), |other_proxy, other| {
-                if other_proxy != proxy {
+                // When both proxies moved, each finds the other: keep the pair found by the first.
+                let found_by_other = other_proxy < proxy && self.moved.binary_search(&other_proxy).is_ok();
+                if other_proxy != proxy && !found_by_other {
                     pairs.push(if collider < other { (collider, other) } else { (other, collider) });
                 }
             });
         }
         self.moved.clear();
         pairs.sort_unstable();
-        pairs.dedup();
         pairs
     }
 }
