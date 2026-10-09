@@ -37,7 +37,7 @@ mod wrecking_ball;
 use kinetica::math::Vec2;
 use kinetica::prelude::*;
 
-use crate::render::MacroquadDraw;
+use kinetica_macroquad::DebugRenderer;
 
 /// Every scene, grouped by category; the command line selects them by position, from 1.
 pub const SCENES: &[Scene] = &[
@@ -137,7 +137,7 @@ pub trait SceneUpdate {
     fn update(&mut self, world: &mut World, frame: &Frame);
 
     /// Draws on top of the world, every frame, even when paused.
-    fn draw(&self, _world: &World, _frame: &Frame, _drawer: &mut MacroquadDraw) {}
+    fn draw(&self, _world: &World, _frame: &Frame, _drawer: &mut DebugRenderer) {}
 
     /// A point the camera should follow, if any.
     fn camera_target(&self, _world: &World) -> Option<Vec2> {

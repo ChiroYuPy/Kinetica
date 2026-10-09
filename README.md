@@ -16,13 +16,27 @@ world.step(1.0 / 60.0);
 
 | Crate | Role |
 |-------|------|
-| [`crates/kinetica`](crates/kinetica) | The engine. No rendering or windowing dependency. |
-| [`crates/kinetica-testbed`](crates/kinetica-testbed) | Interactive scenes rendered with macroquad. |
+| [`crates/kinetica`](crates/kinetica) | The engine. No rendering or windowing dependency. Optional `serde` feature. |
+| [`crates/kinetica-macroquad`](crates/kinetica-macroquad) | Glue for macroquad games: camera in meters, debug rendering, fixed time step, mouse grab. |
+| [`crates/kinetica-testbed`](crates/kinetica-testbed) | Interactive scenes covering every feature. |
+| [`games/slingshot`](games/slingshot) | Knock down towers with a slingshot. |
+| [`games/platformer`](games/platformer) | Run, jump and collect coins. |
 
 ```sh
-cargo run -p kinetica-testbed --release   # interactive testbed
-cargo test --workspace                     # all tests
-cargo clippy --workspace --all-targets     # lints (pedantic)
+cargo run --release -p kinetica-testbed       # interactive testbed
+cargo run --release -p slingshot              # or platformer
+cargo test --workspace --all-features         # all tests
+cargo clippy --workspace --all-targets        # lints (pedantic)
+```
+
+## Web
+
+Games and the testbed run in the browser through WebAssembly:
+
+```sh
+rustup target add wasm32-unknown-unknown
+scripts/build-web.sh slingshot Slingshot      # output in target/web/slingshot
+python3 -m http.server -d target/web/slingshot 8000
 ```
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the design decisions and the plan.

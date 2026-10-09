@@ -10,6 +10,7 @@ use crate::world::World;
 
 /// An RGBA color with components in `[0, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Color {
     /// Red component.
     pub r: f32,
@@ -73,6 +74,7 @@ pub trait DebugDraw {
 
 /// Selects what [`World::debug_draw`] shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(clippy::struct_excessive_bools, reason = "independent on/off switches")]
 pub struct DebugDrawOptions {
     /// Collider shapes, colored by body type, darker when sleeping and see-through for sensors.

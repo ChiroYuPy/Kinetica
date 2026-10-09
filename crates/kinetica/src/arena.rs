@@ -5,12 +5,14 @@
 
 /// Position of a value in an [`Arena`], valid only for the generation it was created with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct Index {
     slot: u32,
     generation: u32,
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 enum Entry<T> {
     Occupied { generation: u32, value: T },
     Free { generation: u32, next_free: Option<u32> },
@@ -21,6 +23,7 @@ enum Entry<T> {
 /// Iteration follows slot order, which only depends on the sequence of insertions and removals,
 /// so it is deterministic.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct Arena<T> {
     entries: Vec<Entry<T>>,
     first_free: Option<u32>,

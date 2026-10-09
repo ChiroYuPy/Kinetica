@@ -10,6 +10,7 @@ use crate::shape::{Capsule, Circle, MassProperties, Polygon, PolygonError, Segme
 ///
 /// A handle stays valid until its collider (or the body owning it) is removed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ColliderHandle(pub(crate) Index);
 
 /// Which colliders can touch each other, as two 32-bit masks.
@@ -29,6 +30,7 @@ pub struct ColliderHandle(pub(crate) Index);
 /// let player = ColliderDesc::circle(0.4).layers(CollisionLayers::new(PLAYER, ENEMY | WORLD));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CollisionLayers {
     /// Layers this collider belongs to.
     pub memberships: u32,
@@ -69,6 +71,7 @@ impl Default for CollisionLayers {
 /// let desc = ColliderDesc::circle(0.5).density(2.0).restitution(0.8);
 /// ```
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ColliderDesc {
     /// Geometry, in the local frame of the body.
     pub shape: Shape,
@@ -253,6 +256,7 @@ impl ColliderDesc {
 /// world.add_chain(ground, &ChainDesc::new(hills).friction(0.8));
 /// ```
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ChainDesc {
     /// The points the chain goes through, in the body's local frame.
     pub points: Vec<Vec2>,
@@ -311,6 +315,7 @@ impl ChainDesc {
 
 /// A shape attached to a body.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Collider {
     body: BodyHandle,
     shape: Shape,

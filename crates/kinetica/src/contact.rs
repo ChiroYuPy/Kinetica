@@ -14,6 +14,7 @@ use crate::joint::Joint;
 ///
 /// `collider_a` is always the smaller handle, so a given pair is always reported the same way.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ContactPair {
     /// First collider.
     pub collider_a: ColliderHandle,
@@ -51,6 +52,7 @@ impl ContactPair {
 
 /// Two touching colliders.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Contact {
     pair: ContactPair,
     manifold: Manifold,
@@ -86,6 +88,7 @@ impl Contact {
 ///
 /// Removing a collider or a body does not report `Stopped` for its contacts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CollisionEvent {
     /// The colliders started touching during the step.
     Started(ContactPair),
@@ -105,6 +108,7 @@ impl CollisionEvent {
 
 /// A sensor and a collider overlapping it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SensorPair {
     /// The sensor collider.
     pub sensor: ColliderHandle,
@@ -123,6 +127,7 @@ pub struct SensorPair {
 /// except colliders of their own body, and colliders of fixed bodies when the sensor is fixed
 /// too. Removing a collider or a body does not report `Exited`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SensorEvent {
     /// The visitor started overlapping the sensor during the step.
     Entered(SensorPair),
@@ -141,6 +146,7 @@ impl SensorEvent {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct SensorOverlap {
     pair: SensorPair,
     overlapping: bool,
@@ -151,9 +157,58 @@ struct SensorOverlap {
 ///
 /// Ordered maps keep the iteration order, and therefore the simulation, deterministic.
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct ContactSet {
+    #[cfg_attr(feature = "serde", serde(with = "values_only"))]
     contacts: BTreeMap<CandidatePair, Contact>,
+    #[cfg_attr(feature = "serde", serde(with = "values_only"))]
     sensors: BTreeMap<CandidatePair, SensorOverlap>,
+}
+
+/// Values that know their own key in the contact maps.
+#[cfg(feature = "serde")]
+trait Keyed {
+    fn key(&self) -> CandidatePair;
+}
+
+#[cfg(feature = "serde")]
+impl Keyed for Contact {
+    fn key(&self) -> CandidatePair {
+        (self.pair.collider_a, self.pair.collider_b)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl Keyed for SensorOverlap {
+    fn key(&self) -> CandidatePair {
+        let (sensor, visitor) = (self.pair.sensor, self.pair.visitor);
+        if sensor < visitor { (sensor, visitor) } else { (visitor, sensor) }
+    }
+}
+
+/// Serializes the contact maps as plain lists: their keys are pairs of handles, which formats
+/// like JSON cannot use as map keys, and can be rebuilt from the values anyway.
+#[cfg(feature = "serde")]
+mod values_only {
+    use std::collections::BTreeMap;
+
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    use super::{CandidatePair, Keyed};
+
+    pub(super) fn serialize<S: Serializer, V: Serialize>(
+        map: &BTreeMap<CandidatePair, V>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(map.values())
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>, V: Deserialize<'de> + Keyed>(
+        deserializer: D,
+    ) -> Result<BTreeMap<CandidatePair, V>, D::Error> {
+        let values = Vec::<V>::deserialize(deserializer)?;
+        Ok(values.into_iter().map(|value| (value.key(), value)).collect())
+    }
 }
 
 impl ContactSet {

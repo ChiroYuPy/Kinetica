@@ -25,6 +25,7 @@ use crate::world::World;
 /// world.add_joint(pivot);
 /// ```
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RevoluteJointDesc {
     /// First body.
     pub body_a: BodyHandle,
@@ -103,6 +104,7 @@ impl RevoluteJointDesc {
 /// A pivot: the anchors of both bodies stay together, the bodies rotate freely around it,
 /// optionally within limits and driven by a motor.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RevoluteJoint {
     local_anchor_a: Vec2,
     local_anchor_b: Vec2,

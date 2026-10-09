@@ -5,6 +5,7 @@ use crate::math::Vec2;
 /// The normal points from the first shape (A) towards the second (B). Two convex shapes touch
 /// along at most a segment, so two points are enough to describe the contact.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Manifold {
     normal: Vec2,
     points: [ManifoldPoint; 2],
@@ -62,6 +63,7 @@ impl Manifold {
 
 /// One point of a [`Manifold`].
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ManifoldPoint {
     position: Vec2,
     separation: f32,

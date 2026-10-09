@@ -4,7 +4,7 @@ use kinetica::prelude::*;
 use kinetica::{Color, SensorEvent};
 
 use super::{Build, Category, Frame, Scene, SceneUpdate, add_ground};
-use crate::render::MacroquadDraw;
+use kinetica_macroquad::DebugRenderer;
 
 pub const SCENE: Scene = Scene {
     name: "Sensors",
@@ -87,7 +87,7 @@ impl SceneUpdate for Zones {
         }
     }
 
-    fn draw(&self, world: &World, _frame: &Frame, drawer: &mut MacroquadDraw) {
+    fn draw(&self, world: &World, _frame: &Frame, drawer: &mut DebugRenderer) {
         for (&sensor, &flash) in self.sensors.iter().zip(&self.flashes) {
             let color = if self.time - flash < FLASH_TIME {
                 ENTERED_COLOR

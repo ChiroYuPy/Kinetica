@@ -1,0 +1,17 @@
+[package]
+name = "kinetica-macroquad"
+description = "Glue between the Kinetica physics engine and macroquad: debug rendering, camera, fixed time step, mouse grab."
+keywords = ["physics", "2d", "gamedev", "macroquad"]
+categories = ["game-development"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+kinetica.workspace = true
+macroquad.workspace = true
+
+[lints]
+workspace = true

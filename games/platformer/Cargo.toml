@@ -1,0 +1,16 @@
+[package]
+name = "platformer"
+description = "Run, jump and collect the coins: a platformer built on Kinetica."
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+kinetica.workspace = true
+kinetica-macroquad.workspace = true
+macroquad.workspace = true
+
+[lints]
+workspace = true

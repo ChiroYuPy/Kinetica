@@ -51,6 +51,14 @@
   same body. Points are reported slightly before shapes touch (speculative distance).
 - **Determinism**: same inputs on the same build give bit-identical results, and
   `World: Clone` allows save/restore. Cross-platform determinism is a later goal.
+- **Serialization**: the optional `serde` feature covers the whole world state and every
+  description, so worlds can be saved and a loaded world continues bit for bit like the
+  original. Contact maps are stored as lists (JSON keys must be strings), and no state field
+  holds an infinity (JSON cannot store it).
+- **Games**: `kinetica-macroquad` holds what every macroquad game needs; game rules are kept
+  apart from input and drawing so they can be tested headlessly (the slingshot tests even
+  search for winning shots). Web builds use the JavaScript loader shipped with the exact
+  macroquad version, plus the scripts of plugins such as `quad-url`.
 - **Visibility**: only the intended API is `pub`; internals are `pub(crate)`.
 - **Quality**: `unsafe` forbidden, clippy pedantic, documented public API, English only.
 - **Engine independence**: the engine exposes a `DebugDraw` trait; renderers implement it.
@@ -74,5 +82,5 @@
       continuous collision (bullets), one-way platforms.
 - [x] **6. More shapes**: capsule, segment, smooth one-sided chains for terrain; the car
       terrain, ragdolls and stairs use them.
-- [ ] **7. Games**: a `kinetica-macroquad` glue crate, first small games under `games/`,
-      WASM builds, optional `serde` feature.
+- [x] **7. Games**: `kinetica-macroquad` glue crate, `slingshot` and `platformer` games,
+      WASM builds of the games and the testbed, optional `serde` feature.

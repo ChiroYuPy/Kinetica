@@ -11,6 +11,7 @@ use crate::world::World;
 
 /// Description of a [`WeldJoint`].
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct WeldJointDesc {
     /// First body.
     pub body_a: BodyHandle,
@@ -84,6 +85,7 @@ impl WeldJointDesc {
 
 /// Keeps two bodies in the same relative placement.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct WeldJoint {
     local_anchor_a: Vec2,
     local_anchor_b: Vec2,

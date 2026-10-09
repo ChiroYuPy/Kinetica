@@ -21,7 +21,10 @@ pub const DEFAULT_GRAVITY: Vec2 = vec2(0.0, -9.81);
 /// Units are meters, kilograms and seconds, and the Y axis points up. Bodies and colliders are
 /// owned by the world and accessed through handles.
 ///
-/// Cloning a world copies its whole state, which can be used to save and restore it.
+/// Cloning a world copies its whole state, which can be used to save and restore it. With the
+/// `serde` feature, a world can also be serialized, for save files or replays: a deserialized
+/// world continues exactly like the original. Only deserialize data that was serialized by
+/// Kinetica, since it is trusted to be consistent.
 ///
 /// ```
 /// use kinetica::{BodyDesc, ColliderDesc, World, vec2};
@@ -36,6 +39,7 @@ pub const DEFAULT_GRAVITY: Vec2 = vec2(0.0, -9.81);
 /// assert!(world.body(ball).unwrap().position().y < 10.0);
 /// ```
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct World {
     gravity: Vec2,
     substep_count: u32,

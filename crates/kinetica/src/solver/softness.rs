@@ -7,6 +7,7 @@ use std::f32::consts::TAU;
 
 /// Coefficients turning a spring (frequency, damping ratio) into solver terms for a substep.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct Softness {
     /// Fraction of the position error corrected per second.
     pub(crate) bias_rate: f32,

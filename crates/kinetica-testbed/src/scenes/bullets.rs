@@ -4,7 +4,7 @@ use kinetica::prelude::*;
 use kinetica::{Color, DebugDraw};
 
 use super::{Build, Category, Frame, Scene, SceneUpdate, add_ground};
-use crate::render::MacroquadDraw;
+use kinetica_macroquad::DebugRenderer;
 
 pub const SCENE: Scene = Scene {
     name: "Bullets",
@@ -64,7 +64,7 @@ impl SceneUpdate for Cannon {
         }
     }
 
-    fn draw(&self, world: &World, _frame: &Frame, drawer: &mut MacroquadDraw) {
+    fn draw(&self, world: &World, _frame: &Frame, drawer: &mut DebugRenderer) {
         drawer.draw_polygon(
             &[CANNON + vec2(-0.8, -0.3), CANNON + vec2(0.0, -0.2), CANNON + vec2(0.0, 0.2), CANNON + vec2(-0.8, 0.3)],
             Color::rgb(0.7, 0.7, 0.75),

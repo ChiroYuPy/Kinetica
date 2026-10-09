@@ -14,11 +14,13 @@ use crate::math::{Aabb, Vec2};
 /// Identifies a leaf of the tree. It stays valid until the leaf is destroyed, even when the
 /// leaf moves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct ProxyId(NodeId);
 
 type NodeId = u32;
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 enum NodeKind<T> {
     Leaf(T),
     Internal([NodeId; 2]),
@@ -26,6 +28,7 @@ enum NodeKind<T> {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 struct Node<T> {
     aabb: Aabb,
     parent: Option<NodeId>,
@@ -35,6 +38,7 @@ struct Node<T> {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct DynamicTree<T> {
     nodes: Vec<Node<T>>,
     root: Option<NodeId>,

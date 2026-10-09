@@ -2,7 +2,7 @@ use kinetica::prelude::*;
 use kinetica::{CollisionLayers, Color};
 
 use super::{Build, Category, Frame, Scene, SceneUpdate};
-use crate::render::MacroquadDraw;
+use kinetica_macroquad::DebugRenderer;
 
 pub const SCENE: Scene = Scene {
     name: "Collision layers",
@@ -70,7 +70,7 @@ impl SceneUpdate for Sorter {
         self.balls.push((ball, color));
     }
 
-    fn draw(&self, world: &World, _frame: &Frame, drawer: &mut MacroquadDraw) {
+    fn draw(&self, world: &World, _frame: &Frame, drawer: &mut DebugRenderer) {
         for &(shelf, color) in &self.shelves {
             drawer.draw_collider(world, shelf, color);
         }

@@ -11,6 +11,7 @@ use crate::math::{Aabb, Transform, Vec2};
 /// Its rounded ends slide smoothly over edges and steps, which makes it the usual shape for
 /// characters.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Capsule {
     start: Vec2,
     end: Vec2,

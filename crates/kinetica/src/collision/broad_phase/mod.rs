@@ -17,6 +17,7 @@ use crate::math::{Aabb, Vec2};
 pub(crate) type CandidatePair = (ColliderHandle, ColliderHandle);
 
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct BroadPhase {
     tree: DynamicTree<ColliderHandle>,
     /// Proxies created or re-inserted since the last search for pairs.

@@ -9,6 +9,7 @@ use crate::world::World;
 
 /// Description of a [`MouseJoint`].
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MouseJointDesc {
     /// Reference body, not affected by the joint; usually a fixed body.
     pub body_a: BodyHandle,
@@ -63,6 +64,7 @@ impl MouseJointDesc {
 
 /// Pulls a point of body B towards a movable world target with a damped spring.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MouseJoint {
     target: Vec2,
     local_anchor_b: Vec2,

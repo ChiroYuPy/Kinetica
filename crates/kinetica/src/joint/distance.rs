@@ -30,6 +30,7 @@ use crate::world::World;
 /// world.add_joint(rope);
 /// ```
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DistanceJointDesc {
     /// First body.
     pub body_a: BodyHandle,
@@ -114,6 +115,7 @@ impl DistanceJointDesc {
 
 /// Keeps two anchors at a given distance, rigidly or elastically.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DistanceJoint {
     local_anchor_a: Vec2,
     local_anchor_b: Vec2,

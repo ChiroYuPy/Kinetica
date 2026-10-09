@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{TITLE}} · Kinetica</title>
+    <style>
+        html, body, canvas { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+        body { background: #1e2433; }
+        canvas { display: block; outline: none; }
+    </style>
+</head>
+<body>
+    <canvas id="glcanvas" tabindex="1"></canvas>
+    <!-- The loader shipped with the exact macroquad version the game was built with. -->
+    <script src="mq_js_bundle.js"></script>
+{{PLUGINS}}    <script>load("{{WASM}}");</script>
+</body>
+</html>

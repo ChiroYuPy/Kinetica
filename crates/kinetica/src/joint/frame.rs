@@ -12,6 +12,7 @@ use crate::solver::{Softness, SolverContext};
 /// they are rotated by how much each body turned, which keeps the joint accurate without
 /// recomputing everything at each substep.
 #[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct JointFrame {
     pub(crate) anchor_a: Vec2,
     pub(crate) anchor_b: Vec2,

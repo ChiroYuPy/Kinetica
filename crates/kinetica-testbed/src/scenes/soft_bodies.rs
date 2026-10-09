@@ -4,7 +4,7 @@ use kinetica::prelude::*;
 use kinetica::{Color, DebugDraw};
 
 use super::{Build, Category, Frame, Scene, SceneUpdate, add_ground};
-use crate::render::MacroquadDraw;
+use kinetica_macroquad::DebugRenderer;
 
 pub const SCENE: Scene = Scene {
     name: "Soft bodies",
@@ -64,7 +64,7 @@ impl Blob {
     }
 
     /// Fills the blob with triangles from its center, which works however much it is squashed.
-    fn draw(&self, world: &World, drawer: &mut MacroquadDraw) {
+    fn draw(&self, world: &World, drawer: &mut DebugRenderer) {
         let position = |body: BodyHandle| world.body(body).map(kinetica::Body::position);
         let Some(center) = position(self.center) else { return };
         for i in 0..self.ring.len() {
@@ -106,7 +106,7 @@ impl SceneUpdate for Blobs {
         self.blobs.push(Blob::new(world, vec2(-6.0, 11.0), radius, stiffness, color));
     }
 
-    fn draw(&self, world: &World, _frame: &Frame, drawer: &mut MacroquadDraw) {
+    fn draw(&self, world: &World, _frame: &Frame, drawer: &mut DebugRenderer) {
         for blob in &self.blobs {
             blob.draw(world, drawer);
         }

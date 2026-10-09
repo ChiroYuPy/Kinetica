@@ -2,6 +2,7 @@ use glam::Vec2;
 
 /// An axis-aligned bounding box.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Aabb {
     /// Lower corner.
     pub min: Vec2,

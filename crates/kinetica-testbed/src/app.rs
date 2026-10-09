@@ -1,42 +1,26 @@
 //! Testbed state: the current scene, simulation clock, input and drawing.
 
 use egui_macroquad::egui;
+use kinetica::DebugDrawOptions;
 use kinetica::prelude::*;
-use kinetica::{DebugDrawOptions, MouseJointDesc};
+use kinetica_macroquad::{DebugRenderer, FixedTimestep, MouseGrab, WorldCamera};
 use macroquad::prelude::*;
 
-use crate::camera::WorldCamera;
-use crate::render::MacroquadDraw;
 use crate::scenes::{Frame, SCENES, SceneUpdate};
 use crate::ui::{self, PanelState, SimulationSettings, Stats, UiAction};
 
-/// The simulation always advances by this fixed amount, whatever the frame rate.
-const TIME_STEP: f32 = 1.0 / 60.0;
-/// Caps the catch-up after a slow frame, so the testbed never freezes trying to keep up.
-const MAX_STEPS_PER_FRAME: f32 = 4.0;
-/// A grabbed body is pulled with a force of at most this many times its weight-ish mass.
-const GRAB_FORCE_PER_KILOGRAM: f32 = 1000.0;
-
 const BACKGROUND: Color = Color::new(0.09, 0.1, 0.12, 1.0);
-
-/// A body held with the mouse.
-struct Grab {
-    joint: JointHandle,
-}
 
 pub struct App {
     scene_index: usize,
     world: World,
     scene_update: Option<Box<dyn SceneUpdate>>,
-    /// Fixed body without colliders, used as the reference of mouse joints.
-    mouse_anchor: BodyHandle,
-    grab: Option<Grab>,
+    grab: MouseGrab,
     camera: WorldCamera,
     paused: bool,
     /// Whether egui uses the mouse this frame; the scene ignores it then.
     pointer_over_ui: bool,
-    /// Simulated time owed to the world, waiting for whole steps.
-    accumulator: f32,
+    timestep: FixedTimestep,
     /// Simulated time since the scene started.
     time: f32,
     draw_options: DebugDrawOptions,
@@ -49,18 +33,16 @@ impl App {
     pub fn new(scene_index: usize) -> Self {
         let scene_index = if scene_index < SCENES.len() { scene_index } else { 0 };
         let scene = &SCENES[scene_index];
-        let (mut world, scene_update) = scene.build_world();
-        let mouse_anchor = world.add_body(BodyDesc::fixed());
+        let (world, scene_update) = scene.build_world();
         Self {
             scene_index,
             world,
             scene_update,
-            mouse_anchor,
-            grab: None,
-            camera: WorldCamera::new(scene.camera_center, scene.view_height, ui::PANEL_WIDTH),
+            grab: MouseGrab::default(),
+            camera: WorldCamera::new(scene.camera_center, scene.view_height).with_left_margin(ui::PANEL_WIDTH),
             paused: false,
             pointer_over_ui: false,
-            accumulator: 0.0,
+            timestep: FixedTimestep::default(),
             time: 0.0,
             draw_options: DebugDrawOptions { contacts: true, ..DebugDrawOptions::default() },
             settings: SimulationSettings::default(),
@@ -75,7 +57,7 @@ impl App {
         self.apply_settings();
         self.handle_keys();
         self.handle_grab();
-        self.camera.handle_input(!self.pointer_over_ui);
+        self.camera.handle_zoom_and_pan(!self.pointer_over_ui);
         if !self.paused {
             self.advance(get_frame_time());
         }
@@ -84,9 +66,9 @@ impl App {
     pub fn draw(&self) {
         clear_background(BACKGROUND);
 
-        set_camera(&self.camera.to_camera2d());
-        let mut drawer = MacroquadDraw::new(self.camera.pixels_per_meter());
-        self.world.debug_draw(&mut drawer, &self.draw_options);
+        self.camera.apply();
+        let mut drawer = DebugRenderer::new(&self.camera);
+        drawer.draw_world(&self.world, &self.draw_options);
         if let Some(update) = &self.scene_update {
             update.draw(&self.world, &self.frame(), &mut drawer);
         }
@@ -96,7 +78,7 @@ impl App {
     }
 
     fn frame(&self) -> Frame {
-        Frame { time: self.time, mouse: self.camera.screen_to_world(Vec2::from(mouse_position())) }
+        Frame { time: self.time, mouse: self.camera.mouse_position() }
     }
 
     /// Builds the side panel for this frame and returns what the user clicked.
@@ -173,39 +155,13 @@ impl App {
 
     /// Left mouse button: drag a dynamic body with a mouse joint.
     fn handle_grab(&mut self) {
-        let mouse = self.camera.screen_to_world(Vec2::from(mouse_position()));
-
-        if is_mouse_button_pressed(MouseButton::Left) && self.grab.is_none() && !self.pointer_over_ui {
-            let grabbed = self.world.colliders_at_point(mouse, &QueryFilter::new()).into_iter().find_map(|collider| {
-                let body = self.world.collider(collider)?.body();
-                (self.world.body(body)?.body_type() == BodyType::Dynamic).then_some(body)
-            });
-            if let Some(body) = grabbed {
-                let mass = self.world.body(body).map_or(1.0, kinetica::Body::mass);
-                let desc = MouseJointDesc::at_world_point(&self.world, self.mouse_anchor, body, mouse)
-                    .max_force(GRAB_FORCE_PER_KILOGRAM * mass);
-                self.grab = Some(Grab { joint: self.world.add_joint(desc) });
-            }
-        }
-
-        if let Some(grab) = &self.grab {
-            if is_mouse_button_down(MouseButton::Left) {
-                if let Some(JointKind::Mouse(joint)) = self.world.joint_mut(grab.joint).map(kinetica::Joint::kind_mut) {
-                    joint.set_target(mouse);
-                }
-            } else {
-                self.world.remove_joint(grab.joint);
-                self.grab = None;
-            }
-        }
+        self.grab.update(&mut self.world, self.camera.mouse_position(), !self.pointer_over_ui);
     }
 
     /// Runs as many fixed steps as the elapsed frame time allows.
     fn advance(&mut self, frame_time: f32) {
-        self.accumulator = (self.accumulator + frame_time).min(MAX_STEPS_PER_FRAME * TIME_STEP);
-        while self.accumulator >= TIME_STEP {
+        for _ in 0..self.timestep.advance(frame_time) {
             self.step();
-            self.accumulator -= TIME_STEP;
         }
     }
 
@@ -215,11 +171,12 @@ impl App {
             update.update(&mut self.world, &frame);
         }
         let start = get_time();
-        self.world.step(TIME_STEP);
+        let dt = self.timestep.dt();
+        self.world.step(dt);
         self.last_step_ms = (get_time() - start) * 1000.0;
-        self.time += TIME_STEP;
+        self.time += dt;
         if let Some(target) = self.scene_update.as_ref().and_then(|update| update.camera_target(&self.world)) {
-            self.camera.follow(target, TIME_STEP);
+            self.camera.follow(target, dt);
         }
     }
 }

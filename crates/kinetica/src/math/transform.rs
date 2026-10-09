@@ -4,6 +4,7 @@ use super::Rot;
 
 /// A rigid transform: a rotation followed by a translation.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Transform {
     /// Translation, in world space.
     pub position: Vec2,

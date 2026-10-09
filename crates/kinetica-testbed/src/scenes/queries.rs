@@ -4,7 +4,7 @@ use kinetica::shape::{Circle, Shape};
 use kinetica::{Color, DebugDraw};
 
 use super::{Build, Category, Frame, Scene, SceneUpdate, add_ground};
-use crate::render::MacroquadDraw;
+use kinetica_macroquad::DebugRenderer;
 
 pub const SCENE: Scene = Scene {
     name: "Ray and shape casts",
@@ -47,7 +47,7 @@ struct CastDemo;
 impl SceneUpdate for CastDemo {
     fn update(&mut self, _world: &mut World, _frame: &Frame) {}
 
-    fn draw(&self, world: &World, frame: &Frame, drawer: &mut MacroquadDraw) {
+    fn draw(&self, world: &World, frame: &Frame, drawer: &mut DebugRenderer) {
         let translation = frame.mouse - ORIGIN;
         let filter = QueryFilter::new();
 

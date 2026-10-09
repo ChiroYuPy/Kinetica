@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "games/*"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,6 +11,7 @@ repository = "https://github.com/adrian/kinetica"
 
 [workspace.dependencies]
 kinetica = { path = "crates/kinetica" }
+kinetica-macroquad = { path = "crates/kinetica-macroquad" }
 # Kept on the same version as macroquad so both crates share the exact same `Vec2` type.
 glam = "0.27"
 macroquad = "0.4.16"

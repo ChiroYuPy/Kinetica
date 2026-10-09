@@ -10,10 +10,12 @@ use crate::math::{Rot, Transform, Vec2};
 ///
 /// A handle stays valid until its body is removed; afterwards, lookups with it return `None`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BodyHandle(pub(crate) Index);
 
 /// How a body reacts to forces and contacts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BodyType {
     /// Never moves. Used for the ground and walls.
     Fixed,
@@ -33,6 +35,7 @@ pub enum BodyType {
 /// let desc = BodyDesc::dynamic().position(vec2(0.0, 4.0)).angle(0.3);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BodyDesc {
     /// How the body reacts to forces and contacts.
     pub body_type: BodyType,
@@ -181,6 +184,7 @@ impl Default for BodyDesc {
 /// The body *origin* is the point given by [`position`](Self::position); shapes are placed
 /// relative to it. The body rotates around its *center of mass*, computed from its colliders.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(clippy::struct_excessive_bools, reason = "independent flags")]
 pub struct Body {
     body_type: BodyType,
@@ -212,7 +216,7 @@ pub struct Body {
     sleep_time: f32,
     bullet: bool,
     /// Thickness of the thinnest collider; moving more than half of it in a step risks
-    /// tunneling.
+    /// tunneling. `f32::MAX` without colliders (not infinity, which JSON cannot store).
     min_extent: f32,
     colliders: Vec<ColliderHandle>,
     joints: Vec<JointHandle>,
@@ -245,7 +249,7 @@ impl Body {
             sleeping: false,
             sleep_time: 0.0,
             bullet: desc.bullet,
-            min_extent: f32::INFINITY,
+            min_extent: f32::MAX,
             colliders: Vec::new(),
             joints: Vec::new(),
         };
@@ -528,7 +532,7 @@ impl Body {
             .filter_map(|handle| colliders.get(handle.0))
             .filter(|collider| !collider.is_sensor())
             .map(|collider| collider.shape().min_extent())
-            .fold(f32::INFINITY, f32::min);
+            .fold(f32::MAX, f32::min);
 
         self.mass = 0.0;
         self.inverse_mass = 0.0;

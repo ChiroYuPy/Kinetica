@@ -4,7 +4,7 @@ use macroquad::input::{KeyCode, is_key_down};
 
 use super::cloth::Cloth;
 use super::{Build, Category, Frame, Scene, SceneUpdate, add_ground};
-use crate::render::MacroquadDraw;
+use kinetica_macroquad::DebugRenderer;
 
 pub const SCENE: Scene = Scene {
     name: "Tearing cloth",
@@ -67,7 +67,7 @@ impl SceneUpdate for Tearing {
         self.curtain.tear(world, STRENGTH);
     }
 
-    fn draw(&self, world: &World, frame: &Frame, drawer: &mut MacroquadDraw) {
+    fn draw(&self, world: &World, frame: &Frame, drawer: &mut DebugRenderer) {
         self.curtain.draw(world, drawer);
         drawer.draw_body(world, self.bar, BAR_COLOR);
         if self.cutting {

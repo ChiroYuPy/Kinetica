@@ -9,6 +9,7 @@ license.workspace = true
 
 [dependencies]
 kinetica.workspace = true
+kinetica-macroquad.workspace = true
 macroquad.workspace = true
 egui-macroquad.workspace = true
 

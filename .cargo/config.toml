@@ -1,0 +1,4 @@
+[target.wasm32-unknown-unknown]
+# Some macroquad plugins (sapp-jsutils, quad-url) call JavaScript functions that the linker
+# cannot see: mq_js_bundle.js and the plugin scripts provide them when the page loads.
+rustflags = ["-C", "link-arg=--allow-undefined"]

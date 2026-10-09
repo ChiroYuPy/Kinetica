@@ -3,8 +3,6 @@
 //! Usage: `kinetica-testbed [scene number]`, scenes being numbered from 1.
 
 mod app;
-mod camera;
-mod render;
 mod scenes;
 mod ui;
 

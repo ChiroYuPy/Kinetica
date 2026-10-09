@@ -1,38 +1,49 @@
-//! Draws Kinetica debug primitives with macroquad.
+//! Draws Kinetica worlds with macroquad shapes.
 
 use kinetica::math::{Rot, Vec2};
 use kinetica::shape::Shape;
-use kinetica::{BodyHandle, ColliderHandle, Color, DebugDraw, World};
+use kinetica::{BodyHandle, ColliderHandle, Color, DebugDraw, DebugDrawOptions, World};
 use macroquad::shapes;
+
+use crate::WorldCamera;
 
 /// Opacity of shape interiors, relative to their outline.
 const FILL_OPACITY: f32 = 0.3;
 const CIRCLE_SIDES: u8 = 40;
 const LINE_WIDTH_PIXELS: f32 = 1.5;
 
-pub struct MacroquadDraw {
-    /// Line width in meters, so lines keep the same on-screen width at every zoom level.
+/// Draws with macroquad in world coordinates; set the camera first with
+/// [`WorldCamera::apply`].
+///
+/// Shapes are filled with a see-through color and outlined, lines keep the same width on
+/// screen at every zoom level.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DebugRenderer {
+    /// Line width in meters.
     line_width: f32,
 }
 
-impl MacroquadDraw {
-    pub fn new(pixels_per_meter: f32) -> Self {
-        Self { line_width: LINE_WIDTH_PIXELS / pixels_per_meter }
+impl DebugRenderer {
+    /// A renderer for the zoom level of `camera`.
+    #[must_use]
+    pub fn new(camera: &WorldCamera) -> Self {
+        Self { line_width: LINE_WIDTH_PIXELS / camera.pixels_per_meter() }
     }
 
-    /// Draws a collider in a custom color, for scenes that highlight some of them.
+    /// Draws the whole world.
+    pub fn draw_world(&mut self, world: &World, options: &DebugDrawOptions) {
+        world.debug_draw(self, options);
+    }
+
+    /// Draws a collider in a custom color.
     pub fn draw_collider(&mut self, world: &World, collider: ColliderHandle, color: Color) {
         let Some(collider) = world.collider(collider) else { return };
         let Some(body) = world.body(collider.body()) else { return };
         let transform = body.transform();
         match collider.shape() {
             Shape::Circle(circle) => {
-                self.draw_circle(
-                    transform.transform_point(circle.center()),
-                    circle.radius(),
-                    transform.rotation,
-                    color,
-                );
+                let center = transform.transform_point(circle.center());
+                self.draw_circle(center, circle.radius(), transform.rotation, color);
             }
             Shape::Capsule(capsule) => {
                 let (start, end) =
@@ -44,19 +55,15 @@ impl MacroquadDraw {
                 self.draw_polygon(&vertices, color);
             }
             Shape::Segment(segment) => {
-                self.draw_segment(
-                    transform.transform_point(segment.start()),
-                    transform.transform_point(segment.end()),
-                    color,
-                );
+                let (start, end) =
+                    (transform.transform_point(segment.start()), transform.transform_point(segment.end()));
+                self.draw_segment(start, end, color);
             }
             Shape::ChainSegment(chain) => {
                 let segment = chain.segment();
-                self.draw_segment(
-                    transform.transform_point(segment.start()),
-                    transform.transform_point(segment.end()),
-                    color,
-                );
+                let (start, end) =
+                    (transform.transform_point(segment.start()), transform.transform_point(segment.end()));
+                self.draw_segment(start, end, color);
             }
         }
     }
@@ -69,15 +76,17 @@ impl MacroquadDraw {
     }
 }
 
-fn to_macroquad(color: Color) -> macroquad::color::Color {
+/// Converts a Kinetica color to a macroquad color.
+#[must_use]
+pub fn to_macroquad_color(color: Color) -> macroquad::color::Color {
     macroquad::color::Color::new(color.r, color.g, color.b, color.a)
 }
 
 fn fill_color(color: Color) -> macroquad::color::Color {
-    to_macroquad(color.with_alpha(color.a * FILL_OPACITY))
+    to_macroquad_color(color.with_alpha(color.a * FILL_OPACITY))
 }
 
-impl DebugDraw for MacroquadDraw {
+impl DebugDraw for DebugRenderer {
     fn draw_polygon(&mut self, vertices: &[Vec2], color: Color) {
         let fill = fill_color(color);
         for pair in vertices[1..].windows(2) {
@@ -90,15 +99,16 @@ impl DebugDraw for MacroquadDraw {
 
     fn draw_circle(&mut self, center: Vec2, radius: f32, rotation: Rot, color: Color) {
         shapes::draw_poly(center.x, center.y, CIRCLE_SIDES, radius, 0.0, fill_color(color));
-        shapes::draw_poly_lines(center.x, center.y, CIRCLE_SIDES, radius, 0.0, self.line_width, to_macroquad(color));
+        let outline = to_macroquad_color(color);
+        shapes::draw_poly_lines(center.x, center.y, CIRCLE_SIDES, radius, 0.0, self.line_width, outline);
         self.draw_segment(center, center + rotation.rotate(Vec2::new(radius, 0.0)), color);
     }
 
     fn draw_segment(&mut self, start: Vec2, end: Vec2, color: Color) {
-        shapes::draw_line(start.x, start.y, end.x, end.y, self.line_width, to_macroquad(color));
+        shapes::draw_line(start.x, start.y, end.x, end.y, self.line_width, to_macroquad_color(color));
     }
 
     fn draw_point(&mut self, point: Vec2, color: Color) {
-        shapes::draw_circle(point.x, point.y, 2.5 * self.line_width, to_macroquad(color));
+        shapes::draw_circle(point.x, point.y, 2.5 * self.line_width, to_macroquad_color(color));
     }
 }

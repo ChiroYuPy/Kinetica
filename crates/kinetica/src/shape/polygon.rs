@@ -16,6 +16,7 @@ const WELD_DISTANCE: f32 = 0.5 * LINEAR_SLOP;
 
 /// A solid convex polygon with counter-clockwise vertices.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Polygon {
     vertices: Vec<Vec2>,
     normals: Vec<Vec2>,

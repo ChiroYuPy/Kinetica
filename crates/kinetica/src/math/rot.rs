@@ -7,6 +7,7 @@ use glam::{Vec2, vec2};
 /// Storing the rotation this way avoids calling trigonometric functions while stepping the
 /// simulation, which keeps the step fast and reproducible.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Rot {
     cos: f32,
     sin: f32,

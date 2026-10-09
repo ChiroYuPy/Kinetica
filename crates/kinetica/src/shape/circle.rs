@@ -5,6 +5,7 @@ use crate::math::{Aabb, Transform, Vec2};
 
 /// A solid disc.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Circle {
     center: Vec2,
     radius: f32,

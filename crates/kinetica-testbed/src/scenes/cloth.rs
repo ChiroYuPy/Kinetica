@@ -4,7 +4,7 @@ use kinetica::prelude::*;
 use kinetica::{Color, DebugDraw};
 
 use super::{Build, Category, Frame, Scene, SceneUpdate, add_ground};
-use crate::render::MacroquadDraw;
+use kinetica_macroquad::DebugRenderer;
 
 pub const SCENE: Scene = Scene {
     name: "Cloth",
@@ -145,7 +145,7 @@ impl Cloth {
     }
 
     /// Fills every cell whose four sides are still linked.
-    pub fn draw(&self, world: &World, drawer: &mut MacroquadDraw) {
+    pub fn draw(&self, world: &World, drawer: &mut DebugRenderer) {
         let position = |column, row| world.body(self.particle(column, row)).map(kinetica::Body::position);
         for row in 0..self.rows - 1 {
             for column in 0..self.columns - 1 {
@@ -215,7 +215,7 @@ impl SceneUpdate for ClothDemo {
         }
     }
 
-    fn draw(&self, world: &World, _frame: &Frame, drawer: &mut MacroquadDraw) {
+    fn draw(&self, world: &World, _frame: &Frame, drawer: &mut DebugRenderer) {
         self.curtain.draw(world, drawer);
         self.hammock.draw(world, drawer);
     }

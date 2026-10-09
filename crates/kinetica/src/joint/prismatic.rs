@@ -13,6 +13,7 @@ use crate::world::World;
 
 /// Description of a [`PrismaticJoint`].
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PrismaticJointDesc {
     /// First body.
     pub body_a: BodyHandle,
@@ -100,6 +101,7 @@ impl PrismaticJointDesc {
 
 /// A slider: body B translates along an axis fixed in body A, without rotating relative to it.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PrismaticJoint {
     local_anchor_a: Vec2,
     local_anchor_b: Vec2,

@@ -22,6 +22,7 @@ use crate::world::World;
 /// let ground_below = world.cast_ray(vec2(0.0, 0.0), vec2(0.0, -2.0), &filter);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(clippy::struct_excessive_bools, reason = "independent on/off switches")]
 pub struct QueryFilter {
     /// Only accepts colliders belonging to one of these layers, see
@@ -119,6 +120,7 @@ impl QueryFilter {
 
 /// Where a ray hit a collider.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RayHit {
     /// The collider hit.
     pub collider: ColliderHandle,
@@ -134,6 +136,7 @@ pub struct RayHit {
 
 /// Where a moving shape first touches a collider.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ShapeHit {
     /// The collider hit.
     pub collider: ColliderHandle,

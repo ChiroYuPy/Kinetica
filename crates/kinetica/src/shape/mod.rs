@@ -15,6 +15,7 @@ use crate::math::{Aabb, Transform, Vec2};
 
 /// The geometry of a collider, expressed in the local frame of its body.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Shape {
     /// A solid disc.
     Circle(Circle),
@@ -154,6 +155,7 @@ pub struct RayIntersection {
 
 /// Mass distribution of a shape or a body.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MassProperties {
     /// Mass, in kilograms.
     pub mass: f32,

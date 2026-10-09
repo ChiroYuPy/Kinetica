@@ -5,6 +5,7 @@ use crate::math::{Aabb, Transform, Vec2};
 ///
 /// It has no area, hence no mass: use it for fixed geometry such as walls and floors.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Segment {
     start: Vec2,
     end: Vec2,
@@ -75,6 +76,7 @@ impl Segment {
 /// know the neighboring points of the chain, which lets shapes slide across the joints between
 /// segments without catching on them.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ChainSegment {
     segment: Segment,
     previous: Option<Vec2>,

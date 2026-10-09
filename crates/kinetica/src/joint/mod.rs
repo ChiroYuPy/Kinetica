@@ -38,10 +38,12 @@ use crate::world::World;
 ///
 /// A handle stays valid until its joint (or one of its bodies) is removed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct JointHandle(pub(crate) Index);
 
 /// Drives a joint towards a target speed with a bounded force.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Motor {
     /// Target speed: rad/s for revolute joints, m/s for prismatic joints.
     pub speed: f32,
@@ -54,6 +56,7 @@ pub struct Motor {
 ///
 /// A damping ratio of 1 settles as fast as possible without oscillating; lower values bounce.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Spring {
     /// Oscillation frequency, in Hz.
     pub hertz: f32,
@@ -63,6 +66,7 @@ pub struct Spring {
 
 /// Description of any joint, accepted by [`World::add_joint`].
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum JointDesc {
     /// See [`RevoluteJointDesc`].
     Revolute(RevoluteJointDesc),
@@ -131,6 +135,7 @@ impl From<MouseJointDesc> for JointDesc {
 
 /// The specific behaviour of a [`Joint`].
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum JointKind {
     /// See [`RevoluteJoint`].
     Revolute(RevoluteJoint),
@@ -146,6 +151,7 @@ pub enum JointKind {
 
 /// A constraint between two bodies, living in a [`World`].
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Joint {
     body_a: BodyHandle,
     body_b: BodyHandle,
