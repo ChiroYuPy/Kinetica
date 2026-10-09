@@ -12,9 +12,13 @@ pub(crate) const SPECULATIVE_DISTANCE: f32 = 4.0 * LINEAR_SLOP;
 /// tree updates for moving bodies, but more candidate pairs.
 pub(crate) const AABB_MARGIN: f32 = 0.1;
 
-/// Upper bound on the stiffness of contacts, in hertz. It is further limited to a quarter of the
-/// substep rate, beyond which soft constraints become unstable.
+/// Stiffness of contacts, in hertz. Contacts are stiff springs, so tall stacks sink and lean a
+/// little under their own weight.
 pub(crate) const CONTACT_HERTZ: f32 = 30.0;
+
+/// Shorter substeps allow stiffer contacts: up to this fraction of the substep rate, which is
+/// 30 Hz at 60 steps per second with 4 substeps, and 60 Hz with 8.
+pub(crate) const CONTACT_HERTZ_PER_SUBSTEP_RATE: f32 = 0.125;
 
 /// Damping of the contact springs; strongly over-damped so bodies settle without bouncing.
 pub(crate) const CONTACT_DAMPING_RATIO: f32 = 10.0;

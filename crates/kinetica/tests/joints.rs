@@ -122,7 +122,7 @@ fn swinging_chain_stays_connected() {
     for _ in 0..15 * SECOND {
         world.step(DT);
         // Joints are soft: at the peak of the whip (about 30 m/s) they stretch by up to 4 cm
-        // with 4 substeps, 2.4 cm with 8.
+        // with 4 substeps, 1.3 cm with 8.
         assert!(largest_joint_gap(&world) < 0.05, "a joint opened by {}", largest_joint_gap(&world));
         assert!(energy(&world) < 0.01 * energy_scale, "energy grew to {} J", energy(&world));
     }

@@ -36,12 +36,13 @@ pub struct PanelState<'a> {
 pub struct SimulationSettings {
     pub sleeping: bool,
     pub continuous: bool,
+    pub substeps: u32,
     pub labels: bool,
 }
 
 impl Default for SimulationSettings {
     fn default() -> Self {
-        Self { sleeping: true, continuous: true, labels: true }
+        Self { sleeping: true, continuous: true, substeps: 4, labels: true }
     }
 }
 
@@ -113,6 +114,8 @@ pub fn side_panel(ctx: &egui::Context, state: &mut PanelState) -> Option<UiActio
         ui.checkbox(&mut settings.sleeping, "Sleeping").on_hover_text("Resting bodies stop being simulated");
         ui.checkbox(&mut settings.continuous, "Continuous collision")
             .on_hover_text("Fast bodies do not pass through thin ones");
+        ui.add(egui::Slider::new(&mut settings.substeps, 1..=16).text("Substeps"))
+            .on_hover_text("More substeps make contacts and joints stiffer: tall columns stand, chains stretch less");
         ui.separator();
 
         ui.label("Show");

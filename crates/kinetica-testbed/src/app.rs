@@ -220,6 +220,7 @@ impl App {
             self.world.set_sleeping_enabled(self.settings.sleeping);
         }
         self.world.set_continuous_enabled(self.settings.continuous);
+        self.world.set_substep_count(self.settings.substeps);
     }
 
     /// A few shortcuts for what is used constantly; everything else is in the panel.

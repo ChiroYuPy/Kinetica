@@ -69,8 +69,10 @@ Contacts and joints are constraints: rules on the relative motion of two bodies,
 computes the impulse that fixes its velocity error, plus a *bias* that also corrects part of
 its position error. Rigid corrections jitter and explode; Kinetica treats every constraint as
 a stiff damped spring instead (`solver/softness.rs`). A `Softness` turns a frequency and a
-damping ratio into the three numbers the impulse formula needs (`Softness::impulse`). A few
-patterns recur:
+damping ratio into the three numbers the impulse formula needs (`Softness::impulse`). Springs
+give a little under load, so tall stacks sink and lean slightly; shorter substeps allow stiffer
+springs (`SolverContext::new`), which is why more substeps make stacks and chains more exact. A
+few patterns recur:
 
 - **Accumulated impulses.** Each constraint keeps the total impulse it applied during the step
   and clamps that total, not each increment: a contact can push but never pull, friction is

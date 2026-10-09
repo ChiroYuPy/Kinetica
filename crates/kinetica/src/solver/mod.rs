@@ -13,7 +13,9 @@ pub(crate) use softness::Softness;
 use crate::arena::Arena;
 use crate::body::{Body, BodyHandle};
 use crate::collider::Collider;
-use crate::constants::{CONTACT_DAMPING_RATIO, CONTACT_HERTZ, JOINT_DAMPING_RATIO, JOINT_HERTZ_RATIO};
+use crate::constants::{
+    CONTACT_DAMPING_RATIO, CONTACT_HERTZ, CONTACT_HERTZ_PER_SUBSTEP_RATE, JOINT_DAMPING_RATIO, JOINT_HERTZ_RATIO,
+};
 use crate::contact::ContactSet;
 use crate::joint::Joint;
 use crate::math::Vec2;
@@ -50,7 +52,10 @@ impl SolverContext {
     fn new(settings: &StepSettings) -> Self {
         let substep = settings.dt / settings.substep_count as f32;
         let inverse_substep = 1.0 / substep;
-        let contact_hertz = CONTACT_HERTZ.min(0.25 * inverse_substep);
+        // Stiffer contacts let tall stacks sink and lean less, but more than a quarter of the
+        // substep rate makes the solver unstable.
+        let contact_hertz =
+            (CONTACT_HERTZ_PER_SUBSTEP_RATE * inverse_substep).max(CONTACT_HERTZ).min(0.25 * inverse_substep);
         Self {
             substep,
             inverse_substep,

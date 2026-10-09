@@ -98,8 +98,8 @@ impl World {
         self.substep_count
     }
 
-    /// Sets the number of substeps. More substeps make stacks and fast bodies more accurate, at
-    /// a proportional cost.
+    /// Sets the number of substeps. More substeps make contacts and joints stiffer, so tall
+    /// stacks and long chains hold better, at a proportional cost.
     ///
     /// # Panics
     ///

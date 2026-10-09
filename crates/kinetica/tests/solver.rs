@@ -70,6 +70,36 @@ fn tall_stack_stays_upright() {
     }
 }
 
+/// Height of the top of a column of `height` boxes kept awake for 20 s, or `None` once it falls.
+fn column_top_after_20_s(substep_count: u32, height: usize) -> Option<f32> {
+    let mut world = world_with_ground();
+    world.set_substep_count(substep_count);
+    let top = (0..height)
+        .map(|i| {
+            let desc = BodyDesc::dynamic().position(vec2(0.0, 0.5 + i as f32)).keep_awake();
+            world.add_body(desc.collider(ColliderDesc::square(1.0)))
+        })
+        .last()?;
+    for _ in 0..20 * SECOND {
+        world.step(DT);
+        if world[top].position().x.abs() > 0.2 {
+            return None;
+        }
+    }
+    Some(world[top].position().y + 0.5)
+}
+
+#[test]
+fn more_substeps_make_tall_columns_stand() {
+    // Contacts are springs as stiff as the substeps allow: with 4 substeps, a column of 18
+    // boxes leans on them until it falls; with 8 it stands, and with 16 even 30 boxes do.
+    assert_eq!(column_top_after_20_s(4, 18), None);
+    let top = column_top_after_20_s(8, 18).expect("18 boxes fell with 8 substeps");
+    assert!(top > 17.95, "18 boxes sank to {top}");
+    let top = column_top_after_20_s(16, 30).expect("30 boxes fell with 16 substeps");
+    assert!(top > 29.95, "30 boxes sank to {top}");
+}
+
 #[test]
 fn pyramid_stays_standing() {
     let mut world = world_with_ground();

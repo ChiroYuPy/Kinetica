@@ -27,8 +27,10 @@
 - **Known limit**: simultaneous contacts are solved together, so a row of touching bodies
   shares an impact instead of passing it along (a touching Newton's cradle fails). A small
   gap between bodies makes impacts sequential and fixes it.
-- **Known limit**: a single column of 18 boxes or more slowly tilts and topples, even with
-  more substeps, because soft contacts let it lean a little. Pyramids and wider stacks stand.
+- **Stiffness**: contacts are 30 Hz springs and joints 60 Hz ones with the default 4 substeps
+  at 60 steps per second; shorter substeps make both stiffer. With 4 substeps a single column
+  of 18 boxes leans on its contacts until it topples (pyramids and wider stacks stand); with 8
+  substeps it stands, and with 16 a column of 30 does.
 - **Joints**: soft like contacts (60 Hz, damping ratio 2), so long rigid assemblies sag a
   little under load (an 8 m welded cantilever drops about 0.7 m at its tip). Joined bodies do
   not collide unless `collide_connected` is set. `Joint::constraint_force` and
@@ -138,3 +140,12 @@
       duplicates. Bench checksums are unchanged; rain and the tumbler got 9% faster, cloth 7%,
       ragdolls 5%. Graph coloring and SIMD for the solver were set aside on purpose: they would
       make it 2-3x faster but much harder to read, and games rarely need thousands of bodies.
+- [x] **15. Accuracy**: measured against textbook results first: sliding on a slope, braking
+      by friction, rolling and elastic collisions land within 0.5% of theory, and bounces
+      reach 95 to 99% of their ideal height. The weak spot was stiffness: contacts were capped
+      at 30 Hz, so extra substeps did not help tall stacks. Contacts and joints now get stiffer
+      when substeps are shorter (an eighth of the substep rate, never below 30 Hz), so 8
+      substeps hold a column of 18 boxes and 16 a column of 30, and a whipping chain stretches
+      half as much. The default 4 substeps behave exactly as before (bench checksums
+      unchanged). The testbed panel gained a substep slider. A touching Newton's cradle still
+      shares its impact: solving contacts together is what keeps stacks stable.

@@ -9,7 +9,7 @@ pub const SCENE: Scene = Scene {
     category: Category::Collisions,
     description: "Structures held only by contacts and friction must stand still, without jitter or drift: tall \
                   columns, a heavy box on light ones (a 20 to 1 mass ratio, hard for solvers), and a stone arch. \
-                  Knock them over with the mouse.",
+                  Knock them over with the mouse. More substeps make contacts stiffer, so even taller columns stand.",
     camera_center: vec2(0.0, 5.5),
     view_height: 13.5,
     build: Build::Static(build),
