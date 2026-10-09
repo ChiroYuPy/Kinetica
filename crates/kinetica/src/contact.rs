@@ -212,8 +212,8 @@ mod values_only {
 }
 
 impl ContactSet {
-    /// Creates contacts for new candidate pairs. Their geometry is computed by the next
-    /// [`update`](Self::update).
+    /// Creates contacts for new candidate pairs, given sorted. Their geometry is computed by the
+    /// next [`update`](Self::update).
     pub(crate) fn add_pairs(
         &mut self,
         pairs: &[CandidatePair],
@@ -221,10 +221,30 @@ impl ContactSet {
         bodies: &Arena<Body>,
         joints: &Arena<Joint>,
     ) {
-        for &key in pairs {
-            if self.contacts.contains_key(&key) || self.sensors.contains_key(&key) {
-                continue;
-            }
+        // Most pairs are already known. When there are many, walking them side by side with the
+        // maps (all sorted by key) is cheaper than looking each one up.
+        debug_assert!(pairs.is_sorted(), "candidate pairs must be sorted");
+        let known_count = self.contacts.len() + self.sensors.len();
+        let new_pairs: Vec<CandidatePair> = if pairs.len() * 16 < known_count {
+            pairs
+                .iter()
+                .copied()
+                .filter(|key| !self.contacts.contains_key(key) && !self.sensors.contains_key(key))
+                .collect()
+        } else {
+            let mut contacts = self.contacts.keys().peekable();
+            let mut sensors = self.sensors.keys().peekable();
+            pairs
+                .iter()
+                .copied()
+                .filter(|key| {
+                    while contacts.next_if(|known| *known < key).is_some() {}
+                    while sensors.next_if(|known| *known < key).is_some() {}
+                    contacts.peek() != Some(&key) && sensors.peek() != Some(&key)
+                })
+                .collect()
+        };
+        for key in new_pairs {
             let (collider_a, collider_b) = key;
             let (Some(a), Some(b)) = (colliders.get(collider_a.0), colliders.get(collider_b.0)) else { continue };
             let pair = ContactPair { collider_a, collider_b, body_a: a.body(), body_b: b.body() };

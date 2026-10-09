@@ -689,6 +689,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "kinetica-bench"
+version = "0.1.0"
+dependencies = [
+ "kinetica",
+]
+
+[[package]]
 name = "kinetica-macroquad"
 version = "0.1.0"
 dependencies = [

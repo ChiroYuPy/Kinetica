@@ -15,6 +15,8 @@
 - **Known limit**: simultaneous contacts are solved together, so a row of touching bodies
   shares an impact instead of passing it along (a touching Newton's cradle fails). A small
   gap between bodies makes impacts sequential and fixes it.
+- **Known limit**: a single column of 18 boxes or more slowly tilts and topples, even with
+  more substeps, because soft contacts let it lean a little. Pyramids and wider stacks stand.
 - **Joints**: soft like contacts (60 Hz, damping ratio 2), so long rigid assemblies sag a
   little under load (an 8 m welded cantilever drops about 0.7 m at its tip). Joined bodies do
   not collide unless `collide_connected` is set. `Joint::constraint_force` and
@@ -88,3 +90,10 @@
       and collisions, each joint type, structures built from joints, game features, queries,
       stability benchmarks), with labels written in the world and save/restore through serde.
       Full gameplay moved to games: the car became `hill-climb`.
+- [x] **9. Performance**: `kinetica-bench` (reproducible scenarios, best of 3 rounds, a
+      checksum proving an optimization changes no result) and a `profile` feature timing each
+      stage of a step. The broad phase tree is rebalanced with surface area rotations (Box2D
+      v3) instead of heights, and traversals no longer allocate; known pairs are filtered by
+      a merge with the sorted contact keys. Queries got 34% faster, ragdolls 12%, the
+      tumbler 6%; the solver dominates the rest (graph coloring and SIMD would be next).
+      A compact solver body copy was tried and dropped: no measurable gain.

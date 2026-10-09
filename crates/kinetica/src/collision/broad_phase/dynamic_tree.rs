@@ -1,13 +1,13 @@
-//! Dynamic AABB tree: a self-balancing bounding volume hierarchy.
+//! Dynamic AABB tree: a bounding volume hierarchy that stays efficient as leaves move.
 //!
 //! Leaves hold user data and a bounding box; internal nodes hold the union of their two
 //! children. Overlap queries skip whole subtrees whose box misses the query box, so they run in
 //! roughly logarithmic time. Insertion picks the sibling that grows the tree's total perimeter
-//! the least, and AVL-style rotations keep the tree roughly balanced. Balance is not strict: a
-//! leaf far from all others may be paired with a tall subtree, because that is cheaper for
-//! queries than pushing it deep into the tree.
+//! the least, then rotates nodes on the way up when that shrinks their boxes (the surface area
+//! heuristic). The tree is not strictly balanced: small, tight boxes matter more to queries
+//! than a low height. Removal only refits the boxes above.
 //!
-//! Based on the tree used in Box2D.
+//! Based on the tree used in Box2D v3.
 
 use crate::math::{Aabb, Vec2};
 
@@ -18,6 +18,9 @@ use crate::math::{Aabb, Vec2};
 pub(crate) struct ProxyId(NodeId);
 
 type NodeId = u32;
+
+/// Where a child sits: its parent and which of the parent's two slots holds it.
+type ChildSlot = (NodeId, usize);
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -32,8 +35,6 @@ enum NodeKind<T> {
 struct Node<T> {
     aabb: Aabb,
     parent: Option<NodeId>,
-    /// Leaves have height 0; an internal node is one higher than its tallest child.
-    height: u32,
     kind: NodeKind<T>,
 }
 
@@ -53,7 +54,7 @@ impl<T> Default for DynamicTree<T> {
 
 impl<T: Copy> DynamicTree<T> {
     pub(crate) fn create_proxy(&mut self, aabb: Aabb, data: T) -> ProxyId {
-        let leaf = self.allocate(Node { aabb, parent: None, height: 0, kind: NodeKind::Leaf(data) });
+        let leaf = self.allocate(Node { aabb, parent: None, kind: NodeKind::Leaf(data) });
         self.insert_leaf(leaf);
         ProxyId(leaf)
     }
@@ -82,7 +83,7 @@ impl<T: Copy> DynamicTree<T> {
 
     /// Calls `visit` for every leaf whose box overlaps `aabb`.
     pub(crate) fn query(&self, aabb: &Aabb, mut visit: impl FnMut(ProxyId, T)) {
-        let mut stack: Vec<NodeId> = self.root.into_iter().collect();
+        let mut stack = NodeStack::new(self.root);
         while let Some(id) = stack.pop() {
             let node = self.node(id);
             if !node.aabb.overlaps(aabb) {
@@ -107,7 +108,7 @@ impl<T: Copy> DynamicTree<T> {
         mut visit: impl FnMut(T, f32) -> f32,
     ) {
         let mut max_fraction = max_fraction;
-        let mut stack: Vec<NodeId> = self.root.into_iter().collect();
+        let mut stack = NodeStack::new(self.root);
         while let Some(id) = stack.pop() {
             let node = self.node(id);
             if node.aabb.ray_entry(origin, translation, max_fraction).is_none() {
@@ -134,14 +135,13 @@ impl<T: Copy> DynamicTree<T> {
         let new_parent = self.allocate(Node {
             aabb: leaf_aabb.union(&self.node(sibling).aabb),
             parent: None,
-            height: self.node(sibling).height + 1,
             kind: NodeKind::Internal([sibling, leaf]),
         });
         self.replace_child(old_parent, sibling, new_parent);
         self.node_mut(sibling).parent = Some(new_parent);
         self.node_mut(leaf).parent = Some(new_parent);
 
-        self.rebalance_upwards(Some(new_parent));
+        self.refit_and_rotate_upwards(Some(new_parent));
     }
 
     /// Walks down from `root` towards the node that should become the new leaf's sibling.
@@ -188,63 +188,80 @@ impl<T: Copy> DynamicTree<T> {
         self.free(parent);
         self.node_mut(leaf).parent = None;
 
-        self.rebalance_upwards(grandparent);
-    }
-
-    /// Restores balance, bounding boxes and heights from `start` up to the root.
-    fn rebalance_upwards(&mut self, start: Option<NodeId>) {
-        let mut current = start;
+        // Only the boxes shrink: rotating here would cost more than it saves.
+        let mut current = grandparent;
         while let Some(id) = current {
-            let id = self.balance(id);
             self.refit(id);
             current = self.node(id).parent;
         }
     }
 
-    /// If one child of `node` is more than one level taller than the other, rotates it up.
-    /// Returns the node now at the top of this subtree.
-    fn balance(&mut self, node: NodeId) -> NodeId {
-        let NodeKind::Internal([first, second]) = self.node(node).kind else {
-            return node;
-        };
-        let (first_height, second_height) = (self.node(first).height, self.node(second).height);
-        if first_height > second_height + 1 {
-            self.rotate_up(node, 0)
-        } else if second_height > first_height + 1 {
-            self.rotate_up(node, 1)
-        } else {
-            node
+    /// Restores bounding boxes from `start` up to the root, rotating nodes on the
+    /// way when it makes their boxes smaller.
+    fn refit_and_rotate_upwards(&mut self, start: Option<NodeId>) {
+        let mut current = start;
+        while let Some(id) = current {
+            self.refit(id);
+            self.rotate(id);
+            current = self.node(id).parent;
         }
     }
 
-    /// Rotates the child in `slot` above `node`. The child's taller subtree stays with it; its
-    /// shorter subtree is handed to `node`.
-    fn rotate_up(&mut self, node: NodeId, slot: usize) -> NodeId {
-        let up = self.children(node)[slot];
-        // `up` is at least two levels tall, so it is an internal node.
-        let [first, second] = self.children(up);
-        let (taller, shorter) =
-            if self.node(first).height > self.node(second).height { (first, second) } else { (second, first) };
+    /// Swaps a child of `a` with one of its grandchildren, or two grandchildren, when that
+    /// lowers the total perimeter of the boxes below `a` (the surface area heuristic, as in
+    /// Box2D v3). Smaller boxes overlap less, so queries visit fewer nodes.
+    fn rotate(&mut self, a: NodeId) {
+        let [b, c] = self.children(a);
+        let perimeter = |tree: &Self, x: NodeId| tree.node(x).aabb.perimeter();
+        let union = |tree: &Self, x: NodeId, y: NodeId| tree.node(x).aabb.union(&tree.node(y).aabb).perimeter();
+        let grandchildren = |tree: &Self, x: NodeId| match tree.node(x).kind {
+            NodeKind::Internal(children) => Some(children),
+            _ => None,
+        };
 
-        let parent = self.node(node).parent;
-        self.replace_child(parent, node, up);
-        self.node_mut(up).kind = NodeKind::Internal([node, taller]);
-        self.node_mut(node).parent = Some(up);
-        self.set_child(node, slot, shorter);
+        // Each candidate: the perimeter it saves, and the two (parent, slot) positions swapped.
+        let mut best: Option<(f32, ChildSlot, ChildSlot)> = None;
+        let mut consider = |saving: f32, first: ChildSlot, second: ChildSlot| {
+            if saving > best.map_or(0.0, |(best_saving, ..)| best_saving) {
+                best = Some((saving, first, second));
+            }
+        };
+        if let Some([f, g]) = grandchildren(self, c) {
+            // B swaps with F (C then holds B and G), or with G.
+            let area_c = perimeter(self, c);
+            consider(area_c - union(self, b, g), (a, 0), (c, 0));
+            consider(area_c - union(self, b, f), (a, 0), (c, 1));
+        }
+        if let Some([d, e]) = grandchildren(self, b) {
+            let area_b = perimeter(self, b);
+            consider(area_b - union(self, c, e), (a, 1), (b, 0));
+            consider(area_b - union(self, c, d), (a, 1), (b, 1));
+            if let Some([f, g]) = grandchildren(self, c) {
+                // D swaps with F (B then holds F and E, C holds D and G), or with G.
+                let area = area_b + perimeter(self, c);
+                consider(area - union(self, f, e) - union(self, d, g), (b, 0), (c, 0));
+                consider(area - union(self, g, e) - union(self, f, d), (b, 0), (c, 1));
+            }
+        }
 
-        self.refit(node);
-        self.refit(up);
-        up
+        if let Some((_, (parent_x, slot_x), (parent_y, slot_y))) = best {
+            let x = self.children(parent_x)[slot_x];
+            let y = self.children(parent_y)[slot_y];
+            self.set_child(parent_x, slot_x, y);
+            self.set_child(parent_y, slot_y, x);
+            // The lower parents first, then `a` above them.
+            for parent in [parent_x, parent_y] {
+                if parent != a {
+                    self.refit(parent);
+                }
+            }
+            self.refit(a);
+        }
     }
 
     fn refit(&mut self, node: NodeId) {
         let [first, second] = self.children(node);
-        let (first, second) = (self.node(first), self.node(second));
-        let aabb = first.aabb.union(&second.aabb);
-        let height = 1 + first.height.max(second.height);
-        let node = self.node_mut(node);
-        node.aabb = aabb;
-        node.height = height;
+        self.node_mut(node).aabb = self.node(first).aabb.union(&self.node(second).aabb);
     }
 
     fn children(&self, node: NodeId) -> [NodeId; 2] {
@@ -305,6 +322,44 @@ impl<T: Copy> DynamicTree<T> {
     }
 }
 
+/// The nodes left to visit during a traversal. Kept on the call stack, which avoids an
+/// allocation per query; only a degenerate tree deeper than [`Self::INLINE`] spills to the heap.
+struct NodeStack {
+    inline: [NodeId; Self::INLINE],
+    len: usize,
+    /// Nodes pushed while `inline` was full; always popped first.
+    spilled: Vec<NodeId>,
+}
+
+impl NodeStack {
+    const INLINE: usize = 64;
+
+    fn new(root: Option<NodeId>) -> Self {
+        let mut stack = Self { inline: [0; Self::INLINE], len: 0, spilled: Vec::new() };
+        stack.extend(root);
+        stack
+    }
+
+    fn extend(&mut self, nodes: impl IntoIterator<Item = NodeId>) {
+        for node in nodes {
+            if self.len < Self::INLINE {
+                self.inline[self.len] = node;
+                self.len += 1;
+            } else {
+                self.spilled.push(node);
+            }
+        }
+    }
+
+    fn pop(&mut self) -> Option<NodeId> {
+        if let Some(node) = self.spilled.pop() {
+            return Some(node);
+        }
+        self.len = self.len.checked_sub(1)?;
+        Some(self.inline[self.len])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use glam::vec2;
@@ -313,10 +368,17 @@ mod tests {
 
     impl<T: Copy> DynamicTree<T> {
         fn height(&self) -> u32 {
-            self.root.map_or(0, |root| self.node(root).height)
+            self.root.map_or(0, |root| self.subtree_height(root))
         }
 
-        /// Checks parent links, heights and bounding boxes; returns the leaf count.
+        fn subtree_height(&self, id: NodeId) -> u32 {
+            match self.node(id).kind {
+                NodeKind::Internal([first, second]) => 1 + self.subtree_height(first).max(self.subtree_height(second)),
+                _ => 0,
+            }
+        }
+
+        /// Checks parent links and bounding boxes; returns the leaf count.
         fn validate(&self) -> usize {
             let Some(root) = self.root else { return 0 };
             assert_eq!(self.node(root).parent, None);
@@ -326,16 +388,12 @@ mod tests {
         fn validate_subtree(&self, id: NodeId) -> usize {
             let node = self.node(id);
             match node.kind {
-                NodeKind::Leaf(_) => {
-                    assert_eq!(node.height, 0);
-                    1
-                }
+                NodeKind::Leaf(_) => 1,
                 NodeKind::Internal([first, second]) => {
                     for child in [first, second] {
                         assert_eq!(self.node(child).parent, Some(id), "broken parent link");
                         assert!(node.aabb.contains(&self.node(child).aabb), "parent box must contain children");
                     }
-                    assert_eq!(node.height, 1 + self.node(first).height.max(self.node(second).height));
                     self.validate_subtree(first) + self.validate_subtree(second)
                 }
                 NodeKind::Free { .. } => panic!("free node {id} is linked into the tree"),
@@ -385,7 +443,7 @@ mod tests {
     }
 
     #[test]
-    fn sorted_insertions_stay_balanced() {
+    fn sorted_insertions_keep_the_tree_shallow() {
         let mut tree = DynamicTree::default();
         let count = 1024;
         for i in 0..count {

@@ -16,8 +16,9 @@ world.step(1.0 / 60.0);
 
 | Crate | Role |
 |-------|------|
-| [`crates/kinetica`](crates/kinetica) | The engine. No rendering or windowing dependency. Optional `serde` feature. |
+| [`crates/kinetica`](crates/kinetica) | The engine. No rendering or windowing dependency. Optional `serde` and `profile` features. |
 | [`crates/kinetica-macroquad`](crates/kinetica-macroquad) | Glue for macroquad games: camera in meters, debug rendering, fixed time step, mouse grab. |
+| [`crates/kinetica-bench`](crates/kinetica-bench) | Reproducible performance benchmarks, with the time of each step stage. |
 | [`crates/kinetica-testbed`](crates/kinetica-testbed) | One labeled scene per engine concept, from body types to queries. |
 | [`games/slingshot`](games/slingshot) | Knock down towers with a slingshot. |
 | [`games/platformer`](games/platformer) | Run, jump and collect coins. |
@@ -26,6 +27,7 @@ world.step(1.0 / 60.0);
 ```sh
 cargo run --release -p kinetica-testbed       # interactive testbed
 cargo run --release -p slingshot              # or platformer, hill-climb
+cargo run --release -p kinetica-bench         # performance benchmarks
 cargo test --workspace --all-features         # all tests
 cargo clippy --workspace --all-targets        # lints (pedantic)
 ```
