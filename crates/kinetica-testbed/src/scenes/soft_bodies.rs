@@ -11,9 +11,10 @@ pub const SCENE: Scene = Scene {
     category: Category::SoftStructures,
     description: "Four ways to build a soft body from small rigid bodies, dropped on the ground. A blob: a ring of \
                   balls tied to a center by springs. A balloon: a ring of balls tied by ropes, inflated by a gas \
-                  pressure force that grows as its area shrinks. A jelly: a grid of balls tied by springs, \
-                  diagonals included so it keeps its shape. A tire: capsules welded end to end with angular \
-                  springs, which bends but does not stretch. Press R to drop them again, grab them with the mouse.",
+                  pressure force that grows as its area shrinks, and slowed by air drag. A jelly: a grid of balls \
+                  tied by springs, diagonals included so it keeps its shape. A tire: capsules welded end to end \
+                  with angular springs, which bends but does not stretch. Press R to drop them again, grab them \
+                  with the mouse.",
     camera_center: vec2(0.0, 4.0),
     view_height: 15.0,
     build: Build::Animated(build),
@@ -25,6 +26,9 @@ const RADIUS: f32 = 1.1;
 const RING_COUNT: usize = 20;
 /// Gas pressure of the balloon at its rest area, in N/m: the outward force on each meter of skin.
 const BALLOON_PRESSURE: f32 = 40.0;
+/// Air drag on the light balloon skin. It also calms the skin, which the pressure, updated once
+/// per step, would otherwise keep shaking.
+const BALLOON_DAMPING: f32 = 2.0;
 
 const BLOB_COLOR: Color = Color::new(0.95, 0.45, 0.7, 1.0);
 const BALLOON_COLOR: Color = Color::new(0.45, 0.75, 0.95, 1.0);
@@ -45,7 +49,7 @@ fn build_soft_bodies(world: &mut World, labels: &mut Labels) -> SoftBodies {
     }
 
     let blob = add_blob(world, vec2(-7.5, DROP_HEIGHT));
-    let balloon = add_ring(world, vec2(-2.5, DROP_HEIGHT), DistanceJointDesc::rope);
+    let balloon = add_ring(world, vec2(-2.5, DROP_HEIGHT), BALLOON_DAMPING, DistanceJointDesc::rope);
     let jelly = add_jelly(world, vec2(2.5, DROP_HEIGHT));
     add_tire(world, vec2(7.5, DROP_HEIGHT));
     let rest_area = area(world, &balloon);
@@ -94,14 +98,14 @@ impl SceneUpdate for SoftBodies {
 }
 
 /// Fills a ring with triangles from a point inside it, which works however much it is squashed.
-fn fill_ring(drawer: &mut DebugRenderer, inside: Vec2, ring: &[Vec2], color: Color) {
+pub(super) fn fill_ring(drawer: &mut DebugRenderer, inside: Vec2, ring: &[Vec2], color: Color) {
     for i in 0..ring.len() {
         drawer.draw_polygon(&[inside, ring[i], ring[(i + 1) % ring.len()]], color);
     }
 }
 
 /// Area enclosed by a ring of bodies, positive when counter-clockwise.
-fn area(world: &World, ring: &[BodyHandle]) -> f32 {
+pub(super) fn area(world: &World, ring: &[BodyHandle]) -> f32 {
     let points: Vec<Vec2> = ring.iter().map(|&body| world[body].position()).collect();
     (0..points.len()).map(|i| points[i].perp_dot(points[(i + 1) % points.len()])).sum::<f32>() / 2.0
 }
@@ -120,6 +124,7 @@ fn spring(hertz: f32) -> impl Fn(DistanceJointDesc, f32) -> DistanceJointDesc {
 fn add_ring(
     world: &mut World,
     center: Vec2,
+    linear_damping: f32,
     kind: impl Fn(DistanceJointDesc, f32) -> DistanceJointDesc,
 ) -> Vec<BodyHandle> {
     let ball_radius = 0.9 * RADIUS * (TAU / RING_COUNT as f32) / 2.0;
@@ -127,7 +132,7 @@ fn add_ring(
         .map(|i| {
             let position = center + RADIUS * Vec2::from_angle(TAU * i as f32 / RING_COUNT as f32);
             let ball = ColliderDesc::circle(ball_radius).friction(0.8);
-            world.add_body(BodyDesc::dynamic().position(position).collider(ball))
+            world.add_body(BodyDesc::dynamic().position(position).linear_damping(linear_damping).collider(ball))
         })
         .collect();
     for i in 0..RING_COUNT {
@@ -138,7 +143,7 @@ fn add_ring(
 
 /// A ring with a stiff skin, some resistance to bending, and springy spokes to a center body.
 fn add_blob(world: &mut World, center: Vec2) -> (BodyHandle, Vec<BodyHandle>) {
-    let ring = add_ring(world, center, spring(12.0));
+    let ring = add_ring(world, center, 0.0, spring(12.0));
     let hub = world.add_body(BodyDesc::dynamic().position(center).collider(ColliderDesc::circle(0.3)));
     for i in 0..RING_COUNT {
         tie(world, ring[i], ring[(i + 2) % RING_COUNT], spring(3.0));
@@ -226,6 +231,8 @@ mod tests {
         let balloon = area(&world, &scene.balloon) / scene.rest_area;
         assert!(blob > 0.6 && blob < 1.1, "the blob kept {blob} of its area");
         assert!(balloon > 0.8 && balloon < 1.1, "the balloon kept {balloon} of its area");
+        let shaking = scene.balloon.iter().map(|&body| world[body].linear_velocity().length()).fold(0.0, f32::max);
+        assert!(shaking < 0.2, "the balloon skin still moves at {shaking} m/s");
         let jelly: Vec<Vec2> = scene.jelly.iter().flatten().map(|&body| world[body].position()).collect();
         let (min, max) = jelly.iter().fold((Vec2::MAX, Vec2::MIN), |(min, max), &p| (min.min(p), max.max(p)));
         let ratio = (max.x - min.x) / (max.y - min.y);

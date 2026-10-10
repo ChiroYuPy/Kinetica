@@ -96,3 +96,4 @@ Each phase was a branch, merged once reviewed; git has the details.
 | 17 | Games from scratch | `slingshot`, `trials`, `platformer`, `snip`, with one cut-paper look; the engine gained `WheelJoint`. |
 | 18 | Slimming | The `profile` feature removed (`perf` does the job), `Circle::with_center` made internal, this history condensed. |
 | 19 | Bounces | Restitution uses the approach speed reached during the step, not the one at its start: bounces at e = 0.8 lose 0.5 % of height instead of 1.3 %. A velocity-dependent speculative distance stopped balls without sinking but made fast bodies hit things they would miss, so it was dropped. |
+| 20 | Soft bodies | The balloon gets air drag, which also stops its skin from shaking forever; a new pool scene piles up gas-filled bodies made of welded capsules, which flatten but never collapse. |

@@ -22,6 +22,7 @@ mod sensors;
 mod shapes;
 mod sleeping;
 mod soft_bodies;
+mod soft_body_pool;
 mod stacks;
 mod weld_joints;
 mod wheel_joints;
@@ -52,6 +53,7 @@ pub const SCENES: &[Scene] = &[
     ropes::SCENE,
     cloth::SCENE,
     soft_bodies::SCENE,
+    soft_body_pool::SCENE,
     ragdolls::SCENE,
     sleeping::SCENE,
     filtering::SCENE,
