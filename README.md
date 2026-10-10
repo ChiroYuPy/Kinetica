@@ -35,10 +35,11 @@ indexing the world with a handle reaches the body, collider or joint.
 | [`games/trials`](games/trials) | Drive a little car over hills, a plank bridge, a seesaw and a jump to the flag. |
 | [`games/platformer`](games/platformer) | Run and jump across one-way and moving platforms, push a box, collect coins. |
 | [`games/snip`](games/snip) | Cut the ropes to drop the sweet in the basket. |
+| [`games/fruits`](games/fruits) | Drop fruits in a jar; two alike merge into a bigger one. |
 
 ```sh
 cargo run --release -p kinetica-testbed       # interactive testbed
-cargo run --release -p slingshot              # or trials, platformer, snip
+cargo run --release -p slingshot              # or trials, platformer, snip, fruits
 cargo run --release -p kinetica-bench         # performance benchmarks
 cargo test --workspace --all-features         # all tests
 cargo clippy --workspace --all-targets        # lints (pedantic)

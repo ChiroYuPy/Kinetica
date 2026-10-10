@@ -94,9 +94,11 @@ pub fn levels() -> Vec<Level> {
         Level::new("Bounce", vec2(5.0, 10.0), vec2(16.4, 0.5), [vec2(5.0, 7.0), vec2(10.5, 6.6), vec2(13.7, 4.9)])
             .rope(vec2(5.0, 13.0), 1.0)
             .pad(vec2(5.5, 3.0), -0.39, 2.5),
-        Level::new("Windmill", vec2(6.0, 9.0), vec2(20.0, 0.5), [vec2(9.0, 7.5), vec2(14.0, 9.0), vec2(18.0, 5.0)])
+        // Cut the rope and the elastic swings the sweet to the right; cut the elastic on the way
+        // and it flies over the windmill, whose top blade, turning clockwise, helps it along.
+        Level::new("Windmill", vec2(6.0, 9.0), vec2(14.5, 0.5), [vec2(9.0, 7.7), vec2(12.3, 6.3), vec2(14.0, 2.8)])
             .rope(vec2(3.0, 12.5), 1.0)
             .elastic(vec2(9.0, 12.5), 1.5)
-            .windmill(vec2(11.0, 5.0), 4.0, 2.0),
+            .windmill(vec2(10.0, 2.5), 3.0, -1.5),
     ]
 }
