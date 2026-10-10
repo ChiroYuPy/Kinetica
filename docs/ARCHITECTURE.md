@@ -24,7 +24,7 @@ Everything is in `crates/kinetica/src`.
 | `continuous.rs` | Stops fast bodies from tunneling through thin obstacles. |
 | `query.rs` | Ray casts, shape casts, point and area queries. |
 | `constants.rs` | Every tolerance and tuning value, with why it has its value. |
-| `debug_draw.rs`, `profile.rs` | Drawing the world for debugging; timing the stages of a step. |
+| `debug_draw.rs` | Drawing the world for debugging. |
 
 ## Handles
 

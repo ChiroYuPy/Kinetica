@@ -27,7 +27,7 @@ indexing the world with a handle reaches the body, collider or joint.
 
 | Crate | Role |
 |-------|------|
-| [`crates/kinetica`](crates/kinetica) | The engine. No rendering or windowing dependency. Optional `serde` and `profile` features. |
+| [`crates/kinetica`](crates/kinetica) | The engine. No rendering or windowing dependency. Optional `serde` feature. |
 | [`crates/kinetica-macroquad`](crates/kinetica-macroquad) | Glue for macroquad games: camera in meters, debug rendering, a cut-paper look for games, fixed time step, mouse grab. |
 | [`crates/kinetica-bench`](crates/kinetica-bench) | Reproducible performance benchmarks, with the time of each step stage. |
 | [`crates/kinetica-testbed`](crates/kinetica-testbed) | One labeled scene per engine concept, from body types to queries. |
@@ -54,4 +54,4 @@ scripts/build-web.sh slingshot Slingshot      # output in target/web/slingshot
 python3 -m http.server -d target/web/slingshot 8000
 ```
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the design decisions and the plan.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the design decisions and the history.

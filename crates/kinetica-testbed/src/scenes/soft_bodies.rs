@@ -9,116 +9,197 @@ use kinetica_macroquad::DebugRenderer;
 pub const SCENE: Scene = Scene {
     name: "Soft bodies",
     category: Category::SoftStructures,
-    description: "Each blob is a ring of balls tied to its center by springs: the softer the springs, the \
-                  squishier the blob. From soft (pink) to firm (blue). Grab and throw them.",
-    camera_center: vec2(0.0, 5.0),
-    view_height: 14.0,
+    description: "Four ways to build a soft body from small rigid bodies, dropped on the ground. A blob: a ring of \
+                  balls tied to a center by springs. A balloon: a ring of balls tied by ropes, inflated by a gas \
+                  pressure force that grows as its area shrinks. A jelly: a grid of balls tied by springs, \
+                  diagonals included so it keeps its shape. A tire: capsules welded end to end with angular \
+                  springs, which bends but does not stretch. Press R to drop them again, grab them with the mouse.",
+    camera_center: vec2(0.0, 4.0),
+    view_height: 15.0,
     build: Build::Animated(build),
 };
 
-const RING_PARTICLES: usize = 16;
-/// Spring frequency of the spokes, from squishy to firm, with each blob's color.
-const BLOBS: [(f32, Color); 4] = [
-    (2.5, Color::new(0.95, 0.45, 0.7, 1.0)),
-    (4.0, Color::new(0.95, 0.65, 0.35, 1.0)),
-    (7.0, Color::new(0.55, 0.85, 0.45, 1.0)),
-    (12.0, Color::new(0.45, 0.65, 0.95, 1.0)),
-];
-const SPAWN_PERIOD: f32 = 1.2;
-const MAX_BLOBS: usize = 10;
+const DROP_HEIGHT: f32 = 6.5;
+const RADIUS: f32 = 1.1;
+/// Balls around the blob and the balloon, capsules around the tire.
+const RING_COUNT: usize = 20;
+/// Gas pressure of the balloon at its rest area, in N/m: the outward force on each meter of skin.
+const BALLOON_PRESSURE: f32 = 40.0;
 
-/// A ring of particles around a center body.
-struct Blob {
-    center: BodyHandle,
-    ring: Vec<BodyHandle>,
-    color: Color,
-    stiffness: f32,
-}
-
-impl Blob {
-    fn new(world: &mut World, position: Vec2, radius: f32, stiffness: f32, color: Color) -> Self {
-        let center =
-            world.add_body(BodyDesc::dynamic().position(position).collider(ColliderDesc::circle(0.3 * radius)));
-        // Particles just touch their neighbors.
-        let particle_radius = 0.9 * radius * (TAU / RING_PARTICLES as f32) / 2.0;
-        let ring: Vec<BodyHandle> = (0..RING_PARTICLES)
-            .map(|i| {
-                let angle = TAU * i as f32 / RING_PARTICLES as f32;
-                let ball = ColliderDesc::circle(particle_radius).friction(0.8);
-                world.add_body(BodyDesc::dynamic().position(position + radius * Vec2::from_angle(angle)).collider(ball))
-            })
-            .collect();
-
-        let link = |world: &mut World, a: BodyHandle, b: BodyHandle, hertz: f32| {
-            let (point_a, point_b) = (world[a].position(), world[b].position());
-            world.add_joint(DistanceJointDesc::new(a, b, point_a, point_b).spring(hertz, 0.4));
-        };
-        for i in 0..RING_PARTICLES {
-            // A stiff skin, some resistance to bending, and the springy spokes.
-            link(world, ring[i], ring[(i + 1) % RING_PARTICLES], 4.0 * stiffness);
-            link(world, ring[i], ring[(i + 2) % RING_PARTICLES], stiffness);
-            link(world, center, ring[i], stiffness);
-        }
-        Self { center, ring, color, stiffness }
-    }
-
-    /// Fills the blob with triangles from its center, which works however much it is squashed.
-    fn draw(&self, world: &World, drawer: &mut DebugRenderer) {
-        let position = |body: BodyHandle| world[body].position();
-        let center = position(self.center);
-        for i in 0..self.ring.len() {
-            let (a, b) = (position(self.ring[i]), position(self.ring[(i + 1) % self.ring.len()]));
-            drawer.draw_polygon(&[center, a, b], self.color);
-        }
-    }
-}
+const BLOB_COLOR: Color = Color::new(0.95, 0.45, 0.7, 1.0);
+const BALLOON_COLOR: Color = Color::new(0.45, 0.75, 0.95, 1.0);
+const JELLY_COLOR: Color = Color::new(0.55, 0.85, 0.45, 1.0);
 
 fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
+    Box::new(build_soft_bodies(world, labels))
+}
+
+fn build_soft_bodies(world: &mut World, labels: &mut Labels) -> SoftBodies {
     add_ground(world, 40.0);
-    let level = world.add_body(BodyDesc::fixed());
-    // A ramp down to the right, pegs below it, and walls around a pit.
-    world.add_collider(level, ColliderDesc::rectangle(8.0, 0.4).offset(vec2(-4.0, 6.0)).angle(-0.35));
-    for (x, y) in [(1.0, 3.5), (3.0, 3.0), (5.0, 3.5), (2.0, 1.5), (4.0, 1.5)] {
-        world.add_collider(level, ColliderDesc::circle(0.3).offset(vec2(x, y)));
+    let walls = world.add_body(BodyDesc::fixed());
+    for x in [-10.5, 10.5] {
+        world.add_collider(walls, ColliderDesc::rectangle(0.5, 4.0).offset(vec2(x, 2.0)));
     }
-    for x in [-9.0, 9.0] {
-        world.add_collider(level, ColliderDesc::rectangle(0.6, 10.0).offset(vec2(x, 5.0)));
+    for (x, text) in [(-7.5, "Blob"), (-2.5, "Balloon"), (2.5, "Jelly"), (7.5, "Tire")] {
+        labels.at(vec2(x, DROP_HEIGHT + 2.0), text);
     }
-    labels.at(vec2(0.0, 10.5), "A ring of balls tied to its center by springs; label: spring frequency");
-    Box::new(Blobs { blobs: Vec::new(), next_spawn: 0.0 })
+
+    let blob = add_blob(world, vec2(-7.5, DROP_HEIGHT));
+    let balloon = add_ring(world, vec2(-2.5, DROP_HEIGHT), DistanceJointDesc::rope);
+    let jelly = add_jelly(world, vec2(2.5, DROP_HEIGHT));
+    add_tire(world, vec2(7.5, DROP_HEIGHT));
+    let rest_area = area(world, &balloon);
+    SoftBodies { blob, balloon, rest_area, jelly }
 }
 
-struct Blobs {
-    blobs: Vec<Blob>,
-    next_spawn: f32,
+struct SoftBodies {
+    /// The blob's center, then its ring.
+    blob: (BodyHandle, Vec<BodyHandle>),
+    balloon: Vec<BodyHandle>,
+    rest_area: f32,
+    /// The jelly's particles, row by row.
+    jelly: Vec<Vec<BodyHandle>>,
 }
 
-impl SceneUpdate for Blobs {
-    fn update(&mut self, world: &mut World, frame: &Frame) {
-        if self.blobs.len() >= MAX_BLOBS || frame.time < self.next_spawn {
-            return;
+impl SceneUpdate for SoftBodies {
+    /// The gas in the balloon pushes every piece of skin outwards, harder as it is squeezed
+    /// (pressure times area stays constant). Forces last one step, so this runs before each one.
+    fn update(&mut self, world: &mut World, _frame: &Frame) {
+        let pressure = BALLOON_PRESSURE * self.rest_area / area(world, &self.balloon).max(0.1 * self.rest_area);
+        let count = self.balloon.len();
+        for i in 0..count {
+            let (a, b) = (self.balloon[i], self.balloon[(i + 1) % count]);
+            let edge = world[b].position() - world[a].position();
+            // The ring turns counter-clockwise: outwards is to the right of each edge.
+            let force = pressure * vec2(edge.y, -edge.x);
+            world[a].apply_force(0.5 * force);
+            world[b].apply_force(0.5 * force);
         }
-        self.next_spawn += SPAWN_PERIOD;
-        let i = self.blobs.len();
-        let (stiffness, color) = BLOBS[i % BLOBS.len()];
-        let radius = 0.7 + 0.3 * (i as f32 * 0.618_034).fract();
-        self.blobs.push(Blob::new(world, vec2(-6.0, 11.0), radius, stiffness, color));
     }
 
     fn draw(&self, world: &World, _frame: &Frame, drawer: &mut DebugRenderer) {
-        for blob in &self.blobs {
-            blob.draw(world, drawer);
-        }
-    }
-
-    fn labels(&self, world: &World, _frame: &Frame, labels: &mut Labels) {
-        for blob in &self.blobs {
-            // Above the highest particle of the ring.
-            let top = blob.ring.iter().map(|&body| world[body].position()).max_by(|a, b| a.y.total_cmp(&b.y));
-            if let Some(top) = top {
-                labels.at(vec2(top.x, top.y + 0.3), format!("{} Hz", blob.stiffness));
+        let position = |body: BodyHandle| world[body].position();
+        let (center, ring) = &self.blob;
+        fill_ring(drawer, position(*center), &ring.iter().map(|&body| position(body)).collect::<Vec<_>>(), BLOB_COLOR);
+        let skin: Vec<Vec2> = self.balloon.iter().map(|&body| position(body)).collect();
+        let middle = skin.iter().sum::<Vec2>() / skin.len() as f32;
+        fill_ring(drawer, middle, &skin, BALLOON_COLOR);
+        for rows in self.jelly.windows(2) {
+            for column in 0..rows[0].len() - 1 {
+                let cell = [rows[1][column], rows[1][column + 1], rows[0][column + 1], rows[0][column]].map(position);
+                drawer.draw_polygon(&cell, JELLY_COLOR);
             }
         }
+    }
+}
+
+/// Fills a ring with triangles from a point inside it, which works however much it is squashed.
+fn fill_ring(drawer: &mut DebugRenderer, inside: Vec2, ring: &[Vec2], color: Color) {
+    for i in 0..ring.len() {
+        drawer.draw_polygon(&[inside, ring[i], ring[(i + 1) % ring.len()]], color);
+    }
+}
+
+/// Area enclosed by a ring of bodies, positive when counter-clockwise.
+fn area(world: &World, ring: &[BodyHandle]) -> f32 {
+    let points: Vec<Vec2> = ring.iter().map(|&body| world[body].position()).collect();
+    (0..points.len()).map(|i| points[i].perp_dot(points[(i + 1) % points.len()])).sum::<f32>() / 2.0
+}
+
+/// Ties `a` to `b` with a distance joint of their current distance, shaped by `kind`.
+fn tie(world: &mut World, a: BodyHandle, b: BodyHandle, kind: impl Fn(DistanceJointDesc, f32) -> DistanceJointDesc) {
+    let (point_a, point_b) = (world[a].position(), world[b].position());
+    world.add_joint(kind(DistanceJointDesc::new(a, b, point_a, point_b), point_a.distance(point_b)));
+}
+
+fn spring(hertz: f32) -> impl Fn(DistanceJointDesc, f32) -> DistanceJointDesc {
+    move |desc, _| desc.spring(hertz, 0.4)
+}
+
+/// A ring of touching balls around `center`, counter-clockwise, each tied to the next by `kind`.
+fn add_ring(
+    world: &mut World,
+    center: Vec2,
+    kind: impl Fn(DistanceJointDesc, f32) -> DistanceJointDesc,
+) -> Vec<BodyHandle> {
+    let ball_radius = 0.9 * RADIUS * (TAU / RING_COUNT as f32) / 2.0;
+    let ring: Vec<BodyHandle> = (0..RING_COUNT)
+        .map(|i| {
+            let position = center + RADIUS * Vec2::from_angle(TAU * i as f32 / RING_COUNT as f32);
+            let ball = ColliderDesc::circle(ball_radius).friction(0.8);
+            world.add_body(BodyDesc::dynamic().position(position).collider(ball))
+        })
+        .collect();
+    for i in 0..RING_COUNT {
+        tie(world, ring[i], ring[(i + 1) % RING_COUNT], &kind);
+    }
+    ring
+}
+
+/// A ring with a stiff skin, some resistance to bending, and springy spokes to a center body.
+fn add_blob(world: &mut World, center: Vec2) -> (BodyHandle, Vec<BodyHandle>) {
+    let ring = add_ring(world, center, spring(12.0));
+    let hub = world.add_body(BodyDesc::dynamic().position(center).collider(ColliderDesc::circle(0.3)));
+    for i in 0..RING_COUNT {
+        tie(world, ring[i], ring[(i + 2) % RING_COUNT], spring(3.0));
+        tie(world, hub, ring[i], spring(3.0));
+    }
+    (hub, ring)
+}
+
+/// A square grid of balls tied to their neighbors and across each cell by springs.
+fn add_jelly(world: &mut World, center: Vec2) -> Vec<Vec<BodyHandle>> {
+    const SIDE: usize = 5;
+    let spacing = 2.0 * RADIUS / (SIDE - 1) as f32;
+    let corner = center - Vec2::splat(RADIUS);
+    let grid: Vec<Vec<BodyHandle>> = (0..SIDE)
+        .map(|row| {
+            (0..SIDE)
+                .map(|column| {
+                    let position = corner + spacing * vec2(column as f32, row as f32);
+                    let ball = ColliderDesc::circle(0.45 * spacing).friction(0.8);
+                    world.add_body(BodyDesc::dynamic().position(position).collider(ball))
+                })
+                .collect()
+        })
+        .collect();
+    for row in 0..SIDE {
+        for column in 0..SIDE {
+            let here = grid[row][column];
+            let mut link = |other: BodyHandle| tie(world, here, other, spring(6.0));
+            if column + 1 < SIDE {
+                link(grid[row][column + 1]);
+            }
+            if row + 1 < SIDE {
+                link(grid[row + 1][column]);
+                if column + 1 < SIDE {
+                    link(grid[row + 1][column + 1]);
+                }
+                if column > 0 {
+                    link(grid[row + 1][column - 1]);
+                }
+            }
+        }
+    }
+    grid
+}
+
+/// Capsules around a circle, welded end to end: the welds keep the rim from stretching, and
+/// their angular springs let it bend and spring back.
+fn add_tire(world: &mut World, center: Vec2) {
+    let corner = |i: usize| center + RADIUS * Vec2::from_angle(TAU * i as f32 / RING_COUNT as f32);
+    let segments: Vec<BodyHandle> = (0..RING_COUNT)
+        .map(|i| {
+            let (start, end) = (corner(i), corner(i + 1));
+            let middle = (start + end) / 2.0;
+            let capsule = ColliderDesc::capsule(start - middle, end - middle, 0.12).friction(0.9);
+            world.add_body(BodyDesc::dynamic().position(middle).collider(capsule))
+        })
+        .collect();
+    for i in 0..RING_COUNT {
+        let weld =
+            WeldJointDesc::new(segments[i], segments[(i + 1) % RING_COUNT], corner(i + 1)).angular_spring(20.0, 0.5);
+        world.add_joint(weld);
     }
 }
 
@@ -126,38 +207,28 @@ impl SceneUpdate for Blobs {
 mod tests {
     use super::*;
 
-    /// Area enclosed by the ring, positive when counter-clockwise.
-    fn area(world: &World, blob: &Blob) -> f32 {
-        let points: Vec<Vec2> = blob.ring.iter().map(|&body| world[body].position()).collect();
-        (0..points.len()).map(|i| points[i].perp_dot(points[(i + 1) % points.len()])).sum::<f32>() / 2.0
-    }
-
     #[test]
-    fn blobs_squash_on_impact_and_recover() {
+    fn soft_bodies_land_and_keep_their_shape() {
         let mut world = World::new();
-        let mut scene = Blobs { blobs: Vec::new(), next_spawn: 0.0 };
-        build(&mut world, &mut Labels::default());
-        let mut first_areas = Vec::new();
-        for step in 0..20 * 60 {
+        let mut scene = build_soft_bodies(&mut world, &mut Labels::default());
+        let blob_rest = area(&world, &scene.blob.1);
+        for step in 0..8 * 60 {
             let frame = Frame { time: step as f32 / 60.0, ..Frame::default() };
             scene.update(&mut world, &frame);
             world.step(1.0 / 60.0);
-            first_areas.push(area(&world, &scene.blobs[0]));
-            for blob in &scene.blobs {
-                // Squashed under a pile, a soft blob flattens but never turns inside out.
-                assert!(area(&world, blob) > 0.2, "a blob turned inside out at step {step}");
-            }
         }
-
-        // The first blob (radius 0.7 m, about 1.5 m² at rest) hits the ramp at about 1 s.
-        let rest = first_areas[0];
-        let squashed = first_areas[..90].iter().copied().fold(f32::INFINITY, f32::min);
-        assert!(squashed < 0.6 * rest, "the softest blob barely squashed: {squashed} of {rest}");
-        assert!(first_areas[150] > 0.9 * rest, "the blob did not recover its shape: {}", first_areas[150]);
-
-        for blob in &scene.blobs {
-            let center = world[blob.center].position();
-            assert!(center.x.abs() < 9.0 && (0.0..10.0).contains(&center.y), "a blob escaped to {center}");
+        for (_, body) in world.bodies().filter(|(_, body)| body.body_type() == BodyType::Dynamic) {
+            let position = body.position();
+            assert!(position.is_finite() && position.y > -0.1 && position.y < 8.0, "a piece flew to {position}");
         }
+        // Resting on the ground, each one sags a little but holds its shape.
+        let blob = area(&world, &scene.blob.1) / blob_rest;
+        let balloon = area(&world, &scene.balloon) / scene.rest_area;
+        assert!(blob > 0.6 && blob < 1.1, "the blob kept {blob} of its area");
+        assert!(balloon > 0.8 && balloon < 1.1, "the balloon kept {balloon} of its area");
+        let jelly: Vec<Vec2> = scene.jelly.iter().flatten().map(|&body| world[body].position()).collect();
+        let (min, max) = jelly.iter().fold((Vec2::MAX, Vec2::MIN), |(min, max), &p| (min.min(p), max.max(p)));
+        let ratio = (max.x - min.x) / (max.y - min.y);
+        assert!(ratio > 0.8 && ratio < 1.4, "the jelly is {ratio} times wider than tall");
     }
 }

@@ -80,87 +80,18 @@
 - **Quality**: `unsafe` forbidden, clippy pedantic, documented public API, English only.
 - **Engine independence**: the engine exposes a `DebugDraw` trait; renderers implement it.
 
-## Phases
+## History
 
-- [x] **0. Foundations**: workspace, math (`Rot`, `Transform`, `Aabb`), shapes (circle,
-      convex polygon) with mass properties, bodies, colliders, integration, debug draw,
-      macroquad testbed.
-- [x] **1. Collision detection**: broad phase (dynamic AABB tree with fat boxes), narrow
-      phase (circle/polygon manifolds via SAT and clipping), deterministic contact set,
-      `Started`/`Stopped` events, contact debug drawing.
-- [x] **2. Contact solver**: soft-step solver (Box2D v3 style) with 4 substeps, relax pass,
-      warm starting by feature id, Coulomb friction, restitution. A 210-box pyramid stands.
-- [x] **3. Queries**: closest and all-hits ray casts, shape casts (conservative advancement),
-      point, box and overlap queries, all with a `QueryFilter`; brute-force checked.
-- [x] **4. Joints**: revolute (limits, motor), distance (rod, spring, rope), prismatic (limits,
-      motor), weld (rigid or elastic), mouse. Joint-only scenes: pendulums, Newton's cradle,
-      chains, bridge, ragdolls, suspended car, springs, crank-slider, elevator, cantilever.
-- [x] **5. Game features**: sleeping by islands, collision layers, sensors with events,
-      continuous collision (bullets), one-way platforms.
-- [x] **6. More shapes**: capsule, segment, smooth one-sided chains for terrain; the car
-      terrain, ragdolls and stairs use them.
-- [x] **7. Games**: `kinetica-macroquad` glue crate, `slingshot` and `platformer` games,
-      WASM builds of the games and the testbed, optional `serde` feature.
-- [x] **8. Teaching testbed**: one scene per engine concept, in learning order (bodies, shapes
-      and collisions, each joint type, structures built from joints, game features, queries,
-      stability benchmarks), with labels written in the world and save/restore through serde.
-      Full gameplay moved to games: the car became `hill-climb`.
-- [x] **9. Performance**: `kinetica-bench` (reproducible scenarios, best of 3 rounds, a
-      checksum proving an optimization changes no result) and a `profile` feature timing each
-      stage of a step. The broad phase tree is rebalanced with surface area rotations (Box2D
-      v3) instead of heights, and traversals no longer allocate; known pairs are filtered by
-      a merge with the sorted contact keys. Queries got 34% faster, ragdolls 12%, the
-      tumbler 6%; the solver dominates the rest (graph coloring and SIMD would be next).
-      A compact solver body copy was tried and dropped: no measurable gain.
-- [x] **10. API**: the three games were rewritten as one would like to write them, and the
-      engine changed until they compiled: indexing with handles, bodies created with their
-      colliders, full sizes, `offset`/`angle` placement, argument-free flags, world-space
-      joint anchors, typed joint handles, `rope()`, impact speed in collision events, no-op
-      setters that keep bodies asleep, shape queries taking a shape and a position, and
-      macroquad colors in `kinetica-macroquad`.
-- [x] **11. Internal readability**: `docs/ARCHITECTURE.md` maps the modules and walks through
-      a step; `World::step` numbers its seven stages. Joints share their constraint math
-      (`Softness::impulse`, `motor_impulse`, `limit_impulse`) instead of repeating the
-      formulas, solver passes are a `Pass` enum instead of a boolean, and the shared joint
-      methods come from one macro. `contact.rs` became `contact/` (public types, events,
-      pair tracking). Bench checksums and a joint probe are bit-identical before and after.
-- [x] **12. Games readability**: the window setup, centered messages and box outlines moved to
-      `kinetica-macroquad` (`window_conf`, `draw_centered_text`, `DebugRenderer::draw_aabb`)
-      instead of being copied in every game. The slingshot names its pop effects and moves to
-      the next level with `Game::next_level`, the platformer level is built as values instead
-      of filled in, and the car keeps its hubs instead of finding them through its joints.
-- [x] **13. Pinball**: a fourth game, using what the others did not: flippers are motorized
-      revolute joints with limits, the plunger a prismatic joint pushed by a preloaded spring,
-      the table a counter-clockwise chain, the lane gate a one-way collider, and bumpers and
-      slingshots kick the ball from collision events. It needed one addition to the engine,
-      `ContactPair::other_collider`, to tell which part of a body with many colliders was hit.
-      A test plays two minutes of random flipping and checks the ball never leaves the table.
-- [x] **14. Performance, kept simple**: contacts and sensor overlaps live in `Vec`s sorted by
-      collider pair instead of `BTreeMap`s, so steps walk them contiguously, and solved
-      impulses are stored back by walking contacts and constraints together instead of
-      looking each one up. The broad phase reports each new pair once instead of sorting out
-      duplicates. Bench checksums are unchanged; rain and the tumbler got 9% faster, cloth 7%,
-      ragdolls 5%. Graph coloring and SIMD for the solver were set aside on purpose: they would
-      make it 2-3x faster but much harder to read, and games rarely need thousands of bodies.
-- [x] **15. Accuracy**: measured against textbook results first: sliding on a slope, braking
-      by friction, rolling and elastic collisions land within 0.5% of theory, and bounces
-      reach 95 to 99% of their ideal height. The weak spot was stiffness: contacts were capped
-      at 30 Hz, so extra substeps did not help tall stacks. Contacts and joints now get stiffer
-      when substeps are shorter (an eighth of the substep rate, never below 30 Hz), so 8
-      substeps hold a column of 18 boxes and 16 a column of 30, and a whipping chain stretches
-      half as much. The default 4 substeps behave exactly as before (bench checksums
-      unchanged). The testbed panel gained a substep slider. A touching Newton's cradle still
-      shares its impact: solving contacts together is what keeps stacks stable.
-- [x] **16. Testbed review**: one scene per concept. "Tearing cloth" merged into "Cloth" (a
-      curtain you cut holding a heavy bar, next to the hammock), the "Joints" category keeps one
-      scene per joint type while the bridge and the ragdolls joined the structures built from
-      joints, and the ragdolls scene was reframed so none falls behind the stairs.
-- [x] **17. Games from scratch**: the four games were rewritten with one cut-paper look shared
-      through `kinetica_macroquad::paper`. `slingshot` (wood, glass and stone towers), `trials`
-      (a car over hills, a plank bridge, a seesaw, boxes and a jump, against the clock),
-      `platformer` (one-way and moving platforms, an elevator, a box to push, a bridge, coins
-      and spikes) and `snip` (cut ropes to drop a sweet in a basket, with bouncy pads and a
-      windmill). Pinball and hill-climb were dropped. The engine gained the `WheelJoint` (an
-      axle on a sprung, limited suspension axis, with a motor), so a car no longer needs a
-      hidden body per wheel; the prismatic and wheel joints share their slide geometry and
-      limits. The testbed shows it in a "Wheel joints" scene.
+Each phase was a branch, merged once reviewed; git has the details.
+
+| # | Phase | Outcome |
+|---|-------|---------|
+| 0-3 | Foundations, collision, solver, queries | Bodies and shapes, dynamic AABB tree, SAT and clipping manifolds, soft-step solver (Box2D v3 style), ray and shape casts. A 210-box pyramid stands. |
+| 4-6 | Joints, game features, more shapes | Revolute, distance, prismatic, weld and mouse joints; sleeping islands, layers, sensors, continuous collision, one-way platforms; capsules, segments and smooth one-sided chains. |
+| 7-8 | Games and testbed | `kinetica-macroquad`, the first games, WASM builds, `serde`; a testbed with one scene per concept. |
+| 9, 14 | Performance | `kinetica-bench` with checksums proving an optimization changes no result; surface-area tree rotations, contacts in sorted `Vec`s. Graph coloring and SIMD were set aside on purpose: much faster, much harder to read. |
+| 10-12 | Readability | The API rewritten from the games' point of view; shared joint math, `docs/ARCHITECTURE.md`; game helpers moved to `kinetica-macroquad`. |
+| 15 | Accuracy | Checked against textbook results (slopes, friction, rolling, bounces, elastic collisions); contacts and joints get stiffer with shorter substeps. |
+| 16, 18 | Testbed trimmed | 29 scenes down to 24, every concept kept: merged ropes and bridges, layers and one-way platforms, ray and shape queries; the soft bodies scene shows four techniques (spokes, gas pressure, spring lattice, welded rim). |
+| 17 | Games from scratch | `slingshot`, `trials`, `platformer`, `snip`, with one cut-paper look; the engine gained `WheelJoint`. |
+| 18 | Slimming | The `profile` feature removed (`perf` does the job), `Circle::with_center` made internal, this history condensed. |

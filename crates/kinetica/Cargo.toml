@@ -12,8 +12,6 @@ repository.workspace = true
 [features]
 ## Serialize and deserialize worlds (save games, replays) and descriptions (level files).
 serde = ["dep:serde", "glam/serde"]
-## Measure how long each stage of a step takes, read with `World::profile`.
-profile = []
 
 [dependencies]
 glam.workspace = true

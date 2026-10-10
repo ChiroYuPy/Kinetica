@@ -2,32 +2,27 @@
 //! listing it in [`SCENES`].
 
 mod body_types;
-mod bridge;
 mod bullets;
 mod cloth;
 mod contacts;
 mod distance_joints;
+mod filtering;
 mod forces;
 mod gravity;
-mod layers;
 mod mass;
 mod materials;
-mod newtons_cradle;
-mod one_way;
 mod pendulum_wave;
 mod prismatic_joints;
 mod pyramid;
+mod queries;
 mod ragdolls;
-mod ray_casts;
 mod revolute_joints;
 mod ropes;
 mod sensors;
-mod shape_queries;
 mod shapes;
 mod sleeping;
 mod soft_bodies;
 mod stacks;
-mod tumbler;
 mod weld_joints;
 mod wheel_joints;
 
@@ -55,20 +50,15 @@ pub const SCENES: &[Scene] = &[
     weld_joints::SCENE,
     wheel_joints::SCENE,
     ropes::SCENE,
-    bridge::SCENE,
     cloth::SCENE,
     soft_bodies::SCENE,
     ragdolls::SCENE,
     sleeping::SCENE,
-    layers::SCENE,
+    filtering::SCENE,
     sensors::SCENE,
-    one_way::SCENE,
     bullets::SCENE,
-    ray_casts::SCENE,
-    shape_queries::SCENE,
+    queries::SCENE,
     pyramid::SCENE,
-    tumbler::SCENE,
-    newtons_cradle::SCENE,
     pendulum_wave::SCENE,
 ];
 

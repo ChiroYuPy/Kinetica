@@ -18,7 +18,7 @@ mod scenarios;
 
 use std::time::Instant;
 
-use kinetica::{StepProfile, World};
+use kinetica::World;
 
 /// Fixed time step used by every benchmark.
 const DT: f32 = 1.0 / 60.0;
@@ -39,7 +39,7 @@ struct Benchmark {
 
 /// What one timed iteration does.
 enum Iteration {
-    /// One world step; the time of each stage is reported too.
+    /// One world step.
     Step,
     /// Something else, returning a value folded into the checksum.
     Custom(fn(&mut World) -> u64),
@@ -63,23 +63,6 @@ struct Report {
     median: f64,
     worst: f64,
     checksum: u64,
-    /// Mean time of each stage of the step, in milliseconds, for [`Iteration::Step`].
-    stages: Option<[f64; STAGES.len()]>,
-}
-
-const STAGES: [&str; 7] = ["collide", "islands", "solve", "sync", "ccd", "sleep", "pairs"];
-
-fn stage_times(profile: &StepProfile) -> [f64; STAGES.len()] {
-    [
-        profile.collide,
-        profile.islands,
-        profile.solve,
-        profile.synchronize,
-        profile.continuous,
-        profile.sleep,
-        profile.find_pairs,
-    ]
-    .map(|duration| duration.as_secs_f64() * 1000.0)
 }
 
 fn measure(benchmark: &Benchmark) -> (World, Report) {
@@ -89,7 +72,6 @@ fn measure(benchmark: &Benchmark) -> (World, Report) {
     }
     let mut times = Vec::with_capacity(benchmark.iterations);
     let mut checksum = Checksum::default();
-    let mut stages = [0.0; STAGES.len()];
     for _ in 0..benchmark.iterations {
         let start = Instant::now();
         match benchmark.iteration {
@@ -97,11 +79,7 @@ fn measure(benchmark: &Benchmark) -> (World, Report) {
             Iteration::Custom(run) => checksum.add(run(&mut world)),
         }
         times.push(start.elapsed().as_secs_f64() * 1000.0);
-        for (total, time) in stages.iter_mut().zip(stage_times(world.profile())) {
-            *total += time / benchmark.iterations as f64;
-        }
     }
-    let stages = matches!(benchmark.iteration, Iteration::Step).then_some(stages);
     for (_, body) in world.bodies() {
         checksum.add(u64::from(body.position().x.to_bits()));
         checksum.add(u64::from(body.position().y.to_bits()));
@@ -110,8 +88,7 @@ fn measure(benchmark: &Benchmark) -> (World, Report) {
 
     let mean = times.iter().sum::<f64>() / times.len() as f64;
     times.sort_by(f64::total_cmp);
-    let report =
-        Report { mean, median: times[times.len() / 2], worst: times[times.len() - 1], checksum: checksum.0, stages };
+    let report = Report { mean, median: times[times.len() / 2], worst: times[times.len() - 1], checksum: checksum.0 };
     (world, report)
 }
 
@@ -151,7 +128,6 @@ fn main() {
         "{:<10} {:>7} {:>7} {:>7} {:>9}  {:>8} {:>8} {:>8}  {:<16}",
         "benchmark", "bodies", "awake", "joints", "contacts", "mean ms", "median", "worst", "checksum"
     );
-    let mut reports = Vec::new();
     for benchmark in &benchmarks {
         let (world, report) = (0..ROUNDS)
             .map(|_| measure(benchmark))
@@ -169,22 +145,6 @@ fn main() {
             report.worst,
             report.checksum,
         );
-        reports.push(report);
-    }
-
-    println!();
-    print!("{:<10}", "stage ms");
-    for stage in STAGES {
-        print!(" {stage:>8}");
-    }
-    println!();
-    for (benchmark, report) in benchmarks.iter().zip(&reports) {
-        let Some(stages) = report.stages else { continue };
-        print!("{:<10}", benchmark.name);
-        for time in stages {
-            print!(" {time:>8.3}");
-        }
-        println!();
     }
     println!();
     for benchmark in &benchmarks {

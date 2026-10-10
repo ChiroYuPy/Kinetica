@@ -3,10 +3,11 @@ use kinetica::prelude::*;
 use super::{Build, Category, Labels, Scene, add_ground};
 
 pub const SCENE: Scene = Scene {
-    name: "Ropes",
+    name: "Ropes and bridges",
     category: Category::SoftStructures,
-    description: "From left to right: a rope of beads holding a crate, a chain of hinged links, an elastic \
-                  band catching a ball, and a rope whirled by a turning motor.",
+    description: "Long things built from many small bodies and joints. Above, a rope of beads holding a crate; \
+                  below, a bridge of planks hinged end to end, loaded with boxes and balls; right, an elastic band \
+                  catching a ball, and a rope whirled by a turning motor.",
     camera_center: vec2(0.5, 5.5),
     view_height: 16.0,
     build: Build::Static(build),
@@ -24,21 +25,7 @@ fn build(world: &mut World, labels: &mut Labels) {
     let crate_body = world.add_body(BodyDesc::dynamic().position(vec2(-5.5, 9.7)).collider(ColliderDesc::square(0.6)));
     tie(world, beads[beads.len() - 1], crate_body, vec2(-5.5, 10.0), rope);
 
-    // A chain: small bars hinged end to end, ending with a ball.
-    let link_length = 0.4;
-    let start = vec2(-1.5, 10.0);
-    let mut previous = ceiling;
-    for i in 0..11 {
-        let hinge = start + vec2(link_length * i as f32, 0.0);
-        let bar = ColliderDesc::rectangle(link_length, 0.1);
-        let link = world.add_body(BodyDesc::dynamic().position(hinge + vec2(link_length / 2.0, 0.0)).collider(bar));
-        world.add_joint(RevoluteJointDesc::new(previous, link, hinge));
-        previous = link;
-    }
-    let end = start + vec2(11.0 * link_length, 0.0);
-    let ball = world
-        .add_body(BodyDesc::dynamic().position(end + vec2(0.3, 0.0)).collider(ColliderDesc::circle(0.3).density(3.0)));
-    world.add_joint(RevoluteJointDesc::new(previous, ball, end));
+    add_bridge(world, vec2(-10.0, 3.0), 20);
 
     // An elastic band: beads tied by springs between two posts, and a ball dropped on it. The
     // springs are shorter than the gaps, so the band is stretched like a trampoline.
@@ -58,9 +45,36 @@ fn build(world: &mut World, labels: &mut Labels) {
     add_beads(world, crank, pivot + vec2(0.8, 0.0), pivot + vec2(3.3, 0.0), 12, rope);
 
     labels.at(vec2(-7.5, 10.5), "Rope: beads joined by\ndistance joints, slack allowed");
-    labels.at(vec2(0.7, 10.5), "Chain: bars joined\nby revolute joints");
+    labels.at(vec2(-5.0, 1.0), "Bridge: planks joined\nby revolute joints");
     labels.at(vec2(5.5, 4.6), "Elastic band: beads\njoined by springs");
     labels.at(pivot + vec2(0.0, 0.6), "Rope on a turning\nkinematic crank");
+}
+
+/// A bridge of `count` planks hinged end to end from `left_end` to the right, pinned to fixed
+/// bodies on pillars at both ends, with a few boxes and balls dropped on it.
+fn add_bridge(world: &mut World, left_end: Vec2, count: usize) {
+    const PLANK_LENGTH: f32 = 0.5;
+    let right_end = left_end + vec2(PLANK_LENGTH * count as f32, 0.0);
+    for end in [left_end, right_end] {
+        let pillar = ColliderDesc::rectangle(0.4, end.y).offset(vec2(0.0, -end.y / 2.0));
+        world.add_body(BodyDesc::fixed().position(end).collider(pillar));
+    }
+    let mut previous = world.add_body(BodyDesc::fixed().position(left_end));
+    for i in 0..count {
+        let hinge = left_end + vec2(PLANK_LENGTH * i as f32, 0.0);
+        let shape = ColliderDesc::rectangle(PLANK_LENGTH, 0.16).friction(0.8);
+        let plank = world.add_body(BodyDesc::dynamic().position(hinge + vec2(PLANK_LENGTH / 2.0, 0.0)).collider(shape));
+        world.add_joint(RevoluteJointDesc::new(previous, plank, hinge));
+        previous = plank;
+    }
+    let right_anchor = world.add_body(BodyDesc::fixed().position(right_end));
+    world.add_joint(RevoluteJointDesc::new(previous, right_anchor, right_end));
+
+    for i in 0..4 {
+        let position = left_end + vec2(1.5 + 2.3 * i as f32, 2.0 + (i % 2) as f32);
+        let shape = if i % 2 == 0 { ColliderDesc::square(0.7) } else { ColliderDesc::circle(0.35) };
+        world.add_body(BodyDesc::dynamic().position(position).collider(shape.density(1.5)));
+    }
 }
 
 /// Creates `count` beads from `start` (excluded, where `anchor` holds the first one) to `end`,

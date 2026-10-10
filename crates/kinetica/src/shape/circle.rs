@@ -23,9 +23,9 @@ impl Circle {
         Self { center: Vec2::ZERO, radius }
     }
 
-    /// Moves the circle center away from the body origin.
-    #[must_use]
-    pub fn with_center(mut self, center: Vec2) -> Self {
+    /// Moves the circle center away from the body origin; colliders do it with
+    /// [`ColliderDesc::offset`](crate::ColliderDesc::offset).
+    pub(crate) fn with_center(mut self, center: Vec2) -> Self {
         self.center = center;
         self
     }

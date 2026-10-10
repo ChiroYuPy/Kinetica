@@ -41,7 +41,6 @@ mod debug_draw;
 mod island;
 pub mod joint;
 pub mod math;
-mod profile;
 mod query;
 pub mod shape;
 mod solver;
@@ -57,7 +56,6 @@ pub use joint::{
     WheelJointDesc,
 };
 pub use math::{Vec2, vec2};
-pub use profile::StepProfile;
 pub use query::{QueryFilter, RayHit, ShapeHit};
 pub use world::{DEFAULT_GRAVITY, World};
 

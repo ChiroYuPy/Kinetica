@@ -101,7 +101,7 @@ fn spinning_body_rotates_around_its_center_of_mass() {
     world.set_gravity(Vec2::ZERO);
     let body = world.add_body(BodyDesc::dynamic().angular_velocity(1.0));
     // A circle away from the origin puts the center of mass at (2, 0).
-    world.add_collider(body, ColliderDesc::new(kinetica::shape::Circle::new(0.5).with_center(vec2(2.0, 0.0))));
+    world.add_collider(body, ColliderDesc::circle(0.5).offset(vec2(2.0, 0.0)));
 
     for _ in 0..90 {
         world.step(DT);
