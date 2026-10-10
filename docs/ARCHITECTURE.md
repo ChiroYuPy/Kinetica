@@ -50,7 +50,8 @@ a collider knows its body, a body lists its colliders and joints.
    apply gravity and forces to velocities; reapply the last impulses (warm start); *solve*
    joints, then contacts, pushing overlaps apart softly; move the bodies; then *relax*, solving
    again without the push so the bodies do not fly apart. Restitution is applied once at the
-   end. This is Box2D v3's "soft step" solver.
+   end, from the speed each point had just before it first pushed (tracked after gravity in
+   every substep, so a falling body does not bounce lower for hitting mid-step). This is Box2D v3's "soft step" solver.
 4. **Synchronize**. Collider boxes follow their bodies. A collider whose box leaves its fat
    box is re-inserted in the broad phase tree and marked as moved.
 5. **Continuous collision** (`continuous.rs`). A body that moved more than half its

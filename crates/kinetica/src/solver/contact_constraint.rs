@@ -39,7 +39,8 @@ struct ConstraintPoint {
     tangent_impulse: f32,
     /// Largest normal impulse during the step; zero means the point never pushed.
     max_normal_impulse: f32,
-    /// Normal velocity before the step, used for restitution.
+    /// Fastest normal velocity seen before the point pushed, used for restitution: measured as
+    /// late as possible, so the speed gained while falling during the step is not lost.
     approach_speed: f32,
 }
 
@@ -109,6 +110,23 @@ impl ContactConstraint {
         for point in self.points() {
             let impulse = point.normal_impulse * self.normal + point.tangent_impulse * tangent;
             apply_impulse(body_a, body_b, impulse, point);
+        }
+    }
+
+    /// Updates the approach speed of the points that have not pushed yet, with the velocities
+    /// gravity just gave the bodies, before any constraint changes them.
+    pub(crate) fn track_approach_speed(&mut self, bodies: &Arena<Body>) {
+        if self.restitution == 0.0 {
+            return;
+        }
+        let (Some(body_a), Some(body_b)) = (bodies.get(self.pair.body_a.0), bodies.get(self.pair.body_b.0)) else {
+            return;
+        };
+        for point in &mut self.points[..self.point_count] {
+            if point.max_normal_impulse == 0.0 {
+                let normal_speed = relative_velocity(body_a, body_b, point.anchor_a, point.anchor_b).dot(self.normal);
+                point.approach_speed = point.approach_speed.min(normal_speed);
+            }
         }
     }
 

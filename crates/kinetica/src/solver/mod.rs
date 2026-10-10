@@ -113,6 +113,9 @@ pub(crate) fn step(
         for body in bodies.values_mut() {
             body.integrate_velocity(settings.gravity, context.substep);
         }
+        for constraint in &mut constraints {
+            constraint.track_approach_speed(bodies);
+        }
 
         for joint in awake(joints, &awake_joints) {
             joint.warm_start(bodies);
