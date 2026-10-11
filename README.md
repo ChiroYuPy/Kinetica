@@ -1,6 +1,6 @@
 # Kinetica
 
-A 2D rigid-body physics engine for games, written in Rust.
+A lightweight, 2D determinist physics engine for games, written in Rust.
 
 ```rust
 use kinetica::prelude::*;
