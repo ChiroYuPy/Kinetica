@@ -30,7 +30,7 @@ struct SensorOverlap {
 }
 
 impl ContactSet {
-    /// Starts tracking new candidate pairs, given sorted. Their geometry is computed by the next
+    /// Starts tracking new candidate pairs. Their geometry is computed by the next
     /// [`update`](Self::update).
     pub(crate) fn add_pairs(
         &mut self,
@@ -39,7 +39,6 @@ impl ContactSet {
         bodies: &Arena<Body>,
         joints: &Arena<Joint>,
     ) {
-        let (mut new_contacts, mut new_sensors) = (Vec::new(), Vec::new());
         for key in self.unknown(pairs) {
             let (collider_a, collider_b) = key;
             let (Some(a), Some(b)) = (colliders.get(collider_a.0), colliders.get(collider_b.0)) else { continue };
@@ -47,33 +46,27 @@ impl ContactSet {
             match (a.is_sensor(), b.is_sensor()) {
                 (false, false) => {
                     if should_collide(&pair, bodies, joints) {
-                        let contact = Contact { pair, manifold: Manifold::default(), enabled: true };
-                        new_contacts.push(contact);
+                        self.contacts.push(Contact { pair, manifold: Manifold::default(), enabled: true });
                     }
                 }
                 (true, false) | (false, true) => {
                     if should_sense(&pair, bodies) {
                         let pair = SensorPair::new(&pair, a.is_sensor());
-                        new_sensors.push(SensorOverlap { pair, overlapping: false });
+                        self.sensors.push(SensorOverlap { pair, overlapping: false });
                     }
                 }
                 (true, true) => {}
             }
         }
-        insert_sorted(&mut self.contacts, new_contacts);
-        insert_sorted(&mut self.sensors, new_sensors);
+        // New pairs were added at the end: two sorted runs, which this sort merges.
+        self.contacts.sort_by_key(Keyed::key);
+        self.sensors.sort_by_key(Keyed::key);
     }
 
     /// The pairs, among the sorted `pairs`, that are not tracked yet.
     fn unknown(&self, pairs: &[CandidatePair]) -> Vec<CandidatePair> {
         debug_assert!(pairs.is_sorted(), "candidate pairs must be sorted");
-        let is_known = |key: &CandidatePair| find(&self.contacts, *key).is_ok() || find(&self.sensors, *key).is_ok();
-        let known_count = self.contacts.len() + self.sensors.len();
-        if pairs.len() * 16 < known_count {
-            return pairs.iter().copied().filter(|key| !is_known(key)).collect();
-        }
-        // Most pairs are already known. When there are many, walking them side by side with the
-        // lists (all sorted by key) is cheaper than looking each one up.
+        // Everything is sorted by key, so the pairs and both lists are walked side by side.
         let mut contacts = self.contacts.iter().map(Keyed::key).peekable();
         let mut sensors = self.sensors.iter().map(Keyed::key).peekable();
         pairs
@@ -155,27 +148,6 @@ impl ContactSet {
     pub(crate) fn touching_mut(&mut self) -> impl Iterator<Item = &mut Contact> {
         self.contacts.iter_mut().filter(|contact| contact.is_touching())
     }
-}
-
-/// Where the value of `key` is in `values`, sorted by key, or where it would go.
-fn find<T: Keyed>(values: &[T], key: CandidatePair) -> Result<usize, usize> {
-    values.binary_search_by_key(&key, Keyed::key)
-}
-
-/// Adds `new` values, sorted by key and absent from `values`, keeping `values` sorted.
-fn insert_sorted<T: Keyed>(values: &mut Vec<T>, new: Vec<T>) {
-    if new.is_empty() {
-        return;
-    }
-    let old = std::mem::replace(values, Vec::with_capacity(values.len() + new.len()));
-    let mut new = new.into_iter().peekable();
-    for value in old {
-        while let Some(added) = new.next_if(|added| added.key() < value.key()) {
-            values.push(added);
-        }
-        values.push(value);
-    }
-    values.extend(new);
 }
 
 /// Recomputes the manifold of `contact` (empty when `keep` is false: the pair is about to be
