@@ -5,7 +5,8 @@ use super::{Build, Category, Frame, Labels, Scene, SceneUpdate, add_ground};
 pub const SCENE: Scene = Scene {
     name: "Pyramid",
     category: Category::Benchmarks,
-    description: "A 20-box base pyramid: 210 boxes that must stay standing.",
+    description: "210 boxes resting on each other: any error of the solver piles up towards the top, whose \
+                  drift is measured.",
     camera_center: vec2(0.0, 10.0),
     view_height: 24.0,
     build: Build::Animated(build),
@@ -14,7 +15,7 @@ pub const SCENE: Scene = Scene {
 const BASE: usize = 20;
 const SIZE: f32 = 1.0;
 
-fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
     add_ground(world, 80.0);
     let mut top = None;
     for row in 0..BASE {
@@ -26,7 +27,6 @@ fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
             top = Some((block, vec2(x, y)));
         }
     }
-    labels.at(vec2(0.0, 21.2), "210 boxes resting on each other: errors would pile up toward the top");
     let (top, start) = top.expect("the pyramid has boxes");
     Box::new(TopWatch { top, start })
 }
@@ -42,6 +42,6 @@ impl SceneUpdate for TopWatch {
 
     fn labels(&self, world: &World, _frame: &Frame, labels: &mut Labels) {
         let drift = 100.0 * world[self.top].position().distance(self.start);
-        labels.above(self.top, format!("Top box moved {drift:.1} cm"));
+        labels.above(self.top, format!("moved {drift:.1} cm"));
     }
 }

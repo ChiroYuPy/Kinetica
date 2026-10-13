@@ -5,16 +5,32 @@ use std::collections::HashSet;
 use egui_macroquad::egui;
 use kinetica::DebugDrawOptions;
 use kinetica::prelude::*;
-use kinetica_macroquad::{DebugRenderer, FixedTimestep, MouseGrab, WorldCamera};
+use kinetica_macroquad::{DebugRenderer, FixedTimestep, WorldCamera};
 use macroquad::prelude::*;
 
 use crate::scenes::{Frame, Labels, SCENES, SceneUpdate};
-use crate::ui::{self, PanelState, SimulationSettings, Stats, UiAction};
+use crate::tools::{Tool, Tools};
+use crate::ui::{self, Interface, Settings, Stats, UiAction, View};
 
 const BACKGROUND: Color = Color::new(0.09, 0.1, 0.12, 1.0);
-const LABEL_SIZE: u16 = 18;
-const LABEL_COLOR: Color = Color::new(0.85, 0.87, 0.9, 1.0);
-const LABEL_BACKGROUND: Color = Color::new(0.0, 0.0, 0.0, 0.45);
+
+/// The keyboard shortcuts; scenes use the arrows, the digits and a few other letters.
+const SHORTCUTS: [(KeyCode, UiAction); 14] = [
+    (KeyCode::Tab, UiAction::PickScene),
+    (KeyCode::PageUp, UiAction::PreviousScene),
+    (KeyCode::PageDown, UiAction::NextScene),
+    (KeyCode::Space, UiAction::TogglePause),
+    (KeyCode::S, UiAction::Step),
+    (KeyCode::R, UiAction::Restart),
+    (KeyCode::F5, UiAction::Save),
+    (KeyCode::F9, UiAction::Restore),
+    (KeyCode::Home, UiAction::ResetView),
+    (KeyCode::O, UiAction::ToggleOptions),
+    (KeyCode::G, UiAction::SelectTool(Tool::Grab)),
+    (KeyCode::L, UiAction::SelectTool(Tool::Launch)),
+    (KeyCode::B, UiAction::SelectTool(Tool::Blast)),
+    (KeyCode::Escape, UiAction::SelectTool(Tool::Grab)),
+];
 
 /// A copy of the simulation, serialized to JSON.
 struct Snapshot {
@@ -31,56 +47,68 @@ pub struct App {
     /// Keys pressed since the last step.
     keys_pressed: HashSet<KeyCode>,
     snapshot: Option<Snapshot>,
-    grab: MouseGrab,
-    camera: WorldCamera,
-    paused: bool,
-    /// Whether egui uses the mouse this frame; the scene ignores it then.
-    pointer_over_ui: bool,
-    timestep: FixedTimestep,
     /// Simulated time since the scene started.
     time: f32,
-    draw_options: DebugDrawOptions,
-    settings: SimulationSettings,
+    timestep: FixedTimestep,
     last_step_ms: f64,
+    paused: bool,
+    camera: WorldCamera,
+    tools: Tools,
+    draw_options: DebugDrawOptions,
+    settings: Settings,
+    interface: Interface,
+    /// Whether egui uses the mouse this frame; the world ignores it then.
+    pointer_over_ui: bool,
+    /// Whether egui uses the keyboard this frame, for the search field; the world ignores it then.
+    typing_in_ui: bool,
 }
 
 impl App {
     /// Starts on the scene at `scene_index`, or on the first scene if the index is out of range.
     pub fn new(scene_index: usize) -> Self {
-        let scene_index = if scene_index < SCENES.len() { scene_index } else { 0 };
-        let scene = &SCENES[scene_index];
-        let (world, labels, scene_update) = scene.build_world();
-        Self {
-            scene_index,
-            world,
-            scene_update,
-            labels,
+        let mut app = Self {
+            scene_index: 0,
+            world: World::new(),
+            scene_update: None,
+            labels: Labels::default(),
             keys_pressed: HashSet::new(),
             snapshot: None,
-            grab: MouseGrab::default(),
-            camera: WorldCamera::new(scene.camera_center, scene.view_height).with_left_margin(ui::PANEL_WIDTH),
-            paused: false,
-            pointer_over_ui: false,
-            timestep: FixedTimestep::default(),
             time: 0.0,
-            draw_options: DebugDrawOptions::default(),
-            settings: SimulationSettings::default(),
+            timestep: FixedTimestep::default(),
             last_step_ms: 0.0,
-        }
+            paused: false,
+            camera: WorldCamera::new(Vec2::ZERO, 1.0),
+            tools: Tools::default(),
+            draw_options: DebugDrawOptions::default(),
+            settings: Settings::default(),
+            interface: Interface::default(),
+            pointer_over_ui: false,
+            typing_in_ui: false,
+        };
+        app.load_scene(if scene_index < SCENES.len() { scene_index } else { 0 });
+        app
     }
 
     pub fn update(&mut self) {
+        if !self.typing_in_ui {
+            for (key, action) in SHORTCUTS {
+                if is_key_pressed(key) {
+                    self.apply(action);
+                }
+            }
+            self.keys_pressed.extend(get_keys_pressed());
+        }
+        let frame_time = get_frame_time();
+        self.tools.update(&mut self.world, self.camera.mouse_position(), !self.pointer_over_ui, frame_time);
+        self.camera.handle_zoom_and_pan(!self.pointer_over_ui);
+        if !self.paused {
+            self.advance(frame_time * self.settings.speed);
+        }
+        // Last, so that the labels are written where the bodies now are.
         if let Some(action) = self.run_ui() {
             self.apply(action);
         }
         self.apply_settings();
-        self.handle_keys();
-        self.keys_pressed.extend(get_keys_pressed());
-        self.handle_grab();
-        self.camera.handle_zoom_and_pan(!self.pointer_over_ui);
-        if !self.paused {
-            self.advance(get_frame_time());
-        }
     }
 
     pub fn draw(&self) {
@@ -92,54 +120,21 @@ impl App {
         if let Some(update) = &self.scene_update {
             update.draw(&self.world, &self.frame(), &mut drawer);
         }
+        self.tools.draw(self.camera.mouse_position(), &mut drawer);
 
         set_default_camera();
-        if self.settings.labels {
-            self.draw_labels();
-        }
         egui_macroquad::draw();
     }
 
-    /// Writes the scene's labels, in screen space so the text stays readable at every zoom.
-    fn draw_labels(&self) {
-        let mut labels = Labels::default();
-        if let Some(update) = &self.scene_update {
-            update.labels(&self.world, &self.frame(), &mut labels);
-        }
-        for label in self.labels.iter().chain(labels.iter()) {
-            let Some(position) = label.position(&self.world) else { continue };
-            let bottom = self.camera.world_to_screen(position);
-            let lines: Vec<&str> = label.text.lines().collect();
-            let line_height = f32::from(LABEL_SIZE) * 1.1;
-            let widths: Vec<f32> = lines.iter().map(|line| measure_text(line, None, LABEL_SIZE, 1.0).width).collect();
-            let width = widths.iter().copied().fold(0.0, f32::max);
-            let top = bottom.y - line_height * lines.len() as f32;
-            draw_rectangle(
-                bottom.x - width / 2.0 - 4.0,
-                top - 2.0,
-                width + 8.0,
-                bottom.y - top + 4.0,
-                LABEL_BACKGROUND,
-            );
-            for (i, (line, line_width)) in lines.iter().zip(widths).enumerate() {
-                let baseline = top + line_height * (i as f32 + 0.8);
-                draw_text(line, bottom.x - line_width / 2.0, baseline, f32::from(LABEL_SIZE), LABEL_COLOR);
-            }
-        }
-    }
-
     fn frame(&self) -> Frame {
-        Frame {
-            time: self.time,
-            mouse: self.camera.mouse_position(),
-            keys_down: get_keys_down(),
-            keys_pressed: self.keys_pressed.clone(),
-        }
+        let (keys_down, keys_pressed) =
+            if self.typing_in_ui { Default::default() } else { (get_keys_down(), self.keys_pressed.clone()) };
+        Frame { time: self.time, mouse: self.camera.mouse_position(), keys_down, keys_pressed }
     }
 
-    /// Builds the side panel for this frame and returns what the user clicked.
+    /// Builds the interface for this frame, fits the camera in the room it leaves, and returns
+    /// what the user asked for.
     fn run_ui(&mut self) -> Option<UiAction> {
-        let mut action = None;
         let stats = Stats {
             bodies: self.world.body_count(),
             awake: self
@@ -152,42 +147,70 @@ impl App {
             step_ms: self.last_step_ms,
             fps: get_fps(),
         };
-        let mut state = PanelState {
+        let labels = if self.settings.labels { self.labels_on_screen() } else { Vec::new() };
+        let mut view = View {
             scene_index: self.scene_index,
             paused: self.paused,
             time: self.time,
             stats,
+            snapshot_size: self.snapshot.as_ref().map(|snapshot| snapshot.json.len()),
             draw_options: &mut self.draw_options,
             settings: &mut self.settings,
-            snapshot_size: self.snapshot.as_ref().map(|snapshot| snapshot.json.len()),
+            tool: &mut self.tools.tool,
+            projectile: &mut self.tools.projectile,
         };
-        let mut pointer_over_ui = false;
+        let mut action = None;
         egui_macroquad::ui(|ctx: &egui::Context| {
-            action = ui::side_panel(ctx, &mut state);
-            pointer_over_ui = ctx.wants_pointer_input() || ctx.is_pointer_over_area();
+            action = ui::show(ctx, &mut self.interface, &mut view);
+            ui::world_labels(ctx, &labels);
+            let free = ctx.available_rect();
+            self.camera.set_viewport(Rect::new(free.min.x, free.min.y, free.width(), free.height()));
+            self.pointer_over_ui = ctx.wants_pointer_input() || ctx.is_pointer_over_area();
+            self.typing_in_ui = ctx.wants_keyboard_input();
         });
-        self.pointer_over_ui = pointer_over_ui;
         action
+    }
+
+    /// The labels of the scene, with the point in pixels each one sits on.
+    fn labels_on_screen(&self) -> Vec<(egui::Pos2, String)> {
+        let mut changing = Labels::default();
+        if let Some(update) = &self.scene_update {
+            update.labels(&self.world, &self.frame(), &mut changing);
+        }
+        self.labels
+            .iter()
+            .chain(changing.iter())
+            .filter_map(|label| {
+                let position = self.camera.world_to_screen(label.position(&self.world)?);
+                Some((egui::pos2(position.x, position.y), label.text.clone()))
+            })
+            .collect()
     }
 
     fn apply(&mut self, action: UiAction) {
         match action {
             UiAction::LoadScene(index) => self.load_scene(index),
+            UiAction::PreviousScene => self.load_scene((self.scene_index + SCENES.len() - 1) % SCENES.len()),
+            UiAction::NextScene => self.load_scene((self.scene_index + 1) % SCENES.len()),
+            UiAction::PickScene => self.interface.picker.open(),
             UiAction::TogglePause => self.paused = !self.paused,
             UiAction::Step => {
                 self.paused = true;
                 self.step();
             }
-            UiAction::Reset => self.load_scene(self.scene_index),
+            UiAction::Restart => self.load_scene(self.scene_index),
             UiAction::Save => self.save(),
             UiAction::Restore => self.restore(),
+            UiAction::ResetView => self.reset_view(),
+            UiAction::ToggleOptions => self.interface.options_open = !self.interface.options_open,
+            UiAction::SelectTool(tool) => self.tools.tool = tool,
         }
     }
 
     /// Serializes the whole world: bodies, colliders, joints, contacts and solver state.
     fn save(&mut self) {
         // A dragged body would stay pinned to the mouse position of the save.
-        self.grab.release(&mut self.world);
+        self.tools.release(&mut self.world);
         match serde_json::to_string(&self.world) {
             Ok(json) => self.snapshot = Some(Snapshot { json, time: self.time }),
             Err(error) => eprintln!("could not save the world: {error}"),
@@ -199,7 +222,7 @@ impl App {
         let Some(snapshot) = &self.snapshot else { return };
         match serde_json::from_str::<World>(&snapshot.json) {
             Ok(world) => {
-                self.grab.release(&mut self.world);
+                self.tools.release(&mut self.world);
                 self.world = world;
                 self.time = snapshot.time;
             }
@@ -207,12 +230,24 @@ impl App {
         }
     }
 
+    /// Starts the scene at `index` from scratch; the options, the tool and the pause are kept.
     fn load_scene(&mut self, index: usize) {
-        let (draw_options, settings) = (self.draw_options, self.settings);
-        *self = Self::new(index);
-        self.draw_options = draw_options;
-        self.settings = settings;
+        self.tools.release(&mut self.world);
+        (self.world, self.labels, self.scene_update) = SCENES[index].build_world();
+        self.scene_index = index;
+        self.keys_pressed.clear();
+        self.snapshot = None;
+        self.time = 0.0;
+        self.timestep.reset();
+        self.reset_view();
         self.apply_settings();
+    }
+
+    /// Frames the scene as it was designed to be seen.
+    fn reset_view(&mut self) {
+        let scene = &SCENES[self.scene_index];
+        self.camera.set_center(scene.camera_center);
+        self.camera.set_view_height(scene.view_height);
     }
 
     fn apply_settings(&mut self) {
@@ -221,30 +256,6 @@ impl App {
         }
         self.world.set_continuous_enabled(self.settings.continuous);
         self.world.set_substep_count(self.settings.substeps);
-    }
-
-    /// A few shortcuts for what is used constantly; everything else is in the panel.
-    fn handle_keys(&mut self) {
-        if is_key_pressed(KeyCode::Space) {
-            self.apply(UiAction::TogglePause);
-        }
-        if is_key_pressed(KeyCode::S) {
-            self.apply(UiAction::Step);
-        }
-        if is_key_pressed(KeyCode::R) {
-            self.apply(UiAction::Reset);
-        }
-        if is_key_pressed(KeyCode::F5) {
-            self.apply(UiAction::Save);
-        }
-        if is_key_pressed(KeyCode::F9) {
-            self.apply(UiAction::Restore);
-        }
-    }
-
-    /// Left mouse button: drag a dynamic body with a mouse joint.
-    fn handle_grab(&mut self) {
-        self.grab.update(&mut self.world, self.camera.mouse_position(), !self.pointer_over_ui);
     }
 
     /// Runs `steps` simulation steps, whatever the frame rate.

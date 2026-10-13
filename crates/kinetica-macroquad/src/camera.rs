@@ -16,22 +16,27 @@ pub struct WorldCamera {
     view_height: f32,
     /// World point held under the cursor while panning.
     pan_anchor: Option<Vec2>,
-    /// Pixels hidden by a panel on the left; the view is centered on the rest of the window.
-    left_margin: f32,
+    /// Part of the window the view fills, in pixels; the whole window if `None`.
+    viewport: Option<Rect>,
 }
 
 impl WorldCamera {
     /// A camera looking at `center`, showing `view_height` meters vertically.
     #[must_use]
     pub fn new(center: Vec2, view_height: f32) -> Self {
-        Self { center, view_height, pan_anchor: None, left_margin: 0.0 }
+        Self { center, view_height, pan_anchor: None, viewport: None }
     }
 
-    /// Centers the view on the window minus `pixels` on the left, for example under a side panel.
+    /// Fits the view in `viewport`, a part of the window in pixels: for example what panels
+    /// leave free.
+    pub fn set_viewport(&mut self, viewport: Rect) {
+        self.viewport = Some(viewport);
+    }
+
+    /// The part of the window the view fills, in pixels.
     #[must_use]
-    pub fn with_left_margin(mut self, pixels: f32) -> Self {
-        self.left_margin = pixels;
-        self
+    pub fn viewport(&self) -> Rect {
+        self.viewport.unwrap_or(Rect::new(0.0, 0.0, screen_width(), screen_height()))
     }
 
     /// The world point at the center of the view.
@@ -66,19 +71,23 @@ impl WorldCamera {
     /// Size of a meter on screen, in pixels.
     #[must_use]
     pub fn pixels_per_meter(&self) -> f32 {
-        screen_height() / self.view_height
+        self.viewport().h / self.view_height
     }
 
     /// The equivalent macroquad camera.
     #[must_use]
     pub fn to_camera2d(&self) -> Camera2D {
         let pixels_per_meter = self.pixels_per_meter();
+        let viewport_center = self.viewport().center();
         // macroquad's 2D camera points Y down by default; a negative Y zoom flips it up.
         Camera2D {
             target: self.center,
             zoom: vec2(2.0 * pixels_per_meter / screen_width(), -2.0 * pixels_per_meter / screen_height()),
-            // Shift the view right by half the margin, in normalized device coordinates.
-            offset: vec2(self.left_margin / screen_width(), 0.0),
+            // Where the viewport center is, in normalized device coordinates: from -1 to 1, Y up.
+            offset: vec2(
+                2.0 * viewport_center.x / screen_width() - 1.0,
+                1.0 - 2.0 * viewport_center.y / screen_height(),
+            ),
             ..Camera2D::default()
         }
     }

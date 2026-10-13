@@ -1,33 +1,58 @@
-//! Demonstration scenes, each showing one engine concept. Add a scene by writing a module and
-//! listing it in [`SCENES`].
+//! Demonstration scenes. Add one by writing a module and listing it in [`SCENES`].
+//!
+//! A scene shows one idea of the engine, in the simplest setting where it can be seen: if two
+//! things need explaining, they are two scenes. Its description states the idea in a sentence or
+//! two; labels in the world only name what differs between the things shown, and a scene needs few
+//! of them. Many bodies are welcome, many things to understand are not.
 
+mod arch;
 mod body_types;
+mod breakable_joint;
+mod bridge;
 mod bullets;
+mod center_of_mass;
+mod chains;
 mod cloth;
-mod contacts;
-mod distance_joints;
-mod filtering;
+mod contact_events;
+mod contact_points;
+mod crank;
+mod distance_joint;
 mod forces;
+mod friction;
 mod gravity;
+mod gravity_scale;
+mod impulses;
+mod joint_limits;
+mod joint_motors;
+mod layers;
+mod locked_rotation;
 mod mass;
-mod materials;
+mod one_way;
+mod overlaps;
 mod pendulum_wave;
-mod prismatic_joints;
+mod prismatic_joint;
 mod pyramid;
 mod queries;
 mod ragdolls;
-mod revolute_joints;
-mod ropes;
+mod ray_cast;
+mod ray_cast_all;
+mod restitution;
+mod revolute_joint;
+mod rope;
 mod sensors;
+mod shape_cast;
 mod shapes;
 mod sleeping;
 mod soft_bodies;
 mod soft_body_pool;
-mod stacks;
-mod weld_joints;
-mod wheel_joints;
+mod springs;
+mod stacking;
+mod tearing;
+mod trampoline;
+mod weld_joint;
+mod wheel_joint;
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 use kinetica::math::Vec2;
 use kinetica::prelude::*;
@@ -39,34 +64,55 @@ use kinetica_macroquad::DebugRenderer;
 pub const SCENES: &[Scene] = &[
     body_types::SCENE,
     mass::SCENE,
+    center_of_mass::SCENE,
     gravity::SCENE,
+    gravity_scale::SCENE,
+    locked_rotation::SCENE,
     forces::SCENE,
+    impulses::SCENE,
     shapes::SCENE,
-    materials::SCENE,
-    contacts::SCENE,
-    stacks::SCENE,
-    revolute_joints::SCENE,
-    prismatic_joints::SCENE,
-    distance_joints::SCENE,
-    weld_joints::SCENE,
-    wheel_joints::SCENE,
-    ropes::SCENE,
+    chains::SCENE,
+    friction::SCENE,
+    restitution::SCENE,
+    contact_points::SCENE,
+    contact_events::SCENE,
+    stacking::SCENE,
+    revolute_joint::SCENE,
+    prismatic_joint::SCENE,
+    joint_limits::SCENE,
+    joint_motors::SCENE,
+    distance_joint::SCENE,
+    springs::SCENE,
+    weld_joint::SCENE,
+    breakable_joint::SCENE,
+    wheel_joint::SCENE,
+    rope::SCENE,
+    trampoline::SCENE,
+    bridge::SCENE,
     cloth::SCENE,
+    tearing::SCENE,
     soft_bodies::SCENE,
     soft_body_pool::SCENE,
     ragdolls::SCENE,
+    crank::SCENE,
     sleeping::SCENE,
-    filtering::SCENE,
+    layers::SCENE,
+    one_way::SCENE,
     sensors::SCENE,
     bullets::SCENE,
-    queries::SCENE,
+    ray_cast::SCENE,
+    ray_cast_all::SCENE,
+    shape_cast::SCENE,
+    overlaps::SCENE,
     pyramid::SCENE,
+    arch::SCENE,
     pendulum_wave::SCENE,
 ];
 
 pub struct Scene {
     pub name: &'static str,
     pub category: Category,
+    /// What the scene teaches and the keys it reads, in a sentence or two.
     pub description: &'static str,
     /// Initial camera target, in meters.
     pub camera_center: Vec2,
@@ -230,6 +276,51 @@ fn add_ground(world: &mut World, width: f32) -> BodyHandle {
     world.add_body(BodyDesc::fixed().position(vec2(0.0, -0.5)).collider(ColliderDesc::rectangle(width, 1.0)))
 }
 
+/// Adds a small fixed pin marking a pivot at `position`; a sensor, so things swing through it.
+fn add_pin(world: &mut World, position: Vec2) -> BodyHandle {
+    world.add_body(BodyDesc::fixed().position(position).collider(ColliderDesc::circle(0.12).sensor()))
+}
+
+/// Spreads `i = 0, 1, 2…` evenly over `0..1`, never twice on the same spot: golden ratio steps.
+fn scatter(i: usize) -> f32 {
+    (i as f32 * 0.618_034).fract()
+}
+
+/// Adds a body at a regular pace and removes the oldest ones, so a scene can run forever.
+pub struct Spawner {
+    period: f32,
+    capacity: usize,
+    /// The bodies still in the world with their number, oldest first.
+    bodies: VecDeque<(usize, BodyHandle)>,
+    spawned: usize,
+}
+
+impl Spawner {
+    /// A new body every `period` seconds, at most `capacity` at once.
+    pub fn new(period: f32, capacity: usize) -> Self {
+        Self { period, capacity, bodies: VecDeque::new(), spawned: 0 }
+    }
+
+    /// When it is time for a new body, adds the one `make` describes from its number.
+    pub fn update(&mut self, world: &mut World, time: f32, make: impl FnOnce(usize) -> BodyDesc) {
+        if time < self.period * self.spawned as f32 {
+            return;
+        }
+        self.bodies.push_back((self.spawned, world.add_body(make(self.spawned))));
+        self.spawned += 1;
+        if self.bodies.len() > self.capacity
+            && let Some((_, oldest)) = self.bodies.pop_front()
+        {
+            world.remove_body(oldest);
+        }
+    }
+
+    /// The bodies still in the world, with their number.
+    pub fn bodies(&self) -> impl Iterator<Item = (usize, BodyHandle)> + '_ {
+        self.bodies.iter().copied()
+    }
+}
+
 impl Scene {
     /// Builds a fresh world for the scene, with its labels and its per-step update if it has one.
     pub fn build_world(&self) -> (World, Labels, Option<Box<dyn SceneUpdate>>) {
@@ -249,6 +340,14 @@ impl Scene {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The interface keeps room for a few lines only.
+    #[test]
+    fn descriptions_are_short() {
+        for scene in SCENES {
+            assert!(scene.description.chars().count() <= 160, "{}: description too long", scene.name);
+        }
+    }
 
     /// Every scene builds and runs for a few seconds without anything exploding.
     #[test]

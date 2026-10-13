@@ -9,9 +9,8 @@ use kinetica_macroquad::DebugRenderer;
 pub const SCENE: Scene = Scene {
     name: "Bullets",
     category: Category::GameFeatures,
-    description: "A cannon fires balls at 150 m/s: 2.5 m per step. Every fast body is stopped by the thin fixed \
-                  wall, but only bullets (red) hit the thin swinging plates. Untick 'Continuous collision' to \
-                  see everything tunnel.",
+    description: "At 150 m/s a ball moves 2.5 m per step, and would jump over thin things. Fixed bodies always \
+                  stop it; a bullet is also stopped by moving bodies.",
     camera_center: vec2(-1.2, 3.0),
     view_height: 14.0,
     build: Build::Animated(build),
@@ -39,9 +38,7 @@ fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
         );
         world.add_joint(RevoluteJointDesc::new(support, plate, hinge));
     }
-    labels.at(vec2(6.8, 6.4), "Thin fixed wall:\nstops every ball");
-    labels.at(vec2(1.0, 4.4), "Thin moving plates: only bullets (red) hit them");
-    labels.at(CANNON + vec2(0.0, 0.8), "150 m/s");
+    labels.at(vec2(1.0, 4.4), "Thin plates: only bullets, in red, hit them");
     Box::new(Cannon { next_shot: 0.5, shots: 0, balls: VecDeque::new() })
 }
 

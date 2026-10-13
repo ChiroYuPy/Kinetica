@@ -7,14 +7,14 @@ use super::{Build, Category, Labels, Scene, add_ground};
 pub const SCENE: Scene = Scene {
     name: "Ragdolls",
     category: Category::SoftStructures,
-    description: "Ragdolls made of ten capsules and nine limited revolute joints tumble down stairs made of \
-                  a single chain.",
+    description: "A ragdoll is ten capsules and nine revolute joints, whose limits make knees and elbows bend \
+                  one way only. The stairs are a single chain.",
     camera_center: vec2(-3.5, 4.5),
     view_height: 11.0,
     build: Build::Static(build),
 };
 
-fn build(world: &mut World, labels: &mut Labels) {
+fn build(world: &mut World, _labels: &mut Labels) {
     add_ground(world, 80.0);
 
     // Stairs going down to the right: the outline of eight steps, from the left wall's foot.
@@ -29,8 +29,6 @@ fn build(world: &mut World, labels: &mut Labels) {
     // Consecutive points must differ: each step's left edge starts where the previous one ends.
     outline.dedup();
     world.add_chain(stairs, ChainDesc::new(outline));
-    labels.at(vec2(1.5, 0.6), "Stairs: a single\nchain collider");
-    labels.at(vec2(-3.5, 8.8), "10 capsules, 9 revolute joints with limits\n(knees and elbows bend one way only)");
 
     for (i, x) in [-8.0, -6.5, -5.0].into_iter().enumerate() {
         let floor = 3.2 + 2.5 * i as f32;

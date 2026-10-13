@@ -7,8 +7,8 @@ use super::{Build, Category, Frame, Labels, Scene, SceneUpdate, add_ground};
 pub const SCENE: Scene = Scene {
     name: "Sleeping",
     category: Category::GameFeatures,
-    description: "Resting bodies fall asleep (drawn darker) and cost nothing. Every few seconds a ball drops \
-                  on one stack and wakes only that stack: each group of touching bodies sleeps on its own.",
+    description: "Bodies at rest fall asleep, drawn darker, and cost nothing until something touches them. Each \
+                  stack sleeps and wakes on its own.",
     camera_center: vec2(0.0, 5.0),
     view_height: 16.0,
     build: Build::Animated(build),
@@ -19,7 +19,7 @@ const DROP_PERIOD: f32 = 2.5;
 /// Old balls are removed, which wakes what they rested on.
 const MAX_BALLS: usize = 4;
 
-fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
     add_ground(world, 40.0);
     let stacks = STACK_XS.map(|x| {
         (0..6)
@@ -29,7 +29,6 @@ fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
             })
             .collect()
     });
-    labels.at(vec2(0.0, 11.0), "Each stack sleeps and wakes on its own");
     Box::new(Dropper { next_drop: DROP_PERIOD, next_stack: 0, balls: VecDeque::new(), stacks })
 }
 

@@ -10,10 +10,8 @@ use kinetica_macroquad::DebugRenderer;
 pub const SCENE: Scene = Scene {
     name: "Soft body pool",
     category: Category::SoftStructures,
-    description: "Round soft bodies thrown into a pool with an uneven floor, until it is full. Each one is a skin \
-                  of capsules welded end to end, which bends but does not stretch, filled with gas: a pressure \
-                  force pushes the skin outwards, harder as it is squeezed. Nothing is rigid inside, yet a body \
-                  at the bottom of the pile flattens without collapsing. Grab them with the mouse.",
+    description: "Soft bodies pile up in a pool: skins of welded capsules filled with gas, which flatten under the \
+                  pile without collapsing.",
     camera_center: vec2(0.0, 6.5),
     view_height: 17.0,
     build: Build::Animated(build),

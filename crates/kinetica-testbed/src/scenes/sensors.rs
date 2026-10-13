@@ -10,8 +10,8 @@ use kinetica_macroquad::DebugRenderer;
 pub const SCENE: Scene = Scene {
     name: "Sensors",
     category: Category::GameFeatures,
-    description: "Sensors detect what overlaps them without pushing it. The zones light up while occupied, the \
-                  sweeping arm's tip too, and flash when something enters. Bodies inside a sensor are outlined.",
+    description: "A sensor detects what overlaps it without pushing it, and reports what enters and leaves: a \
+                  trigger zone, a pickup, a detector on a moving arm.",
     camera_center: vec2(0.0, 5.0),
     view_height: 15.0,
     build: Build::Animated(build),
@@ -26,7 +26,7 @@ const FLASH_TIME: f32 = 0.15;
 const SPAWN_PERIOD: f32 = 0.35;
 const MAX_BODIES: usize = 40;
 
-fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
+fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
     add_ground(world, 40.0);
 
     let zones = world.add_body(BodyDesc::fixed());
@@ -39,8 +39,6 @@ fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
     let bar = ColliderDesc::rectangle(6.0, 0.16).sensor();
     let arm = world.add_body(BodyDesc::kinematic().position(vec2(0.0, 4.5)).angular_velocity(0.8).collider(bar));
     sensors.push(world.add_collider(arm, ColliderDesc::circle(0.8).offset(vec2(3.5, 0.0)).sensor()));
-
-    labels.above(arm, "Sensor on a kinematic arm");
 
     let flashes = vec![f32::NEG_INFINITY; sensors.len()];
     Box::new(Zones { sensors, flashes, bodies: VecDeque::new(), spawned: 0, next_spawn: 0.0, time: 0.0 })
@@ -106,10 +104,7 @@ impl SceneUpdate for Zones {
         for &sensor in &self.sensors[..2] {
             let aabb = world[sensor].aabb();
             let inside = world.sensor_overlaps(sensor).count();
-            labels.at(
-                vec2(f32::midpoint(aabb.min.x, aabb.max.x), aabb.max.y + 0.15),
-                format!("Fixed sensor: {inside} inside"),
-            );
+            labels.at(vec2(f32::midpoint(aabb.min.x, aabb.max.x), aabb.max.y + 0.15), format!("{inside} inside"));
         }
     }
 }

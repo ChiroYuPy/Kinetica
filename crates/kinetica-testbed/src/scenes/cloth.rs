@@ -1,43 +1,54 @@
-//! Cloth made of particles linked by ropes that can tear, and the scene showing it.
+//! Cloth made of particles linked by ropes that can tear, and a scene showing it.
 
 use kinetica::prelude::*;
-use macroquad::color::Color;
-use macroquad::input::KeyCode;
-
-use super::{Build, Category, Frame, Labels, Scene, SceneUpdate, add_ground};
 use kinetica_macroquad::DebugRenderer;
+use macroquad::color::Color;
+
+use super::{Build, Category, Frame, Labels, Scene, SceneUpdate, Spawner, add_ground, scatter};
 
 pub const SCENE: Scene = Scene {
     name: "Cloth",
     category: Category::SoftStructures,
-    description: "Cloth is a grid of small balls linked by rope joints: it resists stretching but folds freely. \
-                  Left, a curtain holds a heavy bar, and each link breaks when it pulls harder than its strength: \
-                  cut it with Shift and the mouse, and once enough is cut the tear spreads on its own. Right, a \
-                  hammock catching whatever falls on it.",
-    camera_center: vec2(0.0, 6.0),
-    view_height: 16.0,
+    description: "Cloth is a grid of small balls linked by ropes: it resists stretching but folds freely. This \
+                  hammock is fixed at both ends.",
+    camera_center: vec2(0.0, 5.0),
+    view_height: 12.0,
     build: Build::Animated(build),
 };
 
 /// Particles are heavy for their size, so the cloth is not crushed by what lands on it.
 const PARTICLE_DENSITY: f32 = 20.0;
-const CURTAIN_COLOR: Color = Color::new(0.9, 0.75, 0.35, 1.0);
-const CURTAIN_COLUMNS: usize = 24;
-const CURTAIN_ROWS: usize = 22;
-const CURTAIN_TOP_LEFT: Vec2 = vec2(-10.5, 10.5);
-const SPACING: f32 = 0.3;
-const BAR_MASS: f32 = 400.0;
-/// Force a link can bear, in newtons. Intact, the curtain pulls at most about 400 N on a link.
-const STRENGTH: f32 = 700.0;
-const CUT_RADIUS: f32 = 0.15;
-const CUT_COLOR: Color = Color::new(0.95, 0.95, 0.95, 1.0);
-const BAR_COLOR: Color = Color::new(0.45, 0.45, 0.5, 1.0);
 const HAMMOCK_COLOR: Color = Color::new(0.35, 0.7, 0.9, 1.0);
-const DROP_PERIOD: f32 = 1.5;
-const MAX_DROPS: usize = 8;
+
+fn build(world: &mut World, _labels: &mut Labels) -> Box<dyn SceneUpdate> {
+    add_ground(world, 40.0);
+    // Links 15 % longer than the spacing, so the hammock sags.
+    let pinned = |column, _| column == 0 || column == 33;
+    let hammock = Cloth::new(world, vec2(-4.95, 7.0), (34, 4), (0.3, 1.15), pinned, HAMMOCK_COLOR);
+    Box::new(Hammock { hammock, drops: Spawner::new(1.5, 8) })
+}
+
+struct Hammock {
+    hammock: Cloth,
+    drops: Spawner,
+}
+
+impl SceneUpdate for Hammock {
+    fn update(&mut self, world: &mut World, frame: &Frame) {
+        self.drops.update(world, frame.time, |i| {
+            let shape = if i.is_multiple_of(2) { ColliderDesc::circle(0.5) } else { ColliderDesc::square(0.9) };
+            let position = vec2(-2.0 + 4.0 * scatter(i), 12.0);
+            BodyDesc::dynamic().position(position).angular_velocity(1.0).collider(shape.density(2.0))
+        });
+    }
+
+    fn draw(&self, world: &World, _frame: &Frame, drawer: &mut DebugRenderer) {
+        self.hammock.draw(world, drawer);
+    }
+}
 
 /// A rectangular grid of particles; neighbors are linked by ropes that may be torn.
-struct Cloth {
+pub struct Cloth {
     columns: usize,
     rows: usize,
     /// Longest distance allowed between neighbors.
@@ -55,7 +66,7 @@ impl Cloth {
     /// Builds a cloth whose top-left particle is at `top_left`, with particles `spacing` apart.
     /// Links may stretch to `slack` times the spacing before pulling, so a cloth pinned on
     /// both sides can sag. `pinned(column, row)` tells which particles are fixed in place.
-    fn new(
+    pub fn new(
         world: &mut World,
         top_left: Vec2,
         (columns, rows): (usize, usize),
@@ -108,13 +119,13 @@ impl Cloth {
     }
 
     /// The particles of the bottom row, from left to right.
-    fn bottom_row(&self) -> &[BodyHandle] {
+    pub fn bottom_row(&self) -> &[BodyHandle] {
         &self.particles[(self.rows - 1) * self.columns..]
     }
 
     /// Breaks the links that pulled harder than `max_force` (in newtons) during the last step.
     /// Links to pinned particles are reinforced and never break.
-    fn tear(&mut self, world: &mut World, max_force: f32) {
+    pub fn tear(&mut self, world: &mut World, max_force: f32) {
         let is_pinned = |body: BodyHandle| world[body].body_type() == BodyType::Fixed;
         let mut torn = Vec::new();
         for link in self.horizontal.iter_mut().chain(&mut self.vertical) {
@@ -132,7 +143,7 @@ impl Cloth {
     }
 
     /// Cuts the links passing within `radius` of `point`.
-    fn cut(&mut self, world: &mut World, point: Vec2, radius: f32) {
+    pub fn cut(&mut self, world: &mut World, point: Vec2, radius: f32) {
         let mut cut = Vec::new();
         for link in self.horizontal.iter_mut().chain(&mut self.vertical) {
             let Some(joint) = link.map(|joint| &world[joint]) else { continue };
@@ -147,7 +158,7 @@ impl Cloth {
     }
 
     /// Fills every cell whose four sides are still linked.
-    fn draw(&self, world: &World, drawer: &mut DebugRenderer) {
+    pub fn draw(&self, world: &World, drawer: &mut DebugRenderer) {
         let position = |column, row| world[self.particle(column, row)].position();
         for row in 0..self.rows - 1 {
             for column in 0..self.columns - 1 {
@@ -170,145 +181,8 @@ impl Cloth {
     }
 }
 
-fn build(world: &mut World, labels: &mut Labels) -> Box<dyn SceneUpdate> {
-    add_ground(world, 60.0);
-    let (curtain, bar) = add_curtain(world);
-    let hammock =
-        Cloth::new(world, vec2(1.0, 7.0), (34, 4), (0.3, 1.15), |column, _| column == 0 || column == 33, HAMMOCK_COLOR);
-    labels.at(
-        vec2(CURTAIN_TOP_LEFT.x + 3.45, CURTAIN_TOP_LEFT.y + 0.4),
-        "Hold Shift and move the mouse\nacross the curtain to cut it",
-    );
-    labels.at(vec2(6.0, 7.5), "Hammock: fixed at both ends,\nlinks 15% longer than the spacing");
-    let links = world.joint_count();
-    Box::new(ClothDemo { curtain, bar, hammock, links, cutting: false, drops: Vec::new(), next_drop: 1.0 })
-}
-
-/// A curtain hanging from its top row, holding a heavy bar hinged to every particle of its hem,
-/// which spreads the weight over the whole width.
-fn add_curtain(world: &mut World) -> (Cloth, BodyHandle) {
-    let curtain = Cloth::new(
-        world,
-        CURTAIN_TOP_LEFT,
-        (CURTAIN_COLUMNS, CURTAIN_ROWS),
-        (SPACING, 1.0),
-        |_, row| row == 0,
-        CURTAIN_COLOR,
-    );
-    let hem_y = CURTAIN_TOP_LEFT.y - SPACING * (CURTAIN_ROWS - 1) as f32;
-    let (width, height) = (SPACING * (CURTAIN_COLUMNS - 1) as f32, 0.3);
-    let center = vec2(CURTAIN_TOP_LEFT.x + width / 2.0, hem_y - 0.2);
-    let shape = ColliderDesc::rectangle(width, height).density(BAR_MASS / (width * height));
-    let bar = world.add_body(BodyDesc::dynamic().position(center).collider(shape));
-    for &particle in curtain.bottom_row() {
-        world.add_joint(RevoluteJointDesc::new(bar, particle, world[particle].position()));
-    }
-    (curtain, bar)
-}
-
-struct ClothDemo {
-    curtain: Cloth,
-    bar: BodyHandle,
-    hammock: Cloth,
-    /// Joints at the start, to count the broken links.
-    links: usize,
-    cutting: bool,
-    drops: Vec<BodyHandle>,
-    next_drop: f32,
-}
-
-impl SceneUpdate for ClothDemo {
-    fn update(&mut self, world: &mut World, frame: &Frame) {
-        self.cutting = frame.is_down(KeyCode::LeftShift) || frame.is_down(KeyCode::RightShift);
-        if self.cutting {
-            self.curtain.cut(world, frame.mouse, CUT_RADIUS);
-        }
-        self.curtain.tear(world, STRENGTH);
-
-        if frame.time >= self.next_drop && self.drops.len() < MAX_DROPS {
-            self.next_drop += DROP_PERIOD;
-            let i = self.drops.len();
-            let x = 4.0 + 4.0 * (i as f32 * 0.618_034).fract();
-            let shape = if i.is_multiple_of(2) { ColliderDesc::circle(0.5) } else { ColliderDesc::square(0.9) };
-            let drop = BodyDesc::dynamic().position(vec2(x, 12.0)).angular_velocity(1.0).collider(shape.density(2.0));
-            self.drops.push(world.add_body(drop));
-        }
-    }
-
-    fn draw(&self, world: &World, frame: &Frame, drawer: &mut DebugRenderer) {
-        self.curtain.draw(world, drawer);
-        drawer.draw_body(world, self.bar, BAR_COLOR);
-        self.hammock.draw(world, drawer);
-        if self.cutting {
-            drawer.draw_circle(frame.mouse, CUT_RADIUS, Rot::IDENTITY, CUT_COLOR);
-        }
-    }
-
-    fn labels(&self, world: &World, _frame: &Frame, labels: &mut Labels) {
-        let broken = self.links.saturating_sub(world.joint_count());
-        let below_bar = vec2(CURTAIN_TOP_LEFT.x + 3.45, 2.4);
-        labels.at(below_bar, format!("{BAR_MASS:.0} kg bar\nLinks break above {STRENGTH:.0} N: {broken} broken"));
-    }
-}
-
 fn distance_to_segment(point: Vec2, start: Vec2, end: Vec2) -> f32 {
     let along = end - start;
     let t = ((point - start).dot(along) / along.length_squared().max(f32::EPSILON)).clamp(0.0, 1.0);
     point.distance(start + t * along)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The curtain with its bar above the ground.
-    fn curtain() -> (World, Cloth, BodyHandle) {
-        let mut world = World::new();
-        add_ground(&mut world, 40.0);
-        let (curtain, bar) = add_curtain(&mut world);
-        (world, curtain, bar)
-    }
-
-    fn run(world: &mut World, curtain: &mut Cloth, steps: usize) {
-        for _ in 0..steps {
-            curtain.tear(world, STRENGTH);
-            world.step(1.0 / 60.0);
-        }
-    }
-
-    /// Cuts across the curtain at mid height, through `columns`.
-    fn cut(world: &mut World, curtain: &mut Cloth, columns: std::ops::Range<usize>) {
-        for column in columns {
-            curtain.cut(world, vec2(CURTAIN_TOP_LEFT.x + SPACING * column as f32, 7.15), CUT_RADIUS);
-        }
-    }
-
-    #[test]
-    fn intact_curtain_holds_the_bar() {
-        let (mut world, mut curtain, bar) = curtain();
-        let joints = world.joint_count();
-        run(&mut world, &mut curtain, 10 * 60);
-        assert_eq!(world.joint_count(), joints, "the intact curtain tore");
-        assert!(world[bar].position().y > 3.5, "the bar dropped to {}", world[bar].position().y);
-    }
-
-    #[test]
-    fn cutting_half_the_curtain_makes_it_tear_through() {
-        let (mut world, mut curtain, bar) = curtain();
-        run(&mut world, &mut curtain, 2 * 60);
-        cut(&mut world, &mut curtain, 0..CURTAIN_COLUMNS / 2);
-        run(&mut world, &mut curtain, 3 * 60);
-        assert!(world[bar].position().y < 0.5, "the curtain still holds the bar at {}", world[bar].position().y);
-    }
-
-    #[test]
-    fn a_small_cut_does_not_spread() {
-        let (mut world, mut curtain, bar) = curtain();
-        run(&mut world, &mut curtain, 2 * 60);
-        cut(&mut world, &mut curtain, 10..13);
-        let joints = world.joint_count();
-        run(&mut world, &mut curtain, 3 * 60);
-        assert!(world.joint_count() + 10 > joints, "a small cut spread: {} links tore", joints - world.joint_count());
-        assert!(world[bar].position().y > 3.5);
-    }
 }

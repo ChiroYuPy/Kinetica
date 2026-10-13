@@ -9,12 +9,8 @@ use kinetica_macroquad::DebugRenderer;
 pub const SCENE: Scene = Scene {
     name: "Soft bodies",
     category: Category::SoftStructures,
-    description: "Four ways to build a soft body from small rigid bodies, dropped on the ground. A blob: a ring of \
-                  balls tied to a center by springs. A balloon: a ring of balls tied by ropes, inflated by a gas \
-                  pressure force that grows as its area shrinks, and slowed by air drag. A jelly: a grid of balls \
-                  tied by springs, diagonals included so it keeps its shape. A tire: capsules welded end to end \
-                  with angular springs, which bends but does not stretch. Press R to drop them again, grab them \
-                  with the mouse.",
+    description: "Four ways to make a soft body from rigid parts: balls on springs, a skin inflated by \
+                  pressure, a lattice of springs, and capsules welded end to end.",
     camera_center: vec2(0.0, 4.0),
     view_height: 15.0,
     build: Build::Animated(build),

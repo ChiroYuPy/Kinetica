@@ -3,12 +3,10 @@ use kinetica::prelude::*;
 use super::{Build, Category, Frame, Labels, Scene, SceneUpdate};
 
 pub const SCENE: Scene = Scene {
-    name: "Wheel joints",
+    name: "Wheel joint",
     category: Category::Joints,
-    description: "A wheel joint is an axle that turns freely and slides along a suspension axis, held by a \
-                  spring and limits, with an optional motor: one joint per wheel of a vehicle. Both carts drive \
-                  over the same bumps, reversing every 4 s: the soft suspension (2 Hz) soaks them up, the stiff one \
-                  (8 Hz) shakes the cart.",
+    description: "An axle on a sprung suspension, with a motor: one joint per wheel. The soft suspension soaks up \
+                  the bumps, the stiff one shakes.",
     camera_center: vec2(0.0, 2.0),
     view_height: 7.0,
     build: Build::Animated(build),
