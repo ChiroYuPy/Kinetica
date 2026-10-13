@@ -3,7 +3,8 @@
 use super::frame::JointFrame;
 use super::{JointBase, Spring};
 use crate::body::{Body, BodyHandle};
-use crate::math::{SymmetricMatrix, Vec2};
+use crate::math::Vec2;
+use crate::solver::SymmetricMatrix;
 use crate::solver::{Softness, SolverContext};
 
 /// Description of a [`MouseJoint`].

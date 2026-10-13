@@ -5,9 +5,9 @@ use std::ops::RangeInclusive;
 use super::frame::{JointFrame, apply_linear_impulse, inverse_or_zero, limit_impulse, relative_velocity};
 use super::{JointBase, Spring, validated_range};
 use crate::body::{Body, BodyHandle};
-use crate::constants::LINEAR_SLOP;
 use crate::math::Vec2;
 use crate::solver::{Pass, Softness, SolverContext};
+use kinetica_collision::LINEAR_SLOP;
 
 /// Description of a [`DistanceJoint`].
 ///

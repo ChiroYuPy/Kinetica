@@ -25,7 +25,7 @@ pub enum Shape {
     Polygon(Polygon),
     /// A two-sided segment without thickness or mass.
     Segment(Segment),
-    /// A one-sided segment of a chain, see [`World::add_chain`](crate::World::add_chain).
+    /// A one-sided segment of a chain, as built by `World::add_chain` in `kinetica`.
     ChainSegment(ChainSegment),
 }
 
@@ -44,7 +44,8 @@ impl Shape {
 
     /// Distance from the center of the shape to its closest edge: how far it can move before
     /// it could pass through something thin.
-    pub(crate) fn min_extent(&self) -> f32 {
+    #[must_use]
+    pub fn min_extent(&self) -> f32 {
         match self {
             Self::Circle(circle) => circle.radius(),
             Self::Capsule(capsule) => capsule.radius(),
@@ -103,7 +104,7 @@ impl Shape {
 
     /// The same shape, rotated then moved by `placement`, both in the local frame.
     #[must_use]
-    pub(crate) fn transformed(&self, placement: &Transform) -> Self {
+    pub fn transformed(&self, placement: &Transform) -> Self {
         let point = |point: Vec2| placement.transform_point(point);
         let segment = |segment: &Segment| Segment::new(point(segment.start()), point(segment.end()));
         match self {

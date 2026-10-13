@@ -1,8 +1,8 @@
 //! Contacts involving a circle.
 
 use super::convex::Rounded;
-use crate::collision::{Manifold, ManifoldPoint};
 use crate::constants::SPECULATIVE_DISTANCE;
+use crate::manifold::{Manifold, ManifoldPoint};
 use crate::math::{Transform, Vec2};
 use crate::shape::Circle;
 

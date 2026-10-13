@@ -7,7 +7,8 @@ use super::frame::{
 };
 use super::{JointBase, Motor, validated_range};
 use crate::body::{Body, BodyHandle};
-use crate::math::{SymmetricMatrix, Vec2, vec2};
+use crate::math::{Vec2, vec2};
+use crate::solver::SymmetricMatrix;
 use crate::solver::{Pass, SolverContext};
 
 /// Description of a [`PrismaticJoint`].

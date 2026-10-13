@@ -6,9 +6,11 @@
 
 mod contact_constraint;
 mod softness;
+mod symmetric_matrix;
 
 use contact_constraint::ContactConstraint;
 pub(crate) use softness::Softness;
+pub(crate) use symmetric_matrix::SymmetricMatrix;
 
 use crate::arena::Arena;
 use crate::body::{Body, BodyHandle};

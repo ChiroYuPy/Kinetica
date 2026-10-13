@@ -11,6 +11,7 @@ repository = "https://github.com/adrian/kinetica"
 
 [workspace.dependencies]
 kinetica = { path = "crates/kinetica" }
+kinetica-collision = { path = "crates/kinetica-collision" }
 kinetica-macroquad = { path = "crates/kinetica-macroquad" }
 # Kept on the same version as macroquad so both crates share the exact same `Vec2` type.
 glam = "0.27"

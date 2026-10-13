@@ -1,21 +1,12 @@
-//! Dynamic AABB tree: a bounding volume hierarchy that stays efficient as leaves move.
-//!
-//! Leaves hold user data and a bounding box; internal nodes hold the union of their two
-//! children. Overlap queries skip whole subtrees whose box misses the query box, so they run in
-//! roughly logarithmic time. Insertion picks the sibling that grows the tree's total perimeter
-//! the least, then rotates nodes on the way up when that shrinks their boxes (the surface area
-//! heuristic). The tree is not strictly balanced: small, tight boxes matter more to queries
-//! than a low height. Removal only refits the boxes above.
-//!
-//! Based on the tree used in Box2D v3.
+//! The dynamic AABB tree.
 
 use crate::math::{Aabb, Vec2};
 
-/// Identifies a leaf of the tree. It stays valid until the leaf is destroyed, even when the
-/// leaf moves.
+/// Identifies a leaf of a [`DynamicTree`]. It stays valid until the leaf is destroyed, even when
+/// the leaf moves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub(crate) struct ProxyId(NodeId);
+pub struct ProxyId(NodeId);
 
 type NodeId = u32;
 
@@ -38,9 +29,19 @@ struct Node<T> {
     kind: NodeKind<T>,
 }
 
+/// A dynamic AABB tree: a bounding volume hierarchy that stays efficient as leaves move.
+///
+/// Leaves hold user data and a bounding box; internal nodes hold the union of their two
+/// children. Overlap queries skip whole subtrees whose box misses the query box, so they run in
+/// roughly logarithmic time. Insertion picks the sibling that grows the tree's total perimeter
+/// the least, then rotates nodes on the way up when that shrinks their boxes (the surface area
+/// heuristic). The tree is not strictly balanced: small, tight boxes matter more to queries
+/// than a low height. Removal only refits the boxes above.
+///
+/// Based on the tree used in Box2D v3.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub(crate) struct DynamicTree<T> {
+pub struct DynamicTree<T> {
     nodes: Vec<Node<T>>,
     root: Option<NodeId>,
     first_free: Option<NodeId>,
@@ -53,28 +54,35 @@ impl<T> Default for DynamicTree<T> {
 }
 
 impl<T: Copy> DynamicTree<T> {
-    pub(crate) fn create_proxy(&mut self, aabb: Aabb, data: T) -> ProxyId {
+    /// Adds a leaf with the given box and data.
+    pub fn create_proxy(&mut self, aabb: Aabb, data: T) -> ProxyId {
         let leaf = self.allocate(Node { aabb, parent: None, kind: NodeKind::Leaf(data) });
         self.insert_leaf(leaf);
         ProxyId(leaf)
     }
 
-    pub(crate) fn destroy_proxy(&mut self, proxy: ProxyId) {
+    /// Removes a leaf; its identifier may be given to a later leaf.
+    pub fn destroy_proxy(&mut self, proxy: ProxyId) {
         self.remove_leaf(proxy.0);
         self.free(proxy.0);
     }
 
-    pub(crate) fn move_proxy(&mut self, proxy: ProxyId, aabb: Aabb) {
+    /// Gives a leaf a new box, and moves it to where that box fits best in the tree.
+    pub fn move_proxy(&mut self, proxy: ProxyId, aabb: Aabb) {
         self.remove_leaf(proxy.0);
         self.node_mut(proxy.0).aabb = aabb;
         self.insert_leaf(proxy.0);
     }
 
-    pub(crate) fn aabb(&self, proxy: ProxyId) -> Aabb {
+    /// The box of a leaf.
+    #[must_use]
+    pub fn aabb(&self, proxy: ProxyId) -> Aabb {
         self.node(proxy.0).aabb
     }
 
-    pub(crate) fn data(&self, proxy: ProxyId) -> T {
+    /// The data of a leaf.
+    #[must_use]
+    pub fn data(&self, proxy: ProxyId) -> T {
         match self.node(proxy.0).kind {
             NodeKind::Leaf(data) => data,
             _ => unreachable!("proxy {proxy:?} is not a leaf"),
@@ -82,7 +90,7 @@ impl<T: Copy> DynamicTree<T> {
     }
 
     /// Calls `visit` for every leaf whose box overlaps `aabb`.
-    pub(crate) fn query(&self, aabb: &Aabb, mut visit: impl FnMut(ProxyId, T)) {
+    pub fn query(&self, aabb: &Aabb, mut visit: impl FnMut(ProxyId, T)) {
         let mut stack = NodeStack::new(self.root);
         while let Some(id) = stack.pop() {
             let node = self.node(id);
@@ -100,13 +108,7 @@ impl<T: Copy> DynamicTree<T> {
     /// Calls `visit` for every leaf whose box the segment from `origin` to
     /// `origin + max_fraction * translation` crosses. `visit` returns the new maximum fraction,
     /// which shortens the segment for the remaining leaves (return its input to keep it).
-    pub(crate) fn ray_cast(
-        &self,
-        origin: Vec2,
-        translation: Vec2,
-        max_fraction: f32,
-        mut visit: impl FnMut(T, f32) -> f32,
-    ) {
+    pub fn ray_cast(&self, origin: Vec2, translation: Vec2, max_fraction: f32, mut visit: impl FnMut(T, f32) -> f32) {
         let mut max_fraction = max_fraction;
         let mut stack = NodeStack::new(self.root);
         while let Some(id) = stack.pop() {

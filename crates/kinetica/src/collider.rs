@@ -2,7 +2,7 @@
 
 use crate::arena::Index;
 use crate::body::BodyHandle;
-use crate::collision::broad_phase::ProxyId;
+use crate::broad_phase::ProxyId;
 use crate::math::{Aabb, Rot, Transform, Vec2};
 use crate::shape::{Capsule, Circle, MassProperties, Polygon, PolygonError, Segment, Shape};
 

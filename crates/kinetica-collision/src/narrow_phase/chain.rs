@@ -9,8 +9,8 @@
 
 use super::circle::collide_rounded_circle;
 use super::convex::{Rounded, clip_segment, collide_rounded, find_incident_edge, incident_points};
-use crate::collision::{Manifold, ManifoldPoint};
 use crate::constants::SPECULATIVE_DISTANCE;
+use crate::manifold::{Manifold, ManifoldPoint};
 use crate::math::{Transform, Vec2};
 use crate::shape::{ChainSegment, Shape};
 

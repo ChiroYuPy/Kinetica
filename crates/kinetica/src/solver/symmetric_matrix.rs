@@ -1,6 +1,6 @@
 //! Symmetric 2×2 matrices, the effective masses of two-dimensional constraints.
 
-use super::{Vec2, vec2};
+use crate::math::{Vec2, vec2};
 
 /// A symmetric 2×2 matrix.
 #[derive(Debug, Clone, Copy)]

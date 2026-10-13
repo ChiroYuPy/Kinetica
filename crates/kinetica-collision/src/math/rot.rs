@@ -64,7 +64,8 @@ impl Rot {
     ///
     /// This is a first-order integration followed by a renormalisation, so it slightly
     /// under-rotates for large angles. It is accurate for the small angles of a time step.
-    pub(crate) fn integrate(self, delta_angle: f32) -> Self {
+    #[must_use]
+    pub fn integrate(self, delta_angle: f32) -> Self {
         Self { cos: self.cos - delta_angle * self.sin, sin: self.sin + delta_angle * self.cos }.normalized()
     }
 

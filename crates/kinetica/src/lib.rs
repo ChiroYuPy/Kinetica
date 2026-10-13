@@ -32,17 +32,15 @@
 
 mod arena;
 mod body;
+mod broad_phase;
 mod collider;
-pub mod collision;
 mod constants;
 mod contact;
 mod continuous;
 mod debug_draw;
 mod island;
 pub mod joint;
-pub mod math;
 mod query;
-pub mod shape;
 mod solver;
 mod world;
 
@@ -50,6 +48,16 @@ pub use body::{Body, BodyDesc, BodyHandle, BodyType};
 pub use collider::{ChainDesc, Collider, ColliderDesc, ColliderHandle, CollisionLayers};
 pub use contact::{CollisionEvent, Contact, ContactPair, SensorEvent, SensorPair};
 pub use debug_draw::{Color, DebugDraw, DebugDrawOptions};
+pub use kinetica_collision::{math, shape};
+
+/// Collision detection: which shapes touch, and where.
+///
+/// The [`World`] runs this automatically every step and exposes the results as [`Contact`]s.
+/// These functions work directly on shapes, without a world.
+pub mod collision {
+    pub use kinetica_collision::{Manifold, ManifoldPoint, collide, separation_lower_bound, time_of_impact};
+}
+
 pub use joint::{
     DistanceJoint, DistanceJointDesc, Joint, JointDesc, JointHandle, JointType, Motor, MouseJoint, MouseJointDesc,
     PrismaticJoint, PrismaticJointDesc, RevoluteJoint, RevoluteJointDesc, Spring, WeldJoint, WeldJointDesc, WheelJoint,

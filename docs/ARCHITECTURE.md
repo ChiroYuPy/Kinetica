@@ -6,24 +6,36 @@ behind it.
 
 ## Where things live
 
-Everything is in `crates/kinetica/src`.
+The engine is two crates. `kinetica-collision` is pure geometry: it knows shapes, not bodies,
+forces or time, and can be used alone. `kinetica` is the physics, built on top of it; it
+re-exports `math`, `shape` and `collision`, so games only depend on `kinetica`.
+
+`crates/kinetica-collision/src`:
+
+| Module | Role |
+|--------|------|
+| `shape/` | Circle, polygon, capsule, segment, chain segment: geometry and mass. |
+| `math/` | `Rot`, `Transform`, `Aabb`; vectors come from glam. |
+| `narrow_phase/` | Exact contact points between two shapes (`collide`), distance bound, time of impact. |
+| `manifold.rs` | `Manifold`: the points where two shapes touch, and the impulses a solver stored there. |
+| `dynamic_tree.rs` | `DynamicTree`: a hierarchy of bounding boxes, to find which ones overlap. |
+| `constants.rs` | The geometric tolerances, `LINEAR_SLOP` and `SPECULATIVE_DISTANCE`. |
+
+`crates/kinetica/src`:
 
 | Module | Role |
 |--------|------|
 | `world.rs` | `World`: owns everything, adds and removes objects, runs a step. |
 | `arena.rs` | Generational arena behind every handle. |
 | `body.rs`, `collider.rs` | Bodies and colliders, with their `*Desc` builders. |
-| `shape/` | Circle, polygon, capsule, segment, chain segment: geometry and mass. |
-| `math/` | `Rot`, `Transform`, `Aabb`, and a 2×2 symmetric matrix; vectors come from glam. |
-| `collision/broad_phase/` | Dynamic AABB tree finding colliders whose boxes overlap. |
-| `collision/narrow_phase/` | Exact contact points between two shapes (`collide`). |
+| `broad_phase.rs` | Keeps every collider in a `DynamicTree` and finds the pairs whose boxes overlap. |
 | `contact/` | Tracks every candidate pair from step to step; contact and sensor events. |
-| `solver/` | Turns contacts into constraints and moves bodies (soft step). |
+| `solver/` | Turns contacts into constraints and moves bodies (soft step); the 2×2 symmetric matrix of constraint masses. |
 | `joint/` | The six joint types, and the math they share (`frame.rs`): anchors, slide axes, limits and motors. |
 | `island.rs` | Groups of touching bodies that fall asleep and wake up together. |
 | `continuous.rs` | Stops fast bodies from tunneling through thin obstacles. |
 | `query.rs` | Ray casts, shape casts, point and area queries. |
-| `constants.rs` | Every tolerance and tuning value, with why it has its value. |
+| `constants.rs` | Every tuning value of the simulation, with why it has its value. |
 | `debug_draw.rs` | Drawing the world for debugging. |
 
 ## Handles
@@ -59,7 +71,7 @@ a collider knows its body, a body lists its colliders and joints.
    moved back to the first time of impact. The contact found at the next step stops it.
 6. **Sleep**. Islands whose bodies all stayed nearly still for half a second fall asleep:
    the solver and the contact update skip them until something wakes them.
-7. **New pairs** (`collision/broad_phase/`). The broad phase looks for new overlaps around
+7. **New pairs** (`broad_phase.rs`). The broad phase looks for new overlaps around
    the colliders that moved, and the contact set starts tracking them. Their geometry is
    computed at stage 1 of the next step.
 

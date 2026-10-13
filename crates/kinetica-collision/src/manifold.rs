@@ -24,7 +24,7 @@ impl Manifold {
 
     /// Copies the solver impulses of points that persist from `previous`, matched by feature, so
     /// the solver can start from last step's solution (warm starting).
-    pub(crate) fn inherit_impulses(&mut self, previous: &Self) {
+    pub fn inherit_impulses(&mut self, previous: &Self) {
         for point in &mut self.points[..self.point_count] {
             if let Some(old) = previous.points().iter().find(|old| old.feature_id == point.feature_id) {
                 point.normal_impulse = old.normal_impulse;
@@ -33,7 +33,8 @@ impl Manifold {
         }
     }
 
-    pub(crate) fn points_mut(&mut self) -> &mut [ManifoldPoint] {
+    /// Contact points, to store the impulses a solver applied at each of them.
+    pub fn points_mut(&mut self) -> &mut [ManifoldPoint] {
         &mut self.points[..self.point_count]
     }
 
@@ -70,8 +71,8 @@ pub struct ManifoldPoint {
     /// Identifies the pair of features (edges, vertices) that produced this point, so it can be
     /// matched with the same point at the next step.
     feature_id: u32,
-    pub(crate) normal_impulse: f32,
-    pub(crate) tangent_impulse: f32,
+    normal_impulse: f32,
+    tangent_impulse: f32,
 }
 
 impl ManifoldPoint {
@@ -103,6 +104,13 @@ impl ManifoldPoint {
     #[must_use]
     pub fn tangent_impulse(&self) -> f32 {
         self.tangent_impulse
+    }
+
+    /// Records the impulses a solver applied at this point. [`collide`](crate::collide) leaves
+    /// them at zero; [`Manifold::inherit_impulses`] carries them over to the next manifold.
+    pub fn set_impulses(&mut self, normal_impulse: f32, tangent_impulse: f32) {
+        self.normal_impulse = normal_impulse;
+        self.tangent_impulse = tangent_impulse;
     }
 
     #[cfg(test)]

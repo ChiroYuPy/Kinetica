@@ -4,8 +4,8 @@ use super::{CollisionEvent, SensorEvent, SensorPair};
 use super::{Contact, ContactPair, should_collide};
 use crate::arena::Arena;
 use crate::body::{Body, BodyHandle, BodyType};
+use crate::broad_phase::{BroadPhase, CandidatePair};
 use crate::collider::{Collider, ColliderHandle};
-use crate::collision::broad_phase::{BroadPhase, CandidatePair};
 use crate::collision::{Manifold, collide, separation_lower_bound};
 use crate::joint::Joint;
 

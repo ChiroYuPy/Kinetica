@@ -28,6 +28,7 @@ indexing the world with a handle reaches the body, collider or joint.
 | Crate | Role |
 |-------|------|
 | [`crates/kinetica`](crates/kinetica) | The engine. No rendering or windowing dependency. Optional `serde` feature. |
+| [`crates/kinetica-collision`](crates/kinetica-collision) | The geometry under the engine, usable alone: shapes, contact points between two shapes, a bounding box tree. |
 | [`crates/kinetica-macroquad`](crates/kinetica-macroquad) | Glue for macroquad games: camera in meters, debug rendering, a cut-paper look for games, fixed time step, mouse grab. |
 | [`crates/kinetica-bench`](crates/kinetica-bench) | Reproducible performance benchmarks, with the time of each step stage. |
 | [`crates/kinetica-testbed`](crates/kinetica-testbed) | One labeled scene per engine concept, from body types to queries. |

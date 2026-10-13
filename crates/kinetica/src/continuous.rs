@@ -11,14 +11,15 @@
 
 use crate::arena::Arena;
 use crate::body::{Body, BodyHandle, BodyType};
+use crate::broad_phase::BroadPhase;
 use crate::collider::Collider;
-use crate::collision::broad_phase::BroadPhase;
 use crate::collision::{separation_lower_bound, time_of_impact};
-use crate::constants::{CONTINUOUS_THRESHOLD, SPECULATIVE_DISTANCE};
+use crate::constants::CONTINUOUS_THRESHOLD;
 use crate::contact::{ContactPair, should_collide};
 use crate::joint::Joint;
 use crate::math::{Transform, Vec2};
 use crate::shape::Shape;
+use kinetica_collision::SPECULATIVE_DISTANCE;
 
 /// Moves fast bodies back to where they first hit something, and returns them.
 pub(crate) fn solve(

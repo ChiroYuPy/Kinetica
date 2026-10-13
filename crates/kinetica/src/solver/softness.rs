@@ -5,7 +5,8 @@
 
 use std::f32::consts::TAU;
 
-use crate::math::{SymmetricMatrix, Vec2};
+use super::SymmetricMatrix;
+use crate::math::Vec2;
 
 /// Coefficients turning a spring (frequency, damping ratio) into solver terms for a substep.
 #[derive(Debug, Clone, Copy, PartialEq)]

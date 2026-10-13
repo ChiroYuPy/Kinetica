@@ -12,8 +12,8 @@
 //! 4. Otherwise, clip the incident edge to the sides of the reference edge. The remaining end
 //!    points are the contact points.
 
-use crate::collision::{Manifold, ManifoldPoint};
 use crate::constants::{LINEAR_SLOP, SPECULATIVE_DISTANCE};
+use crate::manifold::{Manifold, ManifoldPoint};
 use crate::math::{Transform, Vec2, vec2};
 use crate::shape::{Capsule, MAX_POLYGON_VERTICES, Polygon, Segment};
 

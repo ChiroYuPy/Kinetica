@@ -90,8 +90,8 @@ impl ContactConstraint {
                 base_separation: manifold_point.separation() - (anchor_b - anchor_a).dot(normal),
                 normal_mass: effective_mass(normal),
                 tangent_mass: effective_mass(tangent),
-                normal_impulse: manifold_point.normal_impulse,
-                tangent_impulse: manifold_point.tangent_impulse,
+                normal_impulse: manifold_point.normal_impulse(),
+                tangent_impulse: manifold_point.tangent_impulse(),
                 max_normal_impulse: 0.0,
                 approach_speed: relative_velocity(body_a, body_b, anchor_a, anchor_b).dot(normal),
             };
@@ -204,8 +204,7 @@ impl ContactConstraint {
     /// Saves the impulses in the manifold, to warm start the next step.
     pub(crate) fn store_impulses(&self, manifold: &mut Manifold) {
         for (manifold_point, point) in manifold.points_mut().iter_mut().zip(self.points()) {
-            manifold_point.normal_impulse = point.normal_impulse;
-            manifold_point.tangent_impulse = point.tangent_impulse;
+            manifold_point.set_impulses(point.normal_impulse, point.tangent_impulse);
         }
     }
 

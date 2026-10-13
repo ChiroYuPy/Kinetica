@@ -4,8 +4,8 @@ mod chain;
 mod circle;
 mod convex;
 
-use super::Manifold;
 use crate::constants::LINEAR_SLOP;
+use crate::manifold::Manifold;
 use crate::math::{Transform, Vec2};
 use crate::shape::Shape;
 use convex::Rounded;
@@ -13,7 +13,7 @@ use convex::Rounded;
 /// Computes the contact between two placed shapes.
 ///
 /// Points are reported up to a small distance before the shapes actually touch, with a positive
-/// [`separation`](super::ManifoldPoint::separation). The normal points from `shape_a` to
+/// [`separation`](crate::ManifoldPoint::separation). The normal points from `shape_a` to
 /// `shape_b`.
 #[must_use]
 pub fn collide(shape_a: &Shape, transform_a: &Transform, shape_b: &Shape, transform_b: &Transform) -> Manifold {
@@ -36,9 +36,10 @@ pub fn collide(shape_a: &Shape, transform_a: &Transform, shape_b: &Shape, transf
 
 /// A lower bound of the distance between two placed shapes, negative when they overlap.
 ///
-/// Exact when a circle is involved; see [`convex::separation_lower_bound`] otherwise. It is
-/// negative exactly when the shapes overlap. Chain segments count as two-sided here.
-pub(crate) fn separation_lower_bound(
+/// Exact when a circle is involved, and when the closest features are a vertex and an edge;
+/// smaller than the distance otherwise. It is negative exactly when the shapes overlap. Chain segments count as two-sided here.
+#[must_use]
+pub fn separation_lower_bound(
     shape_a: &Shape,
     transform_a: &Transform,
     shape_b: &Shape,
@@ -82,7 +83,8 @@ const MAX_TIME_OF_IMPACT_ITERATIONS: usize = 30;
 ///
 /// Uses conservative advancement: the shape can safely move by the distance lower bound, since
 /// a translation of length `d` cannot close a gap by more than `d`.
-pub(crate) fn time_of_impact(
+#[must_use]
+pub fn time_of_impact(
     moving: &Shape,
     start: &Transform,
     translation: Vec2,

@@ -4,10 +4,8 @@
 //! [`AABB_MARGIN`]. A collider is only re-inserted when it leaves its fat box, and only those
 //! colliders are used to look for new pairs.
 
-mod dynamic_tree;
-
-use dynamic_tree::DynamicTree;
-pub(crate) use dynamic_tree::ProxyId;
+use kinetica_collision::DynamicTree;
+pub(crate) use kinetica_collision::ProxyId;
 
 use crate::collider::ColliderHandle;
 use crate::constants::AABB_MARGIN;

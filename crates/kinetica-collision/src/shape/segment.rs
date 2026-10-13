@@ -69,7 +69,7 @@ impl Segment {
     }
 }
 
-/// One segment of a chain, as created by [`World::add_chain`](crate::World::add_chain).
+/// One segment of a chain, as created by `World::add_chain` in `kinetica`.
 ///
 /// Chain segments are one-sided: they only collide with shapes on the side of their
 /// [`normal`](Segment::normal), so a body that ends up behind the chain can get back out. They

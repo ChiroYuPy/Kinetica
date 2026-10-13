@@ -684,6 +684,7 @@ name = "kinetica"
 version = "0.1.0"
 dependencies = [
  "glam",
+ "kinetica-collision",
  "serde",
  "serde_json",
 ]
@@ -693,6 +694,14 @@ name = "kinetica-bench"
 version = "0.1.0"
 dependencies = [
  "kinetica",
+]
+
+[[package]]
+name = "kinetica-collision"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "serde",
 ]
 
 [[package]]

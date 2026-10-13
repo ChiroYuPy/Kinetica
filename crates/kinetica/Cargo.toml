@@ -11,10 +11,11 @@ repository.workspace = true
 
 [features]
 ## Serialize and deserialize worlds (save games, replays) and descriptions (level files).
-serde = ["dep:serde", "glam/serde"]
+serde = ["dep:serde", "glam/serde", "kinetica-collision/serde"]
 
 [dependencies]
 glam.workspace = true
+kinetica-collision.workspace = true
 serde = { version = "1.0.228", features = ["derive"], optional = true }
 
 [dev-dependencies]

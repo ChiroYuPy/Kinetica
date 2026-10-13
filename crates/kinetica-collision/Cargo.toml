@@ -1,0 +1,21 @@
+[package]
+name = "kinetica-collision"
+description = "2D shapes and collision detection: the geometry under the Kinetica physics engine."
+keywords = ["collision", "geometry", "2d", "gamedev"]
+categories = ["game-development", "mathematics"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+## Serialize and deserialize shapes, manifolds and trees.
+serde = ["dep:serde", "glam/serde"]
+
+[dependencies]
+glam.workspace = true
+serde = { version = "1.0.228", features = ["derive"], optional = true }
+
+[lints]
+workspace = true

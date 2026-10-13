@@ -4,8 +4,8 @@ use std::ops::{Index, IndexMut};
 
 use crate::arena::Arena;
 use crate::body::{Body, BodyDesc, BodyHandle, BodyType};
+use crate::broad_phase::BroadPhase;
 use crate::collider::{ChainDesc, Collider, ColliderDesc, ColliderHandle};
-use crate::collision::broad_phase::BroadPhase;
 use crate::constants::{DEFAULT_SUBSTEP_COUNT, TIME_TO_SLEEP};
 use crate::contact::{CollisionEvent, Contact, ContactSet, SensorEvent, SensorPair};
 use crate::continuous;

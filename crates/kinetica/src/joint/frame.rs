@@ -4,7 +4,8 @@ use std::f32::consts::{PI, TAU};
 
 use super::Motor;
 use crate::body::Body;
-use crate::math::{Rot, SymmetricMatrix, Vec2};
+use crate::math::{Rot, Vec2};
+use crate::solver::SymmetricMatrix;
 use crate::solver::{Pass, Softness, SolverContext};
 
 /// Anchors and masses of a joint, captured at the start of each step.
