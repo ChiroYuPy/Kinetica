@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kinetica · a 2D physics engine in Rust</title>
+    <style>
+        :root { --paper: #f5eedc; --ink: #3d3330; --card: #fffaf0; --accent: #e0523f; }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--paper); color: var(--ink); font: 18px/1.5 system-ui, sans-serif; }
+        main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+        img.logo { width: 100%; height: auto; display: block; border-radius: 12px; }
+        h1 { font-size: 2rem; margin: 24px 0 4px; }
+        h2 { font-size: 1.2rem; margin: 40px 0 12px; }
+        p { margin: 0 0 12px; }
+        a { color: inherit; }
+        .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+        .card { display: block; background: var(--card); border: 2px solid var(--ink); border-radius: 12px;
+                padding: 16px; text-decoration: none; box-shadow: 4px 5px 0 rgba(61, 51, 48, 0.25); }
+        .card:hover { transform: translate(-1px, -1px); }
+        .card strong { display: block; font-size: 1.1rem; }
+        .card span { opacity: 0.8; font-size: 0.95rem; }
+        .card.main { border-color: var(--accent); }
+        footer { margin-top: 48px; opacity: 0.7; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+<main>
+    <img class="logo" src="kinetica.png" alt="The word Kinetica, written with bars welded together standing on the ground">
+    <h1>Kinetica</h1>
+    <p>A lightweight 2D physics engine for games, written in Rust. Everything below runs in your browser.</p>
+
+    <h2>Try the engine</h2>
+    <div class="grid">
+        <a class="card main" href="testbed/">
+            <strong>Testbed</strong>
+            <span>45 scenes, one idea each: body types, joints, collisions, queries. Grab, launch and blast things.</span>
+        </a>
+    </div>
+
+    <h2>Play the games</h2>
+    <div class="grid">
+        <a class="card" href="games/slingshot/"><strong>Slingshot</strong><span>Knock down towers of wood, glass and stone.</span></a>
+        <a class="card" href="games/trials/"><strong>Trials</strong><span>Drive a little car over hills, a bridge and a jump.</span></a>
+        <a class="card" href="games/platformer/"><strong>Platformer</strong><span>Run and jump across moving platforms, push a box.</span></a>
+        <a class="card" href="games/snip/"><strong>Snip</strong><span>Cut the ropes to drop the sweet in the basket.</span></a>
+        <a class="card" href="games/fruits/"><strong>Fruits</strong><span>Drop fruits in a jar; two alike merge into a bigger one.</span></a>
+    </div>
+
+    <footer><a href="https://github.com/ChiroYuPy/Kinetica">Source code on GitHub</a></footer>
+</main>
+</body>
+</html>

@@ -1,6 +1,39 @@
-# Kinetica
+<p align="center">
+  <img src="docs/kinetica.png" alt="The word Kinetica, written with bars welded together and standing on the ground" width="100%">
+</p>
 
-A lightweight, 2D determinist physics engine for games, written in Rust.
+<p align="center">
+  A lightweight, deterministic 2D physics engine for games, written in Rust.<br>
+  <b><a href="https://chiroyupy.github.io/Kinetica/">Try it in your browser</a></b>
+  · <a href="docs/ARCHITECTURE.md">Architecture</a>
+  · <a href="docs/ROADMAP.md">Roadmap</a>
+</p>
+
+---
+
+The picture above is made by the engine: every letter is a handful of bars welded together, and
+the shapes around it were dropped on the ground.
+
+## Try it
+
+Nothing to install: the **[testbed](https://chiroyupy.github.io/Kinetica/testbed/)** runs in the
+browser. It has 45 scenes, one idea each, from body types to joints and queries; grab bodies,
+launch balls or blast them away. The [five games](https://chiroyupy.github.io/Kinetica/) built on
+the engine run there too.
+
+## What it does
+
+- **Bodies and shapes**: fixed, kinematic and dynamic bodies; circles, convex polygons, capsules,
+  segments and one-sided chains for levels.
+- **Joints**: revolute, prismatic, weld, distance, wheel and mouse joints, with limits, motors,
+  springs, and forces to break them under load.
+- **Stable stacking**: a substepped soft-step solver, with sleeping and continuous collision, so
+  fast bullets do not go through walls.
+- **Game features**: sensors, one-way platforms, collision layers, contact events with impact
+  speed, ray casts, shape casts and overlap queries.
+- **Deterministic**: the same build gives the same simulation, and `World` is `Clone`, so
+  snapshots and rollbacks are cheap. An optional `serde` feature saves worlds.
+- **Plain Rust**: no `unsafe`, no rendering dependency, a handle-based API.
 
 ```rust
 use kinetica::prelude::*;
@@ -20,8 +53,14 @@ println!("The ball is at {}", world[ball].position());
 Sizes are full sizes (`rectangle(20.0, 1.0)` is 20 m wide), joint anchors are world points, and
 indexing the world with a handle reaches the body, collider or joint.
 
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) explains how the engine works inside, and
-[`docs/ROADMAP.md`](docs/ROADMAP.md) records the design decisions and the history.
+## Run it locally
+
+```sh
+cargo run --release -p kinetica-testbed       # interactive testbed
+cargo run --release -p slingshot              # or trials, platformer, snip, fruits
+cargo run --release -p kinetica-bench         # performance benchmarks
+cargo test --workspace --all-features         # all tests
+```
 
 ## Workspace
 
@@ -38,22 +77,13 @@ indexing the world with a handle reaches the body, collider or joint.
 | [`games/snip`](games/snip) | Cut the ropes to drop the sweet in the basket. |
 | [`games/fruits`](games/fruits) | Drop fruits in a jar; two alike merge into a bigger one. |
 
-```sh
-cargo run --release -p kinetica-testbed       # interactive testbed
-cargo run --release -p slingshot              # or trials, platformer, snip, fruits
-cargo run --release -p kinetica-bench         # performance benchmarks
-cargo test --workspace --all-features         # all tests
-cargo clippy --workspace --all-targets        # lints (pedantic)
-```
+## The website
 
-## Web
-
-Games and the testbed run in the browser through WebAssembly:
+The site is built with `scripts/build-site.sh` (it needs `rustup target add wasm32-unknown-unknown`)
+and published by a GitHub Actions workflow on every push to `main`.
+`scripts/build-web.sh <crate>` builds a single game or the testbed for the browser:
 
 ```sh
-rustup target add wasm32-unknown-unknown
 scripts/build-web.sh slingshot Slingshot      # output in target/web/slingshot
 python3 -m http.server -d target/web/slingshot 8000
 ```
-
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the design decisions and the history.
