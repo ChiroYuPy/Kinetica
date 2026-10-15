@@ -12,7 +12,8 @@
 ---
 
 The picture above is made by the engine: every letter is a handful of bars welded together, and
-the shapes around it were dropped on the ground.
+the shapes around it were dropped on the ground
+([`logo.rs`](crates/kinetica-macroquad/examples/logo.rs) draws it).
 
 ## Try it
 
